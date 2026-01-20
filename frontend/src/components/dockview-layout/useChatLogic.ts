@@ -173,7 +173,7 @@ export function useChatLogic() {
     }, [setCurrentSessionId, setMessages, setSessions, setSteps]);
 
     // Select a session
-    const handleSelectSession = useCallback((id: string) => {
+    const handleSelectSession = useCallback(async (id: string) => {
         if (id !== currentSessionId) {
             // Unsubscribe from previous session's live events
             if (currentSessionId) {
@@ -184,22 +184,107 @@ export function useChatLogic() {
             setCurrentSessionId(id);
             setSteps([]);
 
-            // Check if new session is running - if so, subscribe to live events
+            // Check if new session is running - if so, load cached events and subscribe
             const sessionStatus = getSessionStatus(id);
             if (sessionStatus.status === 'running') {
-                console.log(`[useChatLogic] Subscribing to running session: ${id}`);
-                // Subscribe will replay cached events and then stream live ones
-                sessionClient.subscribe(id, (event) => {
-                    // Handle incoming events for the session
-                    console.log(`[useChatLogic] Received event for ${id}:`, event.type);
-                    // Events are already being handled by the global message handler
-                    // This subscription just ensures we receive them
-                });
+                console.log(`[useChatLogic] Loading events for running session: ${id}`);
+
+                try {
+                    // Get cached events from backend
+                    const eventsData = await sessionsApi.getEvents(id);
+
+                    // Rebuild message state from events
+                    if (eventsData.events && eventsData.events.length > 0) {
+                        // Create assistant message from events
+                        const assistantMessageId = `replayed-${id}-${Date.now()}`;
+                        let textContent = '';
+                        const blocks: MessageBlock[] = [];
+
+                        for (const event of eventsData.events) {
+                            if (event.type === 'text' || event.type === 'text_delta') {
+                                textContent += event.content || '';
+                            } else if (event.type === 'thinking' || event.type === 'thinking_delta') {
+                                // Accumulate thinking
+                            } else if (event.type === 'tool_use') {
+                                const toolBlock: MessageBlock = {
+                                    id: event.id || `tool-${blocks.length}`,
+                                    type: 'tool_use',
+                                    content: event.content,
+                                    status: 'executing',
+                                    metadata: event.metadata || {},
+                                };
+                                blocks.push(toolBlock);
+                            } else if (event.type === 'tool_result') {
+                                const resultBlock: MessageBlock = {
+                                    id: event.id || `result-${blocks.length}`,
+                                    type: 'tool_result',
+                                    content: event.content,
+                                    status: 'success',
+                                    metadata: event.metadata || {},
+                                };
+                                blocks.push(resultBlock);
+                            }
+                        }
+
+                        // Add text as a block if present
+                        if (textContent) {
+                            blocks.unshift({
+                                id: `text-${assistantMessageId}`,
+                                type: 'text',
+                                content: textContent,
+                                status: 'streaming',
+                            });
+                        }
+
+                        const assistantMessage: Message = {
+                            id: assistantMessageId,
+                            role: 'assistant',
+                            content: textContent,
+                            timestamp: Date.now(),
+                            blocks: blocks.length > 0 ? blocks : undefined,
+                            isStreaming: eventsData.status === 'running',
+                        };
+
+                        // Append to existing messages
+                        setMessages(prev => {
+                            // If last message is user message, append assistant
+                            if (prev.length > 0 && prev[prev.length - 1].role === 'user') {
+                                return [...prev, assistantMessage];
+                            }
+                            // If already has assistant message for this session, replace
+                            const lastAssistant = prev.findIndex(m => m.id.startsWith('replayed-'));
+                            if (lastAssistant >= 0) {
+                                const newPrev = [...prev];
+                                newPrev[lastAssistant] = assistantMessage;
+                                return newPrev;
+                            }
+                            return [...prev, assistantMessage];
+                        });
+
+                        // Subscribe for live updates
+                        sessionClient.subscribe(id, (event) => {
+                            console.log(`[useChatLogic] Live event for ${id}:`, event.type);
+                            // Note: For full live streaming, would need to process events here
+                            // For now, just update status on done/error
+                            if (event.type === 'done') {
+                                setSessionStatus(id, { status: 'idle', hasUnread: false });
+                                setIsProcessing(false);
+                                // Reload messages to get final state
+                                loadSessionMessages(id);
+                            } else if (event.type === 'error') {
+                                setSessionStatus(id, { status: 'error', hasUnread: false, error: event.content?.message });
+                                setIsProcessing(false);
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.error(`[useChatLogic] Failed to load events for session ${id}:`, err);
+                }
             }
 
             setTimeout(() => inputAreaRef.current?.focus(), 100);
         }
-    }, [currentSessionId, setCurrentSessionId, setSteps, getSessionStatus]);
+    }, [currentSessionId, setCurrentSessionId, setSteps, getSessionStatus, setMessages, setSessionStatus, setIsProcessing, loadSessionMessages]);
 
     // Delete a session
     const handleDeleteSession = useCallback(async (id: string) => {

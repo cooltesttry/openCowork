@@ -495,6 +495,9 @@ class SessionManager:
     
     async def _cleanup_idle_sessions(self, max_idle_seconds: float = 300):
         """Close sessions idle for more than max_idle_seconds."""
+        # Import here to avoid circular import
+        from core.task_runner import task_runner
+        
         async with self._lock:
             idle_sessions = [
                 sid for sid, session in self._sessions.items()
@@ -502,6 +505,11 @@ class SessionManager:
             ]
             
             for session_id in idle_sessions:
+                # Don't clean up sessions with running tasks
+                if task_runner.is_running(session_id):
+                    logger.debug(f"[SessionManager] Skipping cleanup for session {session_id}: task is running")
+                    continue
+                    
                 logger.info(f"[SessionManager] Cleaning up idle session: {session_id}")
                 await self._close_session_internal(session_id)
     

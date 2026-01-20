@@ -1,0 +1,19 @@
+{
+  "id": "112c46dd-b68e-4509-8406-a7716f343298",
+  "title": "写一个twitter 首页的html代码.",
+  "created_at": 1768897149.797357,
+  "updated_at": 1768897175.77915,
+  "messages": [
+    {
+      "id": "a63aeb23-08e2-43c4-a51b-4792557a59bb",
+      "role": "user",
+      "content": "写一个twitter 首页的html代码.",
+      "timestamp": 1768897175.779149,
+      "blocks": null
+    }
+  ],
+  "sdk_session_id": "b1e7fe91-f7ba-49eb-89f6-920e277a9e86",
+  "last_model_name": null,
+  "last_endpoint_name": null,
+  "last_security_mode": null
+}

@@ -1,0 +1,11 @@
+{
+  "task_id": "d8e79e8e-9ffe-49e8-8d94-9f4bfd2c99ff",
+  "session_id": "112c46dd-b68e-4509-8406-a7716f343298",
+  "prompt": "\u5199\u4e00\u4e2atwitter \u9996\u9875\u7684html\u4ee3\u7801.",
+  "status": "error",
+  "started_at": "2026-01-20T08:19:35.779428Z",
+  "completed_at": "2026-01-20T08:25:06.444349Z",
+  "error": "Task was cancelled",
+  "was_viewed": true,
+  "event_count": 12573
+}
