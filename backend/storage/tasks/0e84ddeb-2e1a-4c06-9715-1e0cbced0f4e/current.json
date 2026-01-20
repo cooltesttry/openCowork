@@ -1,0 +1,11 @@
+{
+  "task_id": "adfad48b-f4c3-44fc-85d4-6bf57f9e903a",
+  "session_id": "0e84ddeb-2e1a-4c06-9715-1e0cbced0f4e",
+  "prompt": "\u5199\u4e00\u4e2ahtml\u7684youtube\u9996\u9875, \u53ea\u8981\u4ee3\u7801, \u4e0d\u8981\u5199\u6587\u4ef6",
+  "status": "completed",
+  "started_at": "2026-01-20T08:10:22.142943Z",
+  "completed_at": "2026-01-20T08:11:28.178524Z",
+  "error": null,
+  "was_viewed": true,
+  "event_count": 4109
+}

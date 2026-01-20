@@ -174,16 +174,33 @@ export class AgentClient {
 export const agentClient = new AgentClient();
 
 /**
- * SessionClient for multi-turn conversations.
- * Uses /ws/session endpoint with ClaudeSDKClient on backend.
- * Maintains conversation context across multiple messages within the same connection.
+ * MultiplexedClient for concurrent multi-session conversations with persistence.
+ * Uses /ws/multiplexed endpoint with TaskRunner on backend.
+ * 
+ * Features:
+ * - Multiple sessions can execute concurrently
+ * - Events are persisted to disk
+ * - Supports reconnect/replay via subscribe
+ * - Session status tracking (running, completed, unread)
+ * 
+ * Protocol:
+ * - query: Start a new task for a session
+ * - subscribe: Subscribe to events from a session (includes replay)
+ * - unsubscribe: Unsubscribe from a session
+ * - user_response: Respond to AskUserQuestion
+ * - permission_response: Respond to permission request
  */
-export class SessionClient {
+export class MultiplexedClient {
     private ws: WebSocket | null = null;
     private url: string;
     private isConnected = false;
+    private eventHandlers: Map<string, (event: StreamEvent) => void> = new Map();
+    private globalHandler: ((event: StreamEvent) => void) | null = null;
+    private reconnectAttempts = 0;
+    private maxReconnectAttempts = 5;
+    private reconnectDelay = 1000;
 
-    constructor(url: string = "ws://localhost:8000/api/ws/session") {
+    constructor(url: string = "ws://localhost:8000/api/ws/multiplexed") {
         this.url = url;
     }
 
@@ -220,61 +237,146 @@ export class SessionClient {
                 this.ws.close();
                 reject(new Error("Connection timeout"));
             }
-        }, 10000);  // Longer timeout for session init
+        }, 10000);
 
         this.ws.onopen = () => {
             clearTimeout(timeout);
-            console.log("Session WebSocket connected (multi-turn mode)");
+            console.log("[MultiplexedClient] Connected");
             this.isConnected = true;
+            this.reconnectAttempts = 0;
             resolve();
         };
 
         this.ws.onclose = () => {
             clearTimeout(timeout);
-            console.log("Session WebSocket disconnected");
+            console.log("[MultiplexedClient] Disconnected");
             this.isConnected = false;
             this.ws = null;
+
+            // Auto-reconnect
+            if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                this.reconnectAttempts++;
+                const delay = this.reconnectDelay * this.reconnectAttempts;
+                console.log(`[MultiplexedClient] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+                setTimeout(() => {
+                    this.connect().catch(console.error);
+                }, delay);
+            }
         };
 
         this.ws.onerror = (error) => {
             clearTimeout(timeout);
-            console.error("Session WebSocket error:", error);
+            console.error("[MultiplexedClient] Error:", error);
             reject(error);
+        };
+
+        this.ws.onmessage = (event: MessageEvent) => {
+            try {
+                const data = JSON.parse(event.data) as StreamEvent;
+                const sessionId = data.metadata?.session_id;
+
+                // Route to session-specific handler
+                if (sessionId && this.eventHandlers.has(sessionId)) {
+                    this.eventHandlers.get(sessionId)!(data);
+                }
+
+                // Also call global handler
+                if (this.globalHandler) {
+                    this.globalHandler(data);
+                }
+            } catch (e) {
+                console.error("[MultiplexedClient] Failed to parse event:", e);
+            }
         };
     }
 
     disconnect() {
         if (this.ws) {
+            this.maxReconnectAttempts = 0; // Prevent auto-reconnect
             this.ws.close();
             this.ws = null;
             this.isConnected = false;
         }
     }
 
-    async sendMessage(message: ChatMessage, onEvent: (event: StreamEvent) => void): Promise<void> {
+    /**
+     * Set a global event handler that receives ALL events.
+     */
+    setGlobalHandler(handler: (event: StreamEvent) => void) {
+        this.globalHandler = handler;
+    }
+
+    /**
+     * Subscribe to events from a session.
+     * This will replay any cached events first, then stream live events.
+     */
+    async subscribe(sessionId: string, onEvent: (event: StreamEvent) => void): Promise<void> {
         if (!this.isConnected || !this.ws) {
             await this.connect();
         }
 
+        this.eventHandlers.set(sessionId, onEvent);
+
         if (this.ws) {
-            const listener = (event: MessageEvent) => {
-                try {
-                    const data = JSON.parse(event.data) as StreamEvent;
-                    onEvent(data);
-
-                    if (data.type === "done" || data.type === "error") {
-                        this.ws?.removeEventListener("message", listener);
-                    }
-                } catch (e) {
-                    console.error("Failed to parse event:", e);
-                }
-            };
-
-            this.ws.addEventListener("message", listener);
-            this.ws.send(JSON.stringify(message));
-        } else {
-            throw new Error("Failed to connect to Session WebSocket");
+            this.ws.send(JSON.stringify({
+                type: "subscribe",
+                session_id: sessionId,
+            }));
+            console.log("[MultiplexedClient] Subscribed to:", sessionId);
         }
+    }
+
+    /**
+     * Unsubscribe from a session's events.
+     */
+    unsubscribe(sessionId: string): void {
+        this.eventHandlers.delete(sessionId);
+
+        if (this.ws && this.isConnected) {
+            this.ws.send(JSON.stringify({
+                type: "unsubscribe",
+                session_id: sessionId,
+            }));
+            console.log("[MultiplexedClient] Unsubscribed from:", sessionId);
+        }
+    }
+
+    /**
+     * Send a query to start a new task for a session.
+     * The session must be subscribed first to receive events.
+     */
+    async sendQuery(message: ChatMessage, onEvent: (event: StreamEvent) => void): Promise<void> {
+        if (!this.isConnected || !this.ws) {
+            await this.connect();
+        }
+
+        const sessionId = message.session_id;
+        if (sessionId) {
+            // Register handler for this session
+            this.eventHandlers.set(sessionId, onEvent);
+        }
+
+        if (this.ws) {
+            this.ws.send(JSON.stringify({
+                type: "query",
+                ...message,
+            }));
+            console.log("[MultiplexedClient] Sent query for:", sessionId);
+
+            // Also subscribe to get events
+            if (sessionId && !this.eventHandlers.has(sessionId)) {
+                await this.subscribe(sessionId, onEvent);
+            }
+        } else {
+            throw new Error("Failed to connect to Multiplexed WebSocket");
+        }
+    }
+
+    /**
+     * Send a message (legacy compatibility - wraps sendQuery).
+     */
+    async sendMessage(message: ChatMessage, onEvent: (event: StreamEvent) => void): Promise<void> {
+        return this.sendQuery(message, onEvent);
     }
 
     isActive(): boolean {
@@ -295,7 +397,7 @@ export class SessionClient {
             request_id: requestId,
             answers: answers,
         }));
-        console.log("Sent user_response for:", requestId);
+        console.log("[MultiplexedClient] Sent user_response for:", requestId);
     }
 
     /**
@@ -312,8 +414,17 @@ export class SessionClient {
             request_id: requestId,
             approved: approved,
         }));
-        console.log("Sent permission_response for:", requestId, "approved:", approved);
+        console.log("[MultiplexedClient] Sent permission_response for:", requestId, "approved:", approved);
+    }
+}
+
+// Legacy SessionClient - kept for backward compatibility but uses MultiplexedClient internally
+export class SessionClient extends MultiplexedClient {
+    constructor(url: string = "ws://localhost:8000/api/ws/multiplexed") {
+        super(url);
     }
 }
 
 export const sessionClient = new SessionClient();
+export const multiplexedClient = new MultiplexedClient();
+

@@ -1,0 +1,40 @@
+{
+  "id": "b3770897-bfb6-4d7a-9c12-76b150e974b6",
+  "title": "你有什么skill？",
+  "created_at": 1768883447.433117,
+  "updated_at": 1768883479.8689852,
+  "messages": [
+    {
+      "id": "ff8519fc-9977-42bc-b9ec-a6355a1c6a73",
+      "role": "user",
+      "content": "你有什么skill？",
+      "timestamp": 1768883457.812633,
+      "blocks": null
+    },
+    {
+      "id": "6307af24-3840-4fb2-b9bd-11c5320969c5",
+      "role": "assistant",
+      "content": "API Error: 400 {\"error\":{\"message\":\"unknown provider for model z-ai/glm-4.7\",\"type\":\"invalid_request_error\"}}",
+      "timestamp": 1768883460.464639,
+      "blocks": null
+    },
+    {
+      "id": "d98b59f9-b467-4ca4-a983-e22234644b65",
+      "role": "user",
+      "content": "你好",
+      "timestamp": 1768883479.4703622,
+      "blocks": null
+    },
+    {
+      "id": "d0149578-191e-4530-922c-0084a6ff071d",
+      "role": "assistant",
+      "content": "API Error: 400 {\"error\":{\"message\":\"unknown provider for model z-ai/glm-4.7\",\"type\":\"invalid_request_error\"}}",
+      "timestamp": 1768883479.868983,
+      "blocks": null
+    }
+  ],
+  "sdk_session_id": "f6529ea1-79a3-4f1c-8c47-385c01133452",
+  "last_model_name": "z-ai/glm-4.7",
+  "last_endpoint_name": "(legacy)",
+  "last_security_mode": "bypassPermissions"
+}

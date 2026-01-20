@@ -183,6 +183,7 @@ def build_agent_options(
             include_partial_messages=streaming,
             permission_mode=permission_mode,
             can_use_tool=can_use_tool,
+            setting_sources=["project"],  # Enable Skill discovery from cwd/.claude/skills/
             system_prompt="You are a helpful AI assistant. Always format your responses in clean, structured Markdown. Use bold headings, bullet points, and tables where appropriate to present information clearly. When utilizing tools, briefly explain your actions to the user."
         )
     else:
@@ -194,6 +195,7 @@ def build_agent_options(
             include_partial_messages=streaming,
             permission_mode=permission_mode,
             can_use_tool=can_use_tool,
+            setting_sources=["project"],  # Enable Skill discovery from cwd/.claude/skills/
             system_prompt="You are a helpful AI assistant. Always format your responses in clean, structured Markdown. Use bold headings, bullet points, and tables where appropriate to present information clearly. When utilizing tools, briefly explain your actions to the user."
         )
     

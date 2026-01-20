@@ -175,12 +175,31 @@ export function useChatLogic() {
     // Select a session
     const handleSelectSession = useCallback((id: string) => {
         if (id !== currentSessionId) {
+            // Unsubscribe from previous session's live events
+            if (currentSessionId) {
+                sessionClient.unsubscribe(currentSessionId);
+            }
+
             currentSessionIdRef.current = id;
             setCurrentSessionId(id);
             setSteps([]);
+
+            // Check if new session is running - if so, subscribe to live events
+            const sessionStatus = getSessionStatus(id);
+            if (sessionStatus.status === 'running') {
+                console.log(`[useChatLogic] Subscribing to running session: ${id}`);
+                // Subscribe will replay cached events and then stream live ones
+                sessionClient.subscribe(id, (event) => {
+                    // Handle incoming events for the session
+                    console.log(`[useChatLogic] Received event for ${id}:`, event.type);
+                    // Events are already being handled by the global message handler
+                    // This subscription just ensures we receive them
+                });
+            }
+
             setTimeout(() => inputAreaRef.current?.focus(), 100);
         }
-    }, [currentSessionId, setCurrentSessionId, setSteps]);
+    }, [currentSessionId, setCurrentSessionId, setSteps, getSessionStatus]);
 
     // Delete a session
     const handleDeleteSession = useCallback(async (id: string) => {
@@ -785,8 +804,10 @@ export function useChatLogic() {
                     case 'done': {
                         setIsProcessing(false);
                         // Update session status to idle (task completed)
-                        if (currentSessionIdRef.current) {
-                            setSessionStatus(currentSessionIdRef.current, {
+                        // Use event's session_id for multiplexed mode
+                        const doneSessionId = event.metadata?.session_id || currentSessionIdRef.current;
+                        if (doneSessionId) {
+                            setSessionStatus(doneSessionId, {
                                 status: 'idle',
                                 hasUnread: false,
                             });
@@ -879,9 +900,11 @@ export function useChatLogic() {
                     case 'error': {
                         setIsProcessing(false);
                         // Update session status to error
-                        if (currentSessionIdRef.current) {
+                        // Use event's session_id for multiplexed mode
+                        const errorSessionId = event.metadata?.session_id || currentSessionIdRef.current;
+                        if (errorSessionId) {
                             const errorMsg = event.content?.message || 'An error occurred';
-                            setSessionStatus(currentSessionIdRef.current, {
+                            setSessionStatus(errorSessionId, {
                                 status: 'error',
                                 hasUnread: false,
                                 error: errorMsg,

@@ -105,10 +105,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         });
     }, []);
 
-    // Use ref for stable reference - won't cause dependency chain updates
+    // Use state directly - this allows components to react to status changes
+    // Keep ref for callbacks that need stable reference without causing re-renders
     const getSessionStatus = useCallback((sessionId: string): SessionStatus => {
-        return sessionStatusesRef.current.get(sessionId) || { status: 'idle', hasUnread: false };
-    }, []);
+        return sessionStatuses.get(sessionId) || { status: 'idle', hasUnread: false };
+    }, [sessionStatuses]);
 
     // Track if we've loaded from localStorage to prevent race condition
     const isHydrated = useRef(false);

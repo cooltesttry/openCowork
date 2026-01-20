@@ -1,9 +1,5 @@
-import { ChatPanel } from "@/components/chat/chat-panel";
+import { DockviewMain } from '@/components/dockview-layout/dockview-main';
 
 export default function Home() {
-  return (
-    <main className="min-h-screen">
-      <ChatPanel />
-    </main>
-  );
+  return <DockviewMain />;
 }

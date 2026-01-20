@@ -1,0 +1,19 @@
+{
+  "id": "808a46cb-de40-4adb-9294-6696666703d3",
+  "title": "你去看一下豆瓣的头5本，现在最受欢迎的书。 如果要用浏览器，请打开浏览器让我们看得到。",
+  "created_at": 1768889495.862219,
+  "updated_at": 1768889501.642158,
+  "messages": [
+    {
+      "id": "28ab4bf6-f9a8-4ede-a9b6-c999f52eb31d",
+      "role": "user",
+      "content": "你去看一下豆瓣的头5本，现在最受欢迎的书。 如果要用浏览器，请打开浏览器让我们看得到。",
+      "timestamp": 1768889501.6421561,
+      "blocks": null
+    }
+  ],
+  "sdk_session_id": "205a30d1-2f20-4345-8323-99ca752e1ed8",
+  "last_model_name": null,
+  "last_endpoint_name": null,
+  "last_security_mode": "bypassPermissions"
+}
