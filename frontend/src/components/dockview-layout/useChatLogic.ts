@@ -286,6 +286,10 @@ export function useChatLogic() {
             console.warn('Session WebSocket connection failed, will retry on message send', err);
         });
 
+        // Set global event handler to process done/error from ANY session
+        // This ensures status icons update even when user is viewing a different session
+        sessionClient.setGlobalHandler(handleGlobalEvent);
+
         // Load sessions
         loadSessions();
 
@@ -300,8 +304,9 @@ export function useChatLogic() {
 
         return () => {
             sessionClient.setOnReconnect(null);
+            sessionClient.setGlobalHandler(() => { }); // Clear global handler
         };
-    }, [loadSessions, recoverAllSessions]);
+    }, [loadSessions, recoverAllSessions, handleGlobalEvent]);
 
     // Load session messages when currentSessionId changes
     useEffect(() => {
@@ -329,9 +334,13 @@ export function useChatLogic() {
     // Select a session
     const handleSelectSession = useCallback(async (id: string) => {
         if (id !== currentSessionId) {
-            // Unsubscribe from previous session's live events
+            // Only unsubscribe from previous session if it's NOT running
+            // Running sessions should stay subscribed to receive done/error events
             if (currentSessionId) {
-                sessionClient.unsubscribe(currentSessionId);
+                const prevStatus = getSessionStatus(currentSessionId);
+                if (prevStatus.status !== 'running') {
+                    sessionClient.unsubscribe(currentSessionId);
+                }
             }
 
             currentSessionIdRef.current = id;
