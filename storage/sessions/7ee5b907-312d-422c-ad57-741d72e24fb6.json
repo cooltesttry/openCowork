@@ -1,0 +1,197 @@
+{
+  "id": "7ee5b907-312d-422c-ad57-741d72e24fb6",
+  "title": "你好啊",
+  "created_at": 1768660781.414714,
+  "updated_at": 1768661065.528781,
+  "messages": [
+    {
+      "id": "4744a20d-d884-48c3-925d-06200c59340e",
+      "role": "user",
+      "content": "你好啊",
+      "timestamp": 1768660789.357974,
+      "blocks": null
+    },
+    {
+      "id": "9eca68e5-d185-4239-baef-dd5fb2b0e305",
+      "role": "assistant",
+      "content": "你好！👋\n\n很高兴见到你！我是一个 AI 编程助手，可以帮助你：\n\n- **编写代码** - 创建新项目或功能\n- **调试问题** - 查找和修复 bug\n- **代码审查** - 改进代码质量\n- **回答问题** - 解释技术概念\n- **搜索信息** - 查找相关资料\n\n请问今天有什么我可以帮助你的吗？ 😊",
+      "timestamp": 1768660800.71512,
+      "blocks": null
+    },
+    {
+      "id": "80358131-c6a5-4cf5-b1e4-56989eab56f6",
+      "role": "user",
+      "content": "问我一个问题，用Ask User的工具问",
+      "timestamp": 1768660812.481858,
+      "blocks": null
+    },
+    {
+      "id": "2a808ee4-cfe3-417d-a384-ffc480d4008a",
+      "role": "assistant",
+      "content": "太棒了！你选择了 **编写新代码** 🎉\n\n请告诉我更多细节：\n\n- **你想创建什么？** （网站、API、脚本、工具等）\n- **使用什么编程语言？** （Python、JavaScript、Go、Rust 等）\n- **有什么具体功能需求吗？**\n\n告诉我你的想法，我来帮你实现！ 💻",
+      "timestamp": 1768660834.214427,
+      "blocks": [
+        {
+          "id": "AskUserQuestion-1768660817702500000-31",
+          "type": "tool_use",
+          "content": {
+            "name": "AskUserQuestion",
+            "input": {
+              "questions": [
+                {
+                  "question": "你今天想让我帮你完成什么类型的任务？",
+                  "header": "任务类型",
+                  "options": [
+                    {
+                      "label": "编写新代码",
+                      "description": "创建新的项目、功能或组件"
+                    },
+                    {
+                      "label": "调试/修复Bug",
+                      "description": "查找并修复代码中的问题"
+                    },
+                    {
+                      "label": "代码审查/优化",
+                      "description": "改进现有代码的质量和性能"
+                    },
+                    {
+                      "description": "了解技术概念或获取编程建议",
+                      "label": "学习/解答问题"
+                    }
+                  ],
+                  "multiSelect": false
+                }
+              ]
+            },
+            "result": "User has answered your questions: \"你今天想让我帮你完成什么类型的任务？\"=\"编写新代码\". You can now continue with the user's answers in mind.",
+            "is_error": null
+          },
+          "status": "success",
+          "metadata": {
+            "toolName": "AskUserQuestion",
+            "toolCallId": "AskUserQuestion-1768660817702500000-31"
+          }
+        }
+      ]
+    },
+    {
+      "id": "58d3d897-0181-4666-8245-b0d81f2983e1",
+      "role": "user",
+      "content": "再问我一个问题",
+      "timestamp": 1768661044.833583,
+      "blocks": null
+    },
+    {
+      "id": "450d41b6-4468-481d-9261-dcac6b0f6f2c",
+      "role": "assistant",
+      "content": "看起来遇到了一点技术问题，让我再试一次：抱歉，看来 AskUserQuestion 工具目前遇到了一些连接问题 😅\n\n不过没关系！我可以直接用文字问你：\n\n---\n\n**🤔 问题：你更喜欢使用哪种编程语言？**\n\n| 选项 | 描述 |\n|------|------|\n| **Python** | 简洁易学，适合数据分析、AI、自动化脚本 |\n| **JavaScript/TypeScript** | 全栈开发，前后端通用，生态丰富 |\n| **Rust / Go** | 高性能、安全、系统级编程 |\n| **Java / Kotlin** | 企业级应用、Android 开发 |\n| **其他** | 告诉我你喜欢的语言！ |\n\n请直接回复告诉我你的选择吧！ 😊",
+      "timestamp": 1768661065.528779,
+      "blocks": [
+        {
+          "id": "AskUserQuestion-1768661053924758000-32",
+          "type": "tool_use",
+          "content": {
+            "name": "AskUserQuestion",
+            "input": {
+              "questions": [
+                {
+                  "header": "编程语言",
+                  "multiSelect": false,
+                  "options": [
+                    {
+                      "description": "简洁易学，适合数据分析、AI、自动化脚本",
+                      "label": "Python"
+                    },
+                    {
+                      "description": "全栈开发，前后端通用，生态丰富",
+                      "label": "JavaScript/TypeScript"
+                    },
+                    {
+                      "description": "高性能、安全、系统级编程",
+                      "label": "Rust/Go"
+                    },
+                    {
+                      "description": "企业级应用、Android开发",
+                      "label": "Java/Kotlin"
+                    }
+                  ],
+                  "question": "你想使用哪种编程语言来编写新代码？"
+                },
+                {
+                  "header": "项目类型",
+                  "multiSelect": false,
+                  "options": [
+                    {
+                      "label": "后端API服务",
+                      "description": "RESTful API、GraphQL 等后端服务"
+                    },
+                    {
+                      "description": "React、Vue、网页应用",
+                      "label": "前端/网页应用"
+                    },
+                    {
+                      "description": "自动化任务、数据处理脚本",
+                      "label": "脚本/工具"
+                    },
+                    {
+                      "label": "命令行工具",
+                      "description": "终端应用、系统工具"
+                    }
+                  ],
+                  "question": "你想创建什么类型的项目？"
+                }
+              ]
+            },
+            "result": "Tool permission request failed: Error: Unexpected ASGI message 'websocket.send', after sending 'websocket.close' or response already completed.",
+            "is_error": true
+          },
+          "status": "error",
+          "metadata": {
+            "toolName": "AskUserQuestion",
+            "toolCallId": "AskUserQuestion-1768661053924758000-32"
+          }
+        },
+        {
+          "id": "AskUserQuestion-1768661058932964000-33",
+          "type": "tool_use",
+          "content": {
+            "name": "AskUserQuestion",
+            "input": {
+              "questions": [
+                {
+                  "options": [
+                    {
+                      "description": "简洁易学，适合数据分析、AI、自动化脚本",
+                      "label": "Python"
+                    },
+                    {
+                      "description": "全栈开发，前后端通用，生态丰富",
+                      "label": "JavaScript"
+                    },
+                    {
+                      "description": "高性能、安全、系统级编程",
+                      "label": "Rust 或 Go"
+                    }
+                  ],
+                  "question": "你更喜欢使用哪种编程语言？",
+                  "header": "编程语言",
+                  "multiSelect": false
+                }
+              ]
+            },
+            "result": "Tool permission request failed: Error: Unexpected ASGI message 'websocket.send', after sending 'websocket.close' or response already completed.",
+            "is_error": true
+          },
+          "status": "error",
+          "metadata": {
+            "toolName": "AskUserQuestion",
+            "toolCallId": "AskUserQuestion-1768661058932964000-33"
+          }
+        }
+      ]
+    }
+  ],
+  "sdk_session_id": "344805c4-bf87-412e-86e5-9741b45c516b",
+  "last_model_name": "gemini-claude-opus-4-5-thinking",
+  "last_endpoint_name": "Local"
+}

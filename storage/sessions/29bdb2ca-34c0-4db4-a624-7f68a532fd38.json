@@ -1,0 +1,34 @@
+{
+  "id": "29bdb2ca-34c0-4db4-a624-7f68a532fd38",
+  "title": "我之前问了哪些问题",
+  "created_at": 1768738145.472327,
+  "updated_at": 1768738158.874293,
+  "messages": [
+    {
+      "id": "50bc8f2d-574c-457a-9965-5fcca70002c7",
+      "role": "user",
+      "content": "我之前问了哪些问题",
+      "timestamp": 1768738145.472838,
+      "blocks": null
+    },
+    {
+      "id": "d42f4e23-da1e-4f8a-a14d-473b9bdf7c81",
+      "role": "assistant",
+      "content": "您好！\n\n根据我的对话记录，**这是我们对话的第一条消息**。在此之前，您还没有向我提出过任何问题。\n\n这可能是因为：\n- 这是一个新的对话会话\n- 之前的对话历史没有被保留\n\n如果您有任何编程相关的问题或任务需要帮助，欢迎随时告诉我！我可以帮您：\n- 📝 编写或修改代码\n- 🐛 调试程序问题\n- 🔍 搜索和分析代码库\n- 💡 解答技术问题\n\n请问有什么可以帮您的吗？",
+      "timestamp": 1768738158.874291,
+      "blocks": [
+        {
+          "id": "thinking-55",
+          "type": "thinking",
+          "content": "用户问的是\"我之前问了哪些问题\"，意思是\"我之前问过什么问题\"。\n\n这是用户在询问他们之前在对话中提出过的问题。但是，根据我的对话历史，这是用户在这个对话中发送的第一条消息。在此之前没有任何对话记录。\n\n我应该诚实地告诉用户，这是我们对话的开始，之前没有其他问题记录。",
+          "status": "success",
+          "metadata": {}
+        }
+      ]
+    }
+  ],
+  "sdk_session_id": "ecade247-486c-4332-b6a4-fbb721692104",
+  "last_model_name": "gemini-claude-opus-4-5-thinking",
+  "last_endpoint_name": "Local",
+  "last_security_mode": "bypassPermissions"
+}

@@ -1,0 +1,19 @@
+{
+  "id": "773abe02-59b4-4736-9bb7-b9fad51dfe86",
+  "title": "给我生成一个 Python 代码，这个 Python 代码的唯一要求就是里面有一行要很长，要有超过...",
+  "created_at": 1768854325.714305,
+  "updated_at": 1768854351.293875,
+  "messages": [
+    {
+      "id": "cc1295be-5b39-4c3f-b1ab-832fa7ccf250",
+      "role": "user",
+      "content": "给我生成一个 Python 代码，这个 Python 代码的唯一要求就是里面有一行要很长，要有超过 300 个字符。",
+      "timestamp": 1768854351.2938728,
+      "blocks": null
+    }
+  ],
+  "sdk_session_id": "39606927-bc1f-49d8-87c2-4dba8bff6da9",
+  "last_model_name": null,
+  "last_endpoint_name": null,
+  "last_security_mode": "bypassPermissions"
+}

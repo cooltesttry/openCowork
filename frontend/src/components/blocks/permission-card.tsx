@@ -18,7 +18,7 @@ export function PermissionCard({ block, onApprove, onDeny }: PermissionCardProps
         : block.content?.description || "This tool requires your permission to execute.";
 
     return (
-        <Card className="my-3 border-yellow-300 dark:border-yellow-700 bg-yellow-50/50 dark:bg-yellow-900/10">
+        <Card className="my-3 border-yellow-300 dark:border-yellow-700 bg-yellow-50/50 dark:bg-yellow-900/10 w-full min-w-0 overflow-hidden">
             <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
                     <div className="p-1.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30">

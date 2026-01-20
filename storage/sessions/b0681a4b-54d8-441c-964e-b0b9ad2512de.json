@@ -1,0 +1,26 @@
+{
+  "id": "b0681a4b-54d8-441c-964e-b0b9ad2512de",
+  "title": "给我生成一段Python代码，只要代码",
+  "created_at": 1768854451.932721,
+  "updated_at": 1768854494.023603,
+  "messages": [
+    {
+      "id": "c0bf3d13-bda4-4176-abce-61fec61f5375",
+      "role": "user",
+      "content": "给我生成一段Python代码，只要代码",
+      "timestamp": 1768854480.614728,
+      "blocks": null
+    },
+    {
+      "id": "71c4dd91-4460-43cb-aff6-f5e1248a73ab",
+      "role": "assistant",
+      "content": "```python\ndef fibonacci(n):\n    if n <= 0:\n        return []\n    elif n == 1:\n        return [0]\n    elif n == 2:\n        return [0, 1]\n    \n    fib = [0, 1]\n    for i in range(2, n):\n        fib.append(fib[i-1] + fib[i-2])\n    return fib\n\nprint(fibonacci(10))\n```",
+      "timestamp": 1768854494.0236008,
+      "blocks": null
+    }
+  ],
+  "sdk_session_id": "2cac1ac2-dc22-4250-bd5c-e0aa829e3423",
+  "last_model_name": "z-ai/glm-4.7",
+  "last_endpoint_name": "OpenRouter",
+  "last_security_mode": "bypassPermissions"
+}

@@ -6,9 +6,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 interface MessageListProps {
     messages: Message[];
     onPermissionResponse?: (blockId: string, approved: boolean) => void;
+    onAskUserSubmit?: (requestId: string, answers: Record<string, string>) => void;
+    onAskUserSkip?: (requestId: string) => void;
+    onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
+    onPreviewHTML?: (htmlContent: string) => void;
 }
 
-export function MessageList({ messages, onPermissionResponse }: MessageListProps) {
+export function MessageList({ messages, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onSelectFile, onPreviewHTML }: MessageListProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom
@@ -29,6 +33,10 @@ export function MessageList({ messages, onPermissionResponse }: MessageListProps
                         key={msg.id}
                         message={msg}
                         onPermissionResponse={onPermissionResponse}
+                        onAskUserSubmit={onAskUserSubmit}
+                        onAskUserSkip={onAskUserSkip}
+                        onSelectFile={onSelectFile}
+                        onPreviewHTML={onPreviewHTML}
                     />
                 ))}
                 {messages.length === 0 && (

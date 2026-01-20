@@ -1,0 +1,18 @@
+{
+  "id": "5d5896e4-40f0-4184-85d3-a65b7a762121",
+  "title": "帮我创建一个项目",
+  "created_at": 1768653709.029137,
+  "updated_at": 1768653716.6636019,
+  "messages": [
+    {
+      "id": "54a74b5a-4ba8-4ef7-9680-e905f4ba1550",
+      "role": "user",
+      "content": "帮我创建一个项目",
+      "timestamp": 1768653716.6636002,
+      "blocks": null
+    }
+  ],
+  "sdk_session_id": null,
+  "last_model_name": null,
+  "last_endpoint_name": null
+}

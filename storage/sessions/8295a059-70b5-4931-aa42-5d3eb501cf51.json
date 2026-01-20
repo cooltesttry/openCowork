@@ -1,0 +1,19 @@
+{
+  "id": "8295a059-70b5-4931-aa42-5d3eb501cf51",
+  "title": "创建一个 hello.txt 文件，里面内容是 hello world",
+  "created_at": 1768666452.4002519,
+  "updated_at": 1768666538.310455,
+  "messages": [
+    {
+      "id": "5a6b469d-e1c1-43e8-b9f9-20eeb7ca52cf",
+      "role": "user",
+      "content": "创建一个 hello.txt 文件，里面内容是 hello world",
+      "timestamp": 1768666538.3104498,
+      "blocks": null
+    }
+  ],
+  "sdk_session_id": "3dcf40db-d5ba-4159-a3bb-9abfcdf7b555",
+  "last_model_name": null,
+  "last_endpoint_name": null,
+  "last_security_mode": "default"
+}

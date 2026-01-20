@@ -1,0 +1,19 @@
+{
+  "id": "27a85647-7688-4c59-afa7-b3942857215e",
+  "title": "ultrathink 请为我规划一个基于 HTML 的、包含丰富宝物的三消游戏开发计划。",
+  "created_at": 1768686324.192693,
+  "updated_at": 1768686328.8931992,
+  "messages": [
+    {
+      "id": "33b49349-0ded-48b1-ba01-b74bdf92e963",
+      "role": "user",
+      "content": "ultrathink 请为我规划一个基于 HTML 的、包含丰富宝物的三消游戏开发计划。",
+      "timestamp": 1768686328.893194,
+      "blocks": null
+    }
+  ],
+  "sdk_session_id": "0fbd0e44-21f8-4643-a474-51600c4496bd",
+  "last_model_name": null,
+  "last_endpoint_name": null,
+  "last_security_mode": "bypassPermissions"
+}

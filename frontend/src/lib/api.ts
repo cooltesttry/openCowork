@@ -67,3 +67,109 @@ export async function fetchModels(config: any): Promise<string[]> {
     const data = await res.json();
     return data.models || [];
 }
+
+// ============== Agent Config ==============
+
+export interface AgentConfig {
+    allowed_tools: string[];
+    max_turns: number;
+    default_workdir: string | null;
+}
+
+export async function fetchAgentConfig(): Promise<AgentConfig> {
+    const res = await fetch(`${API_BASE}/agent`);
+    if (!res.ok) throw new Error("Failed to fetch agent config");
+    return res.json();
+}
+
+// ============== File Listing ==============
+
+export interface FileListItem {
+    name: string;
+    path: string;
+    is_directory: boolean;
+}
+
+export interface FileListResponse {
+    status: string;
+    files: FileListItem[];
+    workdir?: string;
+    detail?: string;
+}
+
+export async function fetchWorkingDirectoryFiles(subdir: string = ""): Promise<FileListResponse> {
+    const url = subdir
+        ? `${API_BASE}/files?subdir=${encodeURIComponent(subdir)}`
+        : `${API_BASE}/files`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Failed to fetch files");
+    return res.json();
+}
+
+
+const API_ROOT = "http://localhost:8000/api";
+
+export async function saveFile(path: string, content: string): Promise<any> {
+    const res = await fetch(`${API_ROOT}/files/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, content }),
+    });
+    if (!res.ok) throw new Error("Failed to save file");
+    return res.json();
+}
+
+
+// ============== Skills & Agents ==============
+
+export interface SkillInfo {
+    name: string;
+    path: string;
+    source: 'user' | 'project';
+    isLoaded?: boolean;  // Whether currently loaded by SDK
+}
+
+export interface SubagentInfo {
+    name: string;
+    path?: string;
+    source: 'user' | 'project' | 'builtin';
+    is_builtin: boolean;
+    isLoaded?: boolean;  // Whether currently loaded by SDK
+}
+
+export interface SkillsAgentsResponse {
+    skills: SkillInfo[];
+    agents: SubagentInfo[];
+    workdir?: string;
+}
+
+export interface WarmupResponse {
+    status: string;
+    session_id: string;
+    skills: string[];
+    agents: string[];
+    tools: string[];
+    slash_commands: string[];
+    detail?: string;
+}
+
+export async function fetchSkillsAgents(): Promise<SkillsAgentsResponse> {
+    const res = await fetch(`${API_BASE}/skills-agents`);
+    if (!res.ok) throw new Error("Failed to fetch skills and agents");
+    return res.json();
+}
+
+export async function warmupSession(options: {
+    session_id?: string;
+    endpoint_name?: string;
+    model_name?: string;
+    cwd?: string;
+}): Promise<WarmupResponse> {
+    const res = await fetch(`${API_ROOT}/session/warmup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options),
+    });
+    if (!res.ok) throw new Error("Failed to warmup session");
+    return res.json();
+}

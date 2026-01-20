@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Node.js-20+-green?logo=node.js" alt="Node.js">
   <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react" alt="React">
-  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License">
+  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License"> 
 </p>
 
 ---

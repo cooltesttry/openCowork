@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Terminal, ChevronDown, ChevronRight, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { MessageBlock } from "@/lib/types";
@@ -10,11 +10,15 @@ import { cn } from "@/lib/utils";
 interface ToolBlockProps {
     block: MessageBlock;
     autoCollapseDelay?: number;
+    defaultCollapsed?: boolean;  // If true, start collapsed (for history items)
     onPermissionResponse?: (approved: boolean) => void;
 }
 
-export function ToolBlock({ block, autoCollapseDelay = 300, onPermissionResponse }: ToolBlockProps) {
-    const [isOpen, setIsOpen] = useState(true);
+export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = false }: ToolBlockProps) {
+    // Start collapsed if defaultCollapsed is true OR if status is already success
+    const [isOpen, setIsOpen] = useState(!defaultCollapsed && block.status !== 'success');
+
+
     const hasAutoCollapsed = useRef(false);
     const prevStatus = useRef(block.status);
 
@@ -43,14 +47,14 @@ export function ToolBlock({ block, autoCollapseDelay = 300, onPermissionResponse
         prevStatus.current = status;
     }, [status, autoCollapseDelay]);
 
-    // Get status icon
-    const StatusIcon = () => {
-        if (isComplete) return <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />;
-        if (isError) return <XCircle className="h-4 w-4 text-red-500 flex-shrink-0" />;
-        if (isExecuting) return <Loader2 className="h-4 w-4 text-blue-500 animate-spin flex-shrink-0" />;
-        if (isPending) return <span className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse flex-shrink-0" />;
+    // Get status icon - use useMemo to avoid recreating component during render
+    const statusIcon = useMemo(() => {
+        if (isComplete) return <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />;
+        if (isError) return <XCircle className="h-4 w-4 text-red-500 shrink-0" />;
+        if (isExecuting) return <Loader2 className="h-4 w-4 text-blue-500 animate-spin shrink-0" />;
+        if (isPending) return <span className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />;
         return null;
-    };
+    }, [isComplete, isError, isExecuting, isPending]);
 
     // Get status background color
     const getBgClass = () => {
@@ -68,7 +72,7 @@ export function ToolBlock({ block, autoCollapseDelay = 300, onPermissionResponse
     };
 
     return (
-        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="my-2">
+        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="my-2 w-full min-w-0">
             <CollapsibleTrigger
                 className={cn(
                     "flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium",
@@ -92,16 +96,29 @@ export function ToolBlock({ block, autoCollapseDelay = 300, onPermissionResponse
                     {isComplete && "Completed"}
                     {isError && "Failed"}
                 </span>
-                <StatusIcon />
+                {statusIcon}
             </CollapsibleTrigger>
 
             <CollapsibleContent className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
-                <div className="mt-1 ml-6 pl-4 py-2 border-l-2 border-border text-xs font-mono space-y-2">
-                    {/* Input */}
-                    {content?.input && (
-                        <div>
+                <div className="mt-1 ml-6 pl-4 py-2 border-l-2 border-border text-xs font-mono space-y-2 min-w-0 overflow-hidden">
+                    {/* Streaming Input Buffer - show during streaming */}
+                    {status === 'streaming' && content?.inputBuffer && (
+                        <div className="min-w-0">
+                            <div className="text-muted-foreground mb-1 uppercase tracking-wider text-[10px] flex items-center gap-2">
+                                <span>Generating</span>
+                                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                            </div>
+                            <pre className="bg-blue-50/50 dark:bg-blue-900/10 p-2 rounded max-h-[200px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full text-blue-600 dark:text-blue-400">
+                                {content.inputBuffer}
+                            </pre>
+                        </div>
+                    )}
+
+                    {/* Input - show when not streaming or after streaming completes */}
+                    {content?.input && !content?.inputBuffer && (
+                        <div className="min-w-0">
                             <div className="text-muted-foreground mb-1 uppercase tracking-wider text-[10px]">Input</div>
-                            <pre className="bg-muted/50 p-2 rounded max-h-[100px] overflow-y-auto overflow-x-auto">
+                            <pre className="bg-muted/50 p-2 rounded max-h-[100px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full">
                                 {formatContent(content.input)}
                             </pre>
                         </div>
@@ -109,12 +126,12 @@ export function ToolBlock({ block, autoCollapseDelay = 300, onPermissionResponse
 
                     {/* Result */}
                     {content?.result && (
-                        <div>
+                        <div className="min-w-0">
                             <div className="text-muted-foreground mb-1 uppercase tracking-wider text-[10px]">
                                 {isError ? "Error" : "Result"}
                             </div>
                             <pre className={cn(
-                                "p-2 rounded max-h-[100px] overflow-y-auto overflow-x-auto",
+                                "p-2 rounded max-h-[100px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full",
                                 isError
                                     ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
                                     : "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"

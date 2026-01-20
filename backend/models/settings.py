@@ -5,14 +5,38 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
+class ModelEndpoint(BaseModel):
+    """A single endpoint configuration."""
+    name: str  # Display name for the endpoint (e.g., "OpenRouter", "Local LM Studio")
+    provider: Literal["claude", "openai", "openrouter", "bedrock", "vertex", "local"] = "claude"
+    api_key: Optional[str] = None
+    endpoint: Optional[str] = None  # API URL
+
+
 class ModelAPIConfig(BaseModel):
     """Configuration for Model API."""
+    # Multi-endpoint support
+    endpoints: list[ModelEndpoint] = Field(default_factory=list)
+    selected_endpoint: str = ""  # Name of selected endpoint
+    
+    # Legacy single-endpoint fields (for backward compatibility)
     provider: Literal["claude", "openai", "openrouter", "bedrock", "vertex", "local"] = "claude"
     api_key: Optional[str] = None
     endpoint: Optional[str] = None
+    
+    # Model selection
     model_name: str = "claude-sonnet-4-20250514"
     max_tokens: int = 0  # 0 = use SDK default
     max_thinking_tokens: int = 0  # 0 = disabled
+    
+    def get_active_endpoint(self) -> "ModelEndpoint | None":
+        """Get the currently active endpoint configuration."""
+        if self.selected_endpoint and self.endpoints:
+            for ep in self.endpoints:
+                if ep.name == self.selected_endpoint:
+                    return ep
+        # Fallback to legacy fields if no endpoint selected
+        return None
 
 
 class MCPServerConfig(BaseModel):

@@ -20,7 +20,7 @@ export interface TokenUsage {
 export type BlockStatus = 'streaming' | 'pending' | 'executing' | 'success' | 'error';
 
 // Block types
-export type BlockType = 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'plan' | 'error';
+export type BlockType = 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'plan' | 'error' | 'ask_user';
 
 // Message block for structured content rendering
 export interface MessageBlock {
@@ -34,6 +34,8 @@ export interface MessageBlock {
         requiresPermission?: boolean;
         todos?: TodoItem[];
         isPlaceholder?: boolean;  // Used for thinking placeholder blocks
+        requestId?: string;  // Used for AskUserQuestion blocks
+        isStreaming?: boolean;  // Used for tool input streaming
     };
 }
 
@@ -52,3 +54,18 @@ export interface AgentStep {
     timestamp: number;
 }
 
+// Session types for multi-turn conversations
+export interface Session {
+    id: string;
+    title: string;
+    created_at: number;
+    updated_at: number;
+    message_count: number;
+    last_model_name?: string;
+    last_endpoint_name?: string;
+}
+
+export interface SessionDetail extends Session {
+    messages: Message[];
+    sdk_session_id?: string;
+}

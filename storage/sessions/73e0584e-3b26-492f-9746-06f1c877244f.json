@@ -1,0 +1,18 @@
+{
+  "id": "73e0584e-3b26-492f-9746-06f1c877244f",
+  "title": "你好",
+  "created_at": 1768661875.261087,
+  "updated_at": 1768661884.6350322,
+  "messages": [
+    {
+      "id": "bec743fd-80e3-4332-9adf-8ce98200e837",
+      "role": "user",
+      "content": "你好",
+      "timestamp": 1768661884.635031,
+      "blocks": null
+    }
+  ],
+  "sdk_session_id": "3746cf76-1d63-446f-a7dd-981b1b98e39f",
+  "last_model_name": null,
+  "last_endpoint_name": null
+}

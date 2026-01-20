@@ -211,3 +211,162 @@ async def update_agent_config(request: Request, config: AgentBehaviorConfig):
     settings.default_workdir = config.default_workdir
     save_settings(settings)
     return {"status": "success"}
+
+
+# ============== File Listing ==============
+
+class FileItem(BaseModel):
+    """File item for directory listing."""
+    name: str
+    path: str  # relative path
+    is_directory: bool
+
+
+# ============== Skills & Agents ==============
+
+class SkillInfo(BaseModel):
+    """Skill information."""
+    name: str
+    path: str
+    source: str  # 'user' or 'project'
+
+class SubagentInfo(BaseModel):
+    """Subagent information."""
+    name: str
+    path: Optional[str] = None
+    source: str  # 'user' or 'project'
+    is_builtin: bool = False
+
+@router.get("/skills-agents")
+async def get_skills_agents(request: Request):
+    """
+    Scan filesystem for available skills and agents.
+    Returns items from ~/.claude/ (user) and .claude/ (project).
+    """
+    import os
+    import glob
+    
+    settings = request.app.state.settings
+    workdir = settings.default_workdir or os.getcwd()
+    
+    skills = []
+    agents = []
+    
+    # Paths to scan
+    scan_paths = [
+        (os.path.expanduser("~/.claude"), "user"),
+        (os.path.join(workdir, ".claude"), "project"),
+    ]
+    
+    for base_path, source in scan_paths:
+        # Scan skills
+        skills_dir = os.path.join(base_path, "skills")
+        if os.path.isdir(skills_dir):
+            for item in os.listdir(skills_dir):
+                skill_path = os.path.join(skills_dir, item)
+                skill_md = os.path.join(skill_path, "SKILL.md")
+                if os.path.isdir(skill_path) and os.path.isfile(skill_md):
+                    skills.append(SkillInfo(
+                        name=item,
+                        path=skill_md,
+                        source=source
+                    ))
+        
+        # Scan agents
+        agents_dir = os.path.join(base_path, "agents")
+        if os.path.isdir(agents_dir):
+            for f in glob.glob(os.path.join(agents_dir, "*.md")):
+                agent_name = os.path.basename(f).replace(".md", "")
+                agents.append(SubagentInfo(
+                    name=agent_name,
+                    path=f,
+                    source=source,
+                    is_builtin=False
+                ))
+    
+    
+    return {
+        "skills": [s.model_dump() for s in skills],
+        "agents": [a.model_dump() for a in agents],
+        "workdir": workdir
+    }
+
+
+# ============== File Listing ==============
+
+@router.get("/files")
+async def list_files(request: Request, subdir: str = "", recursive: bool = True):
+    """List files in the working directory recursively."""
+    settings = request.app.state.settings
+    workdir = settings.default_workdir
+    
+    if not workdir:
+        return {"status": "error", "detail": "No working directory configured", "files": []}
+    
+    base_path = Path(workdir)
+    if not base_path.exists():
+        return {"status": "error", "detail": f"Working directory does not exist: {workdir}", "files": []}
+    
+    # Calculate target directory
+    target_path = base_path / subdir if subdir else base_path
+    if not target_path.exists():
+        return {"status": "error", "detail": f"Directory does not exist: {subdir}", "files": []}
+    
+    # Common patterns to ignore
+    IGNORE_PATTERNS = {
+        'node_modules', '__pycache__', '.git', '.venv', 'venv', 
+        '.next', 'dist', 'build', '.cache', '.idea', '.vscode',
+        'coverage', '.pytest_cache', '.mypy_cache', 'eggs', '*.egg-info'
+    }
+    
+    try:
+        files = []
+        max_files = 2000  # Increased limit for comprehensive file listing
+        
+        def should_ignore(name: str) -> bool:
+            if name.startswith('.'):
+                return True
+            return name in IGNORE_PATTERNS
+        
+        def scan_directory(dir_path: Path, depth: int = 0):
+            """Recursively scan directory for files."""
+            if len(files) >= max_files:
+                return
+            if depth > 10:  # Max recursion depth
+                return
+                
+            try:
+                items = sorted(dir_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+            except PermissionError:
+                return
+            
+            for item in items:
+                if len(files) >= max_files:
+                    return
+                    
+                if should_ignore(item.name):
+                    continue
+                
+                # Calculate relative path from base workdir
+                rel_path = str(item.relative_to(base_path))
+                if item.is_dir():
+                    rel_path += "/"
+                
+                files.append(FileItem(
+                    name=item.name,
+                    path=rel_path,
+                    is_directory=item.is_dir()
+                ))
+                
+                # Recurse into subdirectories
+                if recursive and item.is_dir():
+                    scan_directory(item, depth + 1)
+        
+        scan_directory(target_path)
+        
+        # Sort: directories first, then by path
+        files.sort(key=lambda f: (not f.is_directory, f.path.lower()))
+        
+        return {"status": "success", "files": files, "workdir": workdir, "total": len(files)}
+    except Exception as e:
+        return {"status": "error", "detail": str(e), "files": []}

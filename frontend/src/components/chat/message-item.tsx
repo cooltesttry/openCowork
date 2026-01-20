@@ -1,111 +1,145 @@
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { Message } from "@/lib/types";
-import { Bot, User } from "lucide-react";
+import { User, FilePlus, FileEdit } from "lucide-react";
 import { BlockList } from "@/components/blocks/block-renderer";
+import { TextBlock } from "@/components/blocks/text-block";
+
+interface FileOperation {
+    type: 'Write' | 'Edit';
+    path: string;
+}
 
 interface MessageItemProps {
     message: Message;
     onPermissionResponse?: (blockId: string, approved: boolean) => void;
+    onAskUserSubmit?: (requestId: string, answers: Record<string, string>) => void;
+    onAskUserSkip?: (requestId: string) => void;
+    onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
+    onPreviewHTML?: (htmlContent: string) => void;
 }
 
-export function MessageItem({ message, onPermissionResponse }: MessageItemProps) {
+export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onSelectFile, onPreviewHTML }: MessageItemProps) {
     const isUser = message.role === "user";
     const hasBlocks = message.blocks && message.blocks.length > 0;
 
-    // For user messages or legacy messages without blocks, show content directly
-    const showLegacyContent = !hasBlocks && message.content && message.content.trim().length > 0;
+    // Check if there are text blocks in the message
+    const hasTextBlocks = message.blocks?.some(b => b.type === 'text') || false;
+
+    // Only show legacy content if:
+    // 1. There's actual text content
+    // 2. Either there are no blocks OR there are no text blocks (to avoid duplication)
+    const hasTextContent = message.content && message.content.trim().length > 0;
+    const showLegacyContent = hasTextContent && !hasTextBlocks;
+
+    // Extract file operations from blocks (simple approach)
+    const fileOperations: FileOperation[] = message.blocks
+        ?.filter(b =>
+            b.type === 'tool_use' &&
+            (b.content?.name === 'Write' || b.content?.name === 'Edit') &&
+            b.status === 'success' &&
+            b.content?.input?.file_path
+        )
+        .map(b => ({
+            type: b.content.name as 'Write' | 'Edit',
+            path: b.content.input.file_path as string
+        })) || [];
+
+    // Extract filename from path
+    const getFileName = (path: string) => {
+        const parts = path.split('/');
+        return parts[parts.length - 1];
+    };
+
+    // Handle file click - open in Preview panel
+    const handleFileClick = (path: string) => {
+        if (onSelectFile) {
+            const name = getFileName(path);
+            onSelectFile({ path, name, is_directory: false });
+        }
+    };
 
     return (
         <div
             className={cn(
                 "w-full py-8 border-b border-black/5 dark:border-white/5",
-                isUser ? "bg-muted/30 dark:bg-muted/10" : "bg-background"
+                isUser ? "bg-zinc-100/50 dark:bg-zinc-800/30" : "bg-zinc-50 dark:bg-zinc-900"
             )}
         >
-            <div className="max-w-4xl mx-auto flex gap-6 px-4">
-                <div className="flex-shrink-0 flex flex-col items-center">
-                    <div className={cn(
-                        "h-8 w-8 rounded-sm flex items-center justify-center border shadow-sm",
-                        isUser
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-purple-100 text-purple-600 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800"
-                    )}>
-                        {isUser ? <User className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
+            <div className="mx-auto flex gap-4 px-4 w-full">
+                {/* User avatar - only for user messages */}
+                {isUser && (
+                    <div className="shrink-0">
+                        <div className="h-7 w-7 rounded-full flex items-center justify-center bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300">
+                            <User className="h-4 w-4" />
+                        </div>
                     </div>
-                </div>
+                )}
 
-                <div className="flex-1 min-w-0 overflow-hidden">
-                    <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-sm">
-                            {isUser ? "You" : "Claude"}
-                        </span>
-                        {message.isStreaming && (
-                            <span className="inline-flex items-center gap-1">
-                                <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                            </span>
-                        )}
-                        {message.usage && (
-                            <span className="text-xs text-muted-foreground/60 ml-2">
-                                {message.usage.total_tokens.toLocaleString()} tokens
-                            </span>
-                        )}
-                    </div>
+                <div className="flex-1 min-w-0 max-w-full overflow-hidden">
+                    {/* Status indicators - only for assistant messages */}
+                    {!isUser && (message.isStreaming || message.usage) && (
+                        <div className="flex items-center gap-2 mb-1">
+                            {message.isStreaming && (
+                                <span className="inline-flex items-center gap-1">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                                </span>
+                            )}
+                            {message.usage && (
+                                <span className="text-xs text-muted-foreground/60">
+                                    {message.usage.total_tokens.toLocaleString()} tokens
+                                </span>
+                            )}
+                        </div>
+                    )}
 
-                    {/* Render blocks in order (includes text, thinking, tool calls, etc.) */}
+                    {/* Render blocks first (includes thinking, tool calls, etc.) */}
                     {hasBlocks && (
                         <BlockList
                             blocks={message.blocks!}
                             onPermissionResponse={onPermissionResponse}
+                            onAskUserSubmit={onAskUserSubmit}
+                            onAskUserSkip={onAskUserSkip}
+                            onPreviewHTML={onPreviewHTML}
                         />
                     )}
 
-                    {/* Legacy content rendering for user messages or messages without blocks */}
+                    {/* Only render legacy text content if no text blocks exist (to avoid duplication) */}
                     {showLegacyContent && (
-                        <div className={cn(
-                            "prose dark:prose-invert max-w-none break-words",
-                            "prose-p:leading-7 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border",
-                            "prose-pre:rounded-lg prose-code:bg-muted/50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded-sm prose-code:before:content-none prose-code:after:content-none",
-                            "prose-headings:font-bold prose-h1:text-xl prose-h2:text-lg prose-h3:text-base",
-                            "prose-table:border-collapse prose-table:w-full prose-table:my-4",
-                            "prose-th:border prose-th:border-border prose-th:p-2 prose-th:bg-muted/50",
-                            "prose-td:border prose-td:border-border prose-td:p-2",
-                            "prose-a:text-primary hover:prose-a:underline",
-                            "prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5"
-                        )}>
-                            <div className="markdown-content">
-                                <ReactMarkdown
-                                    remarkPlugins={[remarkGfm]}
-                                    components={{
-                                        code({ node, inline, className, children, ...props }: any) {
-                                            return !inline ? (
-                                                <div className="relative group">
-                                                    <pre className="!bg-muted/50 !p-4 rounded-lg overflow-x-auto border border-border/50 my-4 text-sm">
-                                                        <code className={className} {...props}>
-                                                            {children}
-                                                        </code>
-                                                    </pre>
-                                                </div>
-                                            ) : (
-                                                <code className="bg-muted/50 px-1.5 py-0.5 rounded text-sm font-mono text-foreground border border-border/50" {...props}>
-                                                    {children}
-                                                </code>
-                                            )
-                                        },
-                                        table({ children }: any) {
-                                            return (
-                                                <div className="overflow-x-auto w-full my-6 border rounded-lg bg-card/50">
-                                                    <table className="w-full text-sm">
-                                                        {children}
-                                                    </table>
-                                                </div>
-                                            );
-                                        }
-                                    }}
-                                >
-                                    {message.content}
-                                </ReactMarkdown>
+                        <TextBlock
+                            block={{
+                                id: `legacy-text-${message.id}`,
+                                type: 'text',
+                                content: message.content,
+                                status: 'success',
+                            }}
+                        />
+                    )}
+
+                    {/* File operations summary - extracted from blocks */}
+                    {!isUser && fileOperations.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-700">
+                            <div className="flex flex-wrap gap-2">
+                                {fileOperations.map((op, index) => (
+                                    <button
+                                        key={`${op.type}-${op.path}-${index}`}
+                                        onClick={() => handleFileClick(op.path)}
+                                        className={cn(
+                                            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer",
+                                            op.type === 'Write'
+                                                ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50"
+                                                : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50"
+                                        )}
+                                        title={`Click to preview: ${op.path}`}
+                                    >
+                                        {op.type === 'Write' ? (
+                                            <FilePlus className="h-3 w-3" />
+                                        ) : (
+                                            <FileEdit className="h-3 w-3" />
+                                        )}
+                                        <span>{op.type}</span>
+                                        <span className="underline underline-offset-2">{getFileName(op.path)}</span>
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     )}
@@ -114,4 +148,3 @@ export function MessageItem({ message, onPermissionResponse }: MessageItemProps)
         </div>
     );
 }
-

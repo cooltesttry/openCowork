@@ -11,8 +11,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import agent, config
+from routers import agent, config, sessions, files, terminal
 from models.settings import AppSettings
+from core.session_manager import session_manager
 
 
 # Configure logging with file and console output
@@ -84,10 +85,25 @@ def save_settings(settings: AppSettings) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
+    # Import file watcher service
+    from core.file_watcher import file_watcher_service
+    
     # Load settings on startup
     app.state.settings = load_settings()
+    
+    # Start session manager for ClaudeSDKClient lifecycle management
+    await session_manager.start()
+    
+    # Start file watcher if workdir is configured
+    if app.state.settings.default_workdir:
+        await file_watcher_service.start(app.state.settings.default_workdir)
+        logging.info(f"[Lifespan] File watcher started for: {app.state.settings.default_workdir}")
+    
     yield
-    # Save settings on shutdown
+    
+    # Cleanup on shutdown
+    await file_watcher_service.stop()
+    await session_manager.stop()
     save_settings(app.state.settings)
 
 
@@ -111,6 +127,9 @@ app.add_middleware(
 # Include routers
 app.include_router(agent.router, prefix="/api", tags=["agent"])
 app.include_router(config.router, prefix="/api/config", tags=["config"])
+app.include_router(sessions.router, prefix="/api", tags=["sessions"])
+app.include_router(files.router, prefix="/api/files", tags=["files"])
+app.include_router(terminal.router)
 
 
 @app.get("/health")

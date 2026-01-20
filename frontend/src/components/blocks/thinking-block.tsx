@@ -37,7 +37,7 @@ export function ThinkingBlock({ block, autoCollapseDelay = 500 }: ThinkingBlockP
     }, [block.status, autoCollapseDelay]);
 
     return (
-        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="my-2">
+        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="my-2 min-w-0">
             <CollapsibleTrigger
                 className={cn(
                     "flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium",
@@ -71,7 +71,7 @@ export function ThinkingBlock({ block, autoCollapseDelay = 500 }: ThinkingBlockP
             <CollapsibleContent className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
                 <div className={cn(
                     "mt-1 ml-6 pl-4 py-2 border-l-2 border-purple-200 dark:border-purple-800",
-                    "text-sm text-muted-foreground whitespace-pre-wrap"
+                    "text-sm text-muted-foreground whitespace-pre-wrap break-words min-w-0 overflow-hidden"
                 )}>
                     {typeof block.content === 'string' ? block.content : JSON.stringify(block.content, null, 2)}
                 </div>

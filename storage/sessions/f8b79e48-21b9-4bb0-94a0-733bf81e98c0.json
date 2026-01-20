@@ -1,0 +1,34 @@
+{
+  "id": "f8b79e48-21b9-4bb0-94a0-733bf81e98c0",
+  "title": "Hello",
+  "created_at": 1768734394.603457,
+  "updated_at": 1768734403.611392,
+  "messages": [
+    {
+      "id": "d440a452-6381-417b-93e2-f3943e3db666",
+      "role": "user",
+      "content": "Hello",
+      "timestamp": 1768734394.6038651,
+      "blocks": null
+    },
+    {
+      "id": "10ce41bb-4179-4d45-ae64-517b5ad0eff2",
+      "role": "assistant",
+      "content": "Hello! 👋\n\nI'm here to help you with your coding tasks. I can assist with:\n\n- **Creating** new projects or files\n- **Debugging** existing code\n- **Modifying** or refactoring codebases\n- **Answering** programming questions\n- **Searching** through code or the web\n- **Running** shell commands\n\nWhat would you like to work on today?",
+      "timestamp": 1768734403.611389,
+      "blocks": [
+        {
+          "id": "thinking-20",
+          "type": "thinking",
+          "content": "The user has sent a simple greeting. I should respond in a friendly and helpful manner, introducing myself and offering assistance.",
+          "status": "success",
+          "metadata": {}
+        }
+      ]
+    }
+  ],
+  "sdk_session_id": "7ad43b16-36a8-4aa9-9a1d-353da3caee58",
+  "last_model_name": "gemini-claude-opus-4-5-thinking",
+  "last_endpoint_name": "Local",
+  "last_security_mode": "bypassPermissions"
+}

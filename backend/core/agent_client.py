@@ -30,8 +30,11 @@ from claude_agent_sdk.types import StreamEvent as SDKStreamEvent
 
 from models.settings import AppSettings, MCPServerConfig
 from core.search_tools import get_serper_tool, get_tavily_tool, get_brave_tool
+from core.user_input_handler import user_input_handler
 
 import httpx
+from typing import Callable, Awaitable
+from fastapi import WebSocket
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -152,41 +155,94 @@ def build_mcp_servers(configs: list[MCPServerConfig]) -> dict:
     return servers
 
 
-def build_agent_options(settings: AppSettings, streaming: bool = True) -> ClaudeAgentOptions:
+def build_agent_options(
+    settings: AppSettings, 
+    streaming: bool = True,
+    can_use_tool: Optional[Callable] = None,
+    security_mode: Optional[str] = None,
+) -> ClaudeAgentOptions:
     """Build ClaudeAgentOptions from app settings."""
-    options = ClaudeAgentOptions(
-        allowed_tools=settings.allowed_tools,
-        disallowed_tools=['WebSearch', 'WebFetch'],  # Disable built-in search to use MCP search instead
-        max_turns=settings.max_turns,
-        include_partial_messages=streaming,  # Enable incremental events for streaming
-        permission_mode='bypassPermissions',  # Auto-allow all tools including MCP tools
-        system_prompt="You are a helpful AI assistant. Always format your responses in clean, structured Markdown. Use bold headings, bullet points, and tables where appropriate to present information clearly. When utilizing tools, briefly explain your actions to the user."
-    )
+    # Determine permission_mode based on security_mode setting
+    # Valid modes: 'default', 'plan', 'acceptEdits', 'bypassPermissions'
+    if security_mode and security_mode in ('default', 'plan', 'acceptEdits', 'bypassPermissions'):
+        permission_mode = security_mode
+    elif can_use_tool:
+        # If can_use_tool callback provided but no security_mode, use 'default' for interactive approval
+        permission_mode = 'default'
+    else:
+        permission_mode = 'bypassPermissions'
+    
+    # IMPORTANT: When permission_mode='default', do NOT set allowed_tools
+    # Setting allowed_tools tells CLI to auto-allow those tools, bypassing can_use_tool callback
+    # The callback should handle permission decisions instead
+    if permission_mode == 'default':
+        # In Ask mode, let callback handle all permission decisions
+        options = ClaudeAgentOptions(
+            disallowed_tools=['WebSearch', 'WebFetch', 'EnterPlanMode', 'ExitPlanMode'],  # Disable built-in search and plan mode
+            max_turns=settings.max_turns,
+            include_partial_messages=streaming,
+            permission_mode=permission_mode,
+            can_use_tool=can_use_tool,
+            system_prompt="You are a helpful AI assistant. Always format your responses in clean, structured Markdown. Use bold headings, bullet points, and tables where appropriate to present information clearly. When utilizing tools, briefly explain your actions to the user."
+        )
+    else:
+        # For other modes, use allowed_tools as configured
+        options = ClaudeAgentOptions(
+            allowed_tools=settings.allowed_tools.copy(),
+            disallowed_tools=['WebSearch', 'WebFetch', 'EnterPlanMode', 'ExitPlanMode'],
+            max_turns=settings.max_turns,
+            include_partial_messages=streaming,
+            permission_mode=permission_mode,
+            can_use_tool=can_use_tool,
+            system_prompt="You are a helpful AI assistant. Always format your responses in clean, structured Markdown. Use bold headings, bullet points, and tables where appropriate to present information clearly. When utilizing tools, briefly explain your actions to the user."
+        )
+    
+    logger.info(f"[AgentOptions] permission_mode={permission_mode}, can_use_tool={'SET' if can_use_tool else 'NONE'}")
     
     # Set model for ANY provider if specified
     if settings.model.model_name:
         options.model = settings.model.model_name
     
+    # Get active endpoint config (from multi-endpoint or legacy fields)
+    active_endpoint = settings.model.get_active_endpoint()
+    if active_endpoint:
+        provider = active_endpoint.provider
+        api_key = active_endpoint.api_key
+        endpoint_url = active_endpoint.endpoint
+    else:
+        # Fallback to legacy single-endpoint fields
+        provider = settings.model.provider
+        api_key = settings.model.api_key
+        endpoint_url = settings.model.endpoint
+    
     # Configure Environment for Custom Endpoints
     env_vars = {}
     
     # Set Base URL if provided
-    if settings.model.endpoint:
+    if endpoint_url:
         # Strip /v1 suffix if present as SDK likely appends it or /v1/messages
-        endpoint = settings.model.endpoint.rstrip("/")
+        endpoint = endpoint_url.rstrip("/")
         if endpoint.endswith("/v1"):
             endpoint = endpoint[:-3]
         env_vars["ANTHROPIC_BASE_URL"] = endpoint
-    elif settings.model.provider == "local":
+    elif provider == "openrouter":
+        # OpenRouter's Anthropic-compatible endpoint
+        env_vars["ANTHROPIC_BASE_URL"] = "https://openrouter.ai/api"
+        # OpenRouter requires: AUTH_TOKEN for key, empty API_KEY
+        if api_key:
+            env_vars["ANTHROPIC_AUTH_TOKEN"] = api_key
+        env_vars["ANTHROPIC_API_KEY"] = ""  # Must be empty for OpenRouter
+    elif provider == "local":
         # Default local endpoint if not explicitly set
         env_vars["ANTHROPIC_BASE_URL"] = "http://localhost:1234/v1"
         
-    # Handle API Key
-    if settings.model.api_key:
-        env_vars["ANTHROPIC_API_KEY"] = settings.model.api_key
-    elif settings.model.provider == "local":
-        # Local providers often need a dummy key if none provided
-        env_vars["ANTHROPIC_API_KEY"] = "sk-dummy-key"
+    # Handle API Key (for non-OpenRouter providers)
+    if provider != "openrouter":
+        if api_key:
+            env_vars["ANTHROPIC_API_KEY"] = api_key
+        elif provider == "local":
+            # Local providers often need a dummy key if none provided
+            env_vars["ANTHROPIC_API_KEY"] = "sk-dummy-key"
     
     # Token limits - only set if > 0
     if settings.model.max_tokens > 0:
@@ -216,13 +272,17 @@ def build_agent_options(settings: AppSettings, streaming: bool = True) -> Claude
         
         # Add tool to allowed_tools to prevent permission errors
         # SDK namespaces MCP tools as mcp__{server_name}__{tool_name}
+        # BUT: In Ask mode (permission_mode='default'), don't auto-allow - let callback handle it
         tool_simple_name = f"{settings.search.provider}_search"
         full_tool_name = f"mcp__search-tools__{tool_simple_name}"
         
-        if options.allowed_tools:
-            options.allowed_tools.append(full_tool_name)
-        else:
-            options.allowed_tools = [full_tool_name]
+        if permission_mode != 'default':
+            # Only add to allowed_tools if not in Ask mode
+            if options.allowed_tools:
+                if full_tool_name not in options.allowed_tools:
+                    options.allowed_tools.append(full_tool_name)
+            else:
+                options.allowed_tools = [full_tool_name]
 
     if mcp_servers:
         options.mcp_servers = mcp_servers
@@ -272,7 +332,7 @@ def _process_stream_event(sdk_event: SDKStreamEvent, block_state: dict) -> list[
         elif block_type == "thinking":
             block_id = f"thinking_{index}"
             block_state[index] = {"type": "thinking", "id": block_id, "content": ""}
-            logger.info(f"🧠 THINKING_START: Thinking block started (index={index}, id={block_id})")
+
             events.append(StreamEvent(
                 type=StreamEventType.THINKING_START.value,
                 id=block_id,
@@ -298,7 +358,7 @@ def _process_stream_event(sdk_event: SDKStreamEvent, block_state: dict) -> list[
         elif delta_type == "thinking_delta" and block["type"] == "thinking":
             text = delta.get("thinking", "")
             block["content"] += text
-            logger.debug(f"🧠 THINKING_DELTA: {len(text)} chars received")
+
             # Emit thinking delta event for real-time updates
             events.append(StreamEvent(
                 type=StreamEventType.THINKING_DELTA.value,
@@ -335,17 +395,12 @@ def _process_stream_event(sdk_event: SDKStreamEvent, block_state: dict) -> list[
                     id=block["id"],
                 ))
             elif block["type"] == "thinking":
-                logger.info(f"🧠 THINKING_END: Thinking block ended (id={block['id']}, content_length={len(block['content'])})")
                 events.append(StreamEvent(
                     type=StreamEventType.THINKING_END.value,
                     id=block["id"],
                 ))
-                # Also emit legacy THINKING event for backward compatibility
-                if block["content"]:
-                    events.append(StreamEvent(
-                        type=StreamEventType.THINKING.value,
-                        content=block["content"],
-                    ))
+                # NOTE: Do NOT emit THINKING event here - session_manager will emit it
+                # from AssistantMessage.ThinkingBlock to avoid duplication
                     
     elif event_type == "message_delta":
         # Extract usage info
@@ -367,6 +422,8 @@ async def stream_agent_response(
     settings: AppSettings,
     cwd: Optional[str] = None,
     streaming: bool = True,
+    resume_session_id: Optional[str] = None,
+    websocket: Optional[WebSocket] = None,
 ) -> AsyncGenerator[StreamEvent, None]:
     """
     Stream agent responses as events.
@@ -377,6 +434,8 @@ async def stream_agent_response(
         cwd: Working directory
         streaming: If True, emit incremental events (text_delta, etc.)
                    If False, only emit aggregated events (text, tool_use, etc.)
+        resume_session_id: SDK session ID to resume
+        websocket: WebSocket connection for user input requests (AskUserQuestion)
     
     Yields StreamEvent objects with types:
     - "start": Stream started
@@ -386,30 +445,51 @@ async def stream_agent_response(
     - "tool_input_start/delta/end": Incremental tool input (when streaming=True)
     - "tool_use": Tool invocation
     - "tool_result": Tool execution result
+    - "ask_user": Claude is asking the user a question
     - "error": Error occurred
     - "done": Streaming complete with usage stats
     """
+    import uuid
+    
 
-    logger.info(f"Starting stream_agent_response for prompt: {prompt[:100]}...")
+    
+    # TODO: AskUserQuestion support requires ClaudeSDKClient instead of query()
+    # The can_use_tool callback with streaming mode requires using ClaudeSDKClient
+    # for bidirectional communication. For now, we use bypassPermissions mode.
+    # See: https://docs.anthropic.com/en/docs/claude-code/sdk/user-input
+    can_use_tool_callback = None
+    
+    # Future implementation would use ClaudeSDKClient:
+    # if websocket:
+    #     async def can_use_tool(tool_name: str, input_data: dict, context):
+    #         if tool_name == "AskUserQuestion":
+    #             # Route to frontend via websocket
+    #             ...
+    #         return PermissionResultAllow()
+    #     can_use_tool_callback = can_use_tool
     
     try:
-        options = build_agent_options(settings, streaming=streaming)
+        options = build_agent_options(settings, streaming=streaming, can_use_tool=can_use_tool_callback)
         if cwd:
             options.cwd = cwd
         
-        logger.info(f"Agent options: model={options.model}, max_turns={options.max_turns}, permission_mode={getattr(options, 'permission_mode', None)}")
+        # Support session resumption
+        if resume_session_id:
+            options.resume = resume_session_id
+        
+
         
         turn_count = 0
         message_count = 0
         block_state = {}  # Track active content blocks for streaming
         total_usage = Usage()
         
-        logger.info("Starting SDK query loop...")
+
         
         async for message in query(prompt=prompt, options=options):
             message_count += 1
             message_type = type(message).__name__
-            logger.debug(f"Received message #{message_count}: type={message_type}")
+
             
             # Handle incremental stream events
             if isinstance(message, SDKStreamEvent):
@@ -423,7 +503,6 @@ async def stream_agent_response(
 
             if isinstance(message, AssistantMessage):
                 turn_count += 1
-                logger.info(f"AssistantMessage turn {turn_count}: {len(message.content)} content blocks")
                 for block in message.content:
                     if isinstance(block, TextBlock):
                         # Check if it's thinking content
@@ -434,15 +513,15 @@ async def stream_agent_response(
                                 metadata={"turn": turn_count}
                             )
                         else:
-                            # Always emit TEXT for AssistantMessage content
-                            # This serves as a fallback in case streaming didn't emit text events
-                            text_preview = block.text[:100] if block.text else ""
-                            logger.info(f"AssistantMessage text (turn {turn_count}): {text_preview}...")
-                            yield StreamEvent(
-                                type=StreamEventType.TEXT.value,
-                                content=block.text,
-                                metadata={"turn": turn_count}
-                            )
+                            # Skip emitting TEXT here if streaming is enabled
+                            # because text_delta events already provide the content incrementally.
+                            # Only emit if not streaming (streaming=False case)
+                            if not streaming:
+                                yield StreamEvent(
+                                    type=StreamEventType.TEXT.value,
+                                    content=block.text,
+                                    metadata={"turn": turn_count}
+                                )
                     elif isinstance(block, ThinkingBlock):
                         yield StreamEvent(
                             type=StreamEventType.THINKING.value,
@@ -450,14 +529,6 @@ async def stream_agent_response(
                             metadata={"turn": turn_count}
                         )
                     elif isinstance(block, ToolUseBlock):
-                        # Log tool use with input preview for debugging
-                        input_preview = str(block.input)[:200] if block.input else "None"
-                        logger.info(f"Tool use: name={block.name}, id={block.id}, input={input_preview}")
-                        
-                        # Special logging for TodoWrite to debug todo list issues
-                        if block.name == "TodoWrite":
-                            logger.info(f"TodoWrite full input: {block.input}")
-                        
                         yield StreamEvent(
                             type=StreamEventType.TOOL_USE.value,
                             content={
@@ -473,8 +544,6 @@ async def stream_agent_response(
                 for block in message.content:
                     if isinstance(block, ToolResultBlock):
                         is_error = getattr(block, "is_error", False)
-                        result_preview = str(block.content)[:200] if block.content else "None"
-                        logger.info(f"Tool result: tool_use_id={block.tool_use_id}, is_error={is_error}, result={result_preview}...")
                         yield StreamEvent(
                             type=StreamEventType.TOOL_RESULT.value,
                             content={
@@ -486,34 +555,32 @@ async def stream_agent_response(
                         )
             
             elif isinstance(message, SystemMessage):
-                # SystemMessage can contain todos, init info, etc.
-                logger.info(f"SystemMessage received: subtype={message.subtype}, data_keys={list(message.data.keys()) if message.data else []}")
-                
                 # Check for todos in the system message
                 if message.data and 'todos' in message.data:
                     todos = message.data['todos']
-                    logger.info(f"SystemMessage contains todos: {todos}")
                     yield StreamEvent(
                         type="todos",
                         content={"todos": todos},
                         metadata={"subtype": message.subtype}
                     )
-                # Also log init messages for debugging
                 elif message.subtype == 'init':
-                    logger.info(f"Session init: session_id={message.data.get('session_id')}, tools={message.data.get('tools', [])[:5]}...")
+                    sdk_session_id = message.data.get('session_id')
+                    # Emit sdk_session_id for session persistence
+                    if sdk_session_id:
+                        yield StreamEvent(
+                            type="system",
+                            content={"sdk_session_id": sdk_session_id},
+                            metadata={"subtype": "init"}
+                        )
             
             elif isinstance(message, ResultMessage):
-                # ResultMessage is the FINAL session result, not individual tool result
-                # Only extract usage info here
-                logger.info(f"ResultMessage received: subtype={getattr(message, 'subtype', 'unknown')}, is_error={getattr(message, 'is_error', False)}")
+                # ResultMessage is the FINAL session result
                 if message.usage:
                     total_usage = Usage(
                         input_tokens=message.usage.get("input_tokens", 0),
                         output_tokens=message.usage.get("output_tokens", 0),
                         total_tokens=message.usage.get("input_tokens", 0) + message.usage.get("output_tokens", 0),
                     )
-        
-        logger.info(f"SDK query loop finished. Total messages: {message_count}, Total turns: {turn_count}")
         
         yield StreamEvent(
             type=StreamEventType.DONE.value,
@@ -575,20 +642,32 @@ async def invoke_agent(
 class AgentSession:
     """
     Manages an interactive agent session using ClaudeSDKClient.
-    Supports multi-turn conversations.
+    Supports multi-turn conversations with session resumption.
     """
     
-    def __init__(self, settings: AppSettings, cwd: Optional[str] = None):
+    def __init__(
+        self, 
+        settings: AppSettings, 
+        cwd: Optional[str] = None,
+        resume_session_id: Optional[str] = None
+    ):
         self.settings = settings
         self.cwd = cwd
+        self.resume_session_id = resume_session_id
         self.client: Optional[ClaudeSDKClient] = None
         self.history: list[dict] = []
+        self.sdk_session_id: Optional[str] = None  # Captured from SDK init message
     
     async def start(self) -> None:
-        """Start the agent session."""
+        """Start the agent session, optionally resuming from a previous session."""
         options = build_agent_options(self.settings)
         if self.cwd:
             options.cwd = self.cwd
+        
+        # If resuming, set the resume option
+        if self.resume_session_id:
+            options.resume = self.resume_session_id
+        
         self.client = ClaudeSDKClient(options=options)
         await self.client.__aenter__()
     
@@ -609,8 +688,23 @@ class AgentSession:
             self.history.append({"role": "user", "content": message})
             
             turn_count = 0
-            async for msg in self.client.receive_response():
-                if isinstance(msg, AssistantMessage):
+            # Use receive_messages() to get all message types
+            async for msg in self.client.receive_messages():
+                # Capture SDK session_id from SystemMessage (init)
+                if isinstance(msg, SystemMessage):
+                    if hasattr(msg, 'subtype') and msg.subtype == 'init':
+                        if hasattr(msg, 'data') and isinstance(msg.data, dict):
+                            new_session_id = msg.data.get('session_id')
+                            if new_session_id:
+                                self.sdk_session_id = new_session_id
+                                # Emit a system event with the session_id
+                                yield StreamEvent(
+                                    type="system",
+                                    content={"sdk_session_id": new_session_id},
+                                    metadata={"subtype": "init"}
+                                )
+                
+                elif isinstance(msg, AssistantMessage):
                     turn_count += 1
                     for block in msg.content:
                         if isinstance(block, TextBlock):
@@ -629,6 +723,30 @@ class AgentSession:
                                 },
                                 metadata={"turn": turn_count}
                             )
+                        elif isinstance(block, ThinkingBlock):
+                            yield StreamEvent(
+                                type=StreamEventType.THINKING.value,
+                                content=block.thinking,
+                                metadata={"turn": turn_count}
+                            )
+                
+                elif isinstance(msg, UserMessage):
+                    # UserMessage contains tool results
+                    for block in msg.content:
+                        if isinstance(block, ToolResultBlock):
+                            yield StreamEvent(
+                                type=StreamEventType.TOOL_RESULT.value,
+                                content={
+                                    "tool_use_id": block.tool_use_id,
+                                    "content": block.content,
+                                    "is_error": getattr(block, 'is_error', False),
+                                },
+                                metadata={"turn": turn_count}
+                            )
+                
+                elif isinstance(msg, ResultMessage):
+                    # End of conversation turn
+                    break
             
             yield StreamEvent(type=StreamEventType.DONE.value, content={"total_turns": turn_count})
         
