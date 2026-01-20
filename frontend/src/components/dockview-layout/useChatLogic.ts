@@ -142,35 +142,42 @@ export function useChatLogic() {
     }, [loadSessions, setActiveEndpoint, setActiveModel, setCurrentSessionId, setMessages]);
 
     // Global event handler for processing events from any session
-    const handleGlobalEvent = useCallback((event: StreamEvent) => {
+    // Use a ref to avoid re-render loops when this is used as a dependency
+    const handleGlobalEventRef = useRef<(event: StreamEvent) => void>(() => { });
+
+    handleGlobalEventRef.current = useCallback((event: StreamEvent) => {
         const sessionId = event.metadata?.session_id;
         if (!sessionId) return;
 
-        console.log(`[useChatLogic] Global event for ${sessionId}:`, event.type);
-
-        // Handle task completion/error for ANY session
+        // Only handle done/error events for status updates
         if (event.type === 'done') {
+            console.log(`[useChatLogic] Global done event for ${sessionId}`);
             const isCurrentSession = sessionId === currentSessionIdRef.current;
             setSessionStatus(sessionId, {
                 status: 'idle',
                 hasUnread: !isCurrentSession, // Mark unread if not viewing this session
             });
-            setIsProcessing(false);
-            loadSessions(); // Refresh titles
-
-            // If it's the current session, reload messages to get final state
             if (isCurrentSession) {
-                loadSessionMessages(sessionId);
+                setIsProcessing(false);
             }
+            loadSessions(); // Refresh titles
         } else if (event.type === 'error') {
+            console.log(`[useChatLogic] Global error event for ${sessionId}`);
             setSessionStatus(sessionId, {
                 status: 'error',
                 hasUnread: true,
                 error: event.content?.message || 'An error occurred',
             });
-            setIsProcessing(false);
+            if (sessionId === currentSessionIdRef.current) {
+                setIsProcessing(false);
+            }
         }
-    }, [setSessionStatus, setIsProcessing, loadSessions, loadSessionMessages]);
+    }, [setSessionStatus, setIsProcessing, loadSessions]);
+
+    // Stable wrapper that always calls the latest handler
+    const handleGlobalEvent = useCallback((event: StreamEvent) => {
+        handleGlobalEventRef.current(event);
+    }, []);
 
     // Rebuild messages from cached events - MUST be defined before recoverAllSessions
     const rebuildMessagesFromEvents = useCallback((events: unknown[], sessionId: string) => {

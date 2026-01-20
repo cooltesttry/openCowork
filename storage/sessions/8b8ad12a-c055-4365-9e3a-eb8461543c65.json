@@ -1,0 +1,19 @@
+{
+  "id": "8b8ad12a-c055-4365-9e3a-eb8461543c65",
+  "title": "写一个html的黑白棋 只要代码",
+  "created_at": 1768904655.9189608,
+  "updated_at": 1768904662.534772,
+  "messages": [
+    {
+      "id": "fccb523b-dd9a-4881-8104-059b4dbae54c",
+      "role": "user",
+      "content": "写一个html的黑白棋 只要代码",
+      "timestamp": 1768904662.534768,
+      "blocks": null
+    }
+  ],
+  "sdk_session_id": "d26f918e-804a-482b-9971-a84c5371e2de",
+  "last_model_name": null,
+  "last_endpoint_name": null,
+  "last_security_mode": null
+}
