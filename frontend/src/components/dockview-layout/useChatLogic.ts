@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { Message, MessageBlock, AgentStep } from '@/lib/types';
-import { sessionClient, AskUserContent } from '@/lib/websocket';
+import { sessionClient, AskUserContent, StreamEvent } from '@/lib/websocket';
 import { sessionsApi } from '@/lib/sessions-api';
 import { useChat } from '@/lib/store';
 import { toast } from 'sonner';
@@ -141,13 +141,167 @@ export function useChatLogic() {
         }
     }, [loadSessions, setActiveEndpoint, setActiveModel, setCurrentSessionId, setMessages]);
 
-    // Initialize connection and load sessions
-    useEffect(() => {
-        sessionClient.connect().catch((err) => {
-            console.warn('Session WebSocket connection failed, will retry on message send');
+    // Global event handler for processing events from any session
+    const handleGlobalEvent = useCallback((event: StreamEvent) => {
+        const sessionId = event.metadata?.session_id;
+        if (!sessionId) return;
+
+        console.log(`[useChatLogic] Global event for ${sessionId}:`, event.type);
+
+        // Handle task completion/error for ANY session
+        if (event.type === 'done') {
+            const isCurrentSession = sessionId === currentSessionIdRef.current;
+            setSessionStatus(sessionId, {
+                status: 'idle',
+                hasUnread: !isCurrentSession, // Mark unread if not viewing this session
+            });
+            setIsProcessing(false);
+            loadSessions(); // Refresh titles
+
+            // If it's the current session, reload messages to get final state
+            if (isCurrentSession) {
+                loadSessionMessages(sessionId);
+            }
+        } else if (event.type === 'error') {
+            setSessionStatus(sessionId, {
+                status: 'error',
+                hasUnread: true,
+                error: event.content?.message || 'An error occurred',
+            });
+            setIsProcessing(false);
+        }
+    }, [setSessionStatus, setIsProcessing, loadSessions, loadSessionMessages]);
+
+    // Rebuild messages from cached events - MUST be defined before recoverAllSessions
+    const rebuildMessagesFromEvents = useCallback((events: unknown[], sessionId: string) => {
+        if (!events || events.length === 0) return;
+
+        const assistantMessageId = `replayed-${sessionId}-${Date.now()}`;
+        let textContent = '';
+        const blocks: MessageBlock[] = [];
+
+        for (const event of events as Array<{ type: string; content?: unknown; id?: string; metadata?: Record<string, unknown> }>) {
+            switch (event.type) {
+                case 'text':
+                case 'text_delta':
+                    textContent += (event.content as string) || '';
+                    break;
+                case 'tool_use':
+                    blocks.push({
+                        id: event.id || `tool-${blocks.length}`,
+                        type: 'tool_use',
+                        content: event.content,
+                        status: 'executing',
+                        metadata: (event.metadata as Record<string, string>) || {},
+                    });
+                    break;
+                case 'tool_result':
+                    blocks.push({
+                        id: event.id || `result-${blocks.length}`,
+                        type: 'tool_result',
+                        content: event.content,
+                        status: 'success',
+                        metadata: (event.metadata as Record<string, string>) || {},
+                    });
+                    break;
+            }
+        }
+
+        if (textContent) {
+            blocks.unshift({
+                id: `text-${assistantMessageId}`,
+                type: 'text',
+                content: textContent,
+                status: 'streaming',
+            });
+        }
+
+        const assistantMessage: Message = {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: textContent,
+            timestamp: Date.now(),
+            blocks: blocks.length > 0 ? blocks : undefined,
+            isStreaming: true,
+        };
+
+        setMessages(prev => {
+            // Check if we already have a replayed message for this session
+            const existingIndex = prev.findIndex(m => m.id.startsWith(`replayed-${sessionId}`));
+            if (existingIndex >= 0) {
+                const newPrev = [...prev];
+                newPrev[existingIndex] = assistantMessage;
+                return newPrev;
+            }
+            return [...prev, assistantMessage];
         });
+    }, [setMessages]);
+
+    // Recover all running sessions - subscribe to their events
+    const recoverAllSessions = useCallback(async () => {
+        console.log('[useChatLogic] Recovering all session states...');
+
+        try {
+            // 1. Get all session statuses
+            const activeStatuses = await sessionsApi.getActiveStatus();
+
+            // 2. Update statuses and subscribe to running sessions
+            for (const [sessionId, status] of Object.entries(activeStatuses)) {
+                setSessionStatus(sessionId, {
+                    status: status.status as 'idle' | 'running' | 'error',
+                    hasUnread: status.has_unread,
+                    error: status.error || undefined,
+                });
+
+                // Subscribe to running sessions
+                if (status.status === 'running') {
+                    console.log(`[useChatLogic] Subscribing to running session: ${sessionId}`);
+                    sessionClient.subscribe(sessionId, handleGlobalEvent);
+                }
+            }
+
+            // 3. If current session is running, load its events
+            const currentId = currentSessionIdRef.current;
+            if (currentId) {
+                const currentStatus = activeStatuses[currentId];
+                if (currentStatus?.status === 'running') {
+                    console.log(`[useChatLogic] Loading events for current running session: ${currentId}`);
+                    const eventsData = await sessionsApi.getEvents(currentId);
+                    if (eventsData.events && eventsData.events.length > 0) {
+                        rebuildMessagesFromEvents(eventsData.events, currentId);
+                    }
+                }
+            }
+
+            console.log('[useChatLogic] Recovery complete');
+        } catch (err) {
+            console.error('[useChatLogic] Recovery failed:', err);
+        }
+    }, [setSessionStatus, handleGlobalEvent, rebuildMessagesFromEvents]);
+
+    // Initialize connection, load sessions, and setup recovery
+    useEffect(() => {
+        // Connect to WebSocket
+        sessionClient.connect().catch((err) => {
+            console.warn('Session WebSocket connection failed, will retry on message send', err);
+        });
+
+        // Load sessions
         loadSessions();
-    }, [loadSessions]);
+
+        // Recover running sessions
+        recoverAllSessions();
+
+        // Set reconnect callback
+        sessionClient.setOnReconnect(() => {
+            console.log('[useChatLogic] WebSocket reconnected, recovering sessions...');
+            recoverAllSessions();
+        });
+
+        return () => {
+            sessionClient.setOnReconnect(null);
+        };
+    }, [loadSessions, recoverAllSessions]);
 
     // Load session messages when currentSessionId changes
     useEffect(() => {
@@ -193,90 +347,13 @@ export function useChatLogic() {
                     // Get cached events from backend
                     const eventsData = await sessionsApi.getEvents(id);
 
-                    // Rebuild message state from events
+                    // Rebuild message state from events using shared function
                     if (eventsData.events && eventsData.events.length > 0) {
-                        // Create assistant message from events
-                        const assistantMessageId = `replayed-${id}-${Date.now()}`;
-                        let textContent = '';
-                        const blocks: MessageBlock[] = [];
-
-                        for (const event of eventsData.events) {
-                            if (event.type === 'text' || event.type === 'text_delta') {
-                                textContent += event.content || '';
-                            } else if (event.type === 'thinking' || event.type === 'thinking_delta') {
-                                // Accumulate thinking
-                            } else if (event.type === 'tool_use') {
-                                const toolBlock: MessageBlock = {
-                                    id: event.id || `tool-${blocks.length}`,
-                                    type: 'tool_use',
-                                    content: event.content,
-                                    status: 'executing',
-                                    metadata: event.metadata || {},
-                                };
-                                blocks.push(toolBlock);
-                            } else if (event.type === 'tool_result') {
-                                const resultBlock: MessageBlock = {
-                                    id: event.id || `result-${blocks.length}`,
-                                    type: 'tool_result',
-                                    content: event.content,
-                                    status: 'success',
-                                    metadata: event.metadata || {},
-                                };
-                                blocks.push(resultBlock);
-                            }
-                        }
-
-                        // Add text as a block if present
-                        if (textContent) {
-                            blocks.unshift({
-                                id: `text-${assistantMessageId}`,
-                                type: 'text',
-                                content: textContent,
-                                status: 'streaming',
-                            });
-                        }
-
-                        const assistantMessage: Message = {
-                            id: assistantMessageId,
-                            role: 'assistant',
-                            content: textContent,
-                            timestamp: Date.now(),
-                            blocks: blocks.length > 0 ? blocks : undefined,
-                            isStreaming: eventsData.status === 'running',
-                        };
-
-                        // Append to existing messages
-                        setMessages(prev => {
-                            // If last message is user message, append assistant
-                            if (prev.length > 0 && prev[prev.length - 1].role === 'user') {
-                                return [...prev, assistantMessage];
-                            }
-                            // If already has assistant message for this session, replace
-                            const lastAssistant = prev.findIndex(m => m.id.startsWith('replayed-'));
-                            if (lastAssistant >= 0) {
-                                const newPrev = [...prev];
-                                newPrev[lastAssistant] = assistantMessage;
-                                return newPrev;
-                            }
-                            return [...prev, assistantMessage];
-                        });
-
-                        // Subscribe for live updates
-                        sessionClient.subscribe(id, (event) => {
-                            console.log(`[useChatLogic] Live event for ${id}:`, event.type);
-                            // Note: For full live streaming, would need to process events here
-                            // For now, just update status on done/error
-                            if (event.type === 'done') {
-                                setSessionStatus(id, { status: 'idle', hasUnread: false });
-                                setIsProcessing(false);
-                                // Reload messages to get final state
-                                loadSessionMessages(id);
-                            } else if (event.type === 'error') {
-                                setSessionStatus(id, { status: 'error', hasUnread: false, error: event.content?.message });
-                                setIsProcessing(false);
-                            }
-                        });
+                        rebuildMessagesFromEvents(eventsData.events, id);
                     }
+
+                    // Subscribe for live updates using global handler
+                    sessionClient.subscribe(id, handleGlobalEvent);
                 } catch (err) {
                     console.error(`[useChatLogic] Failed to load events for session ${id}:`, err);
                 }
@@ -284,7 +361,7 @@ export function useChatLogic() {
 
             setTimeout(() => inputAreaRef.current?.focus(), 100);
         }
-    }, [currentSessionId, setCurrentSessionId, setSteps, getSessionStatus, setMessages, setSessionStatus, setIsProcessing, loadSessionMessages]);
+    }, [currentSessionId, setCurrentSessionId, setSteps, getSessionStatus, rebuildMessagesFromEvents, handleGlobalEvent]);
 
     // Delete a session
     const handleDeleteSession = useCallback(async (id: string) => {

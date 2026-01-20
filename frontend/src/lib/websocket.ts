@@ -196,12 +196,21 @@ export class MultiplexedClient {
     private isConnected = false;
     private eventHandlers: Map<string, (event: StreamEvent) => void> = new Map();
     private globalHandler: ((event: StreamEvent) => void) | null = null;
+    private onReconnectCallback: (() => void) | null = null;
     private reconnectAttempts = 0;
     private maxReconnectAttempts = 5;
     private reconnectDelay = 1000;
 
     constructor(url: string = "ws://localhost:8000/api/ws/multiplexed") {
         this.url = url;
+    }
+
+    /**
+     * Set callback to be called when WebSocket reconnects.
+     * Useful for re-subscribing to running sessions.
+     */
+    setOnReconnect(callback: (() => void) | null) {
+        this.onReconnectCallback = callback;
     }
 
     connect(): Promise<void> {
@@ -230,6 +239,7 @@ export class MultiplexedClient {
     }
 
     private doConnect(resolve: () => void, reject: (err: any) => void) {
+        const isReconnect = this.reconnectAttempts > 0;
         this.ws = new WebSocket(this.url);
 
         const timeout = setTimeout(() => {
@@ -243,6 +253,19 @@ export class MultiplexedClient {
             clearTimeout(timeout);
             console.log("[MultiplexedClient] Connected");
             this.isConnected = true;
+
+            // Clear old subscriptions on reconnect (they're stale)
+            if (isReconnect) {
+                this.eventHandlers.clear();
+                console.log("[MultiplexedClient] Cleared stale subscriptions");
+
+                // Call reconnect callback to re-subscribe
+                if (this.onReconnectCallback) {
+                    console.log("[MultiplexedClient] Triggering reconnect callback");
+                    this.onReconnectCallback();
+                }
+            }
+
             this.reconnectAttempts = 0;
             resolve();
         };
