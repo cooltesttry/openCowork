@@ -298,6 +298,11 @@ export class MultiplexedClient {
                 const data = JSON.parse(event.data) as StreamEvent;
                 const sessionId = data.metadata?.session_id;
 
+                // Debug: Log tool_input events
+                if (data.type?.startsWith('tool_input')) {
+                    console.log('[WebSocket] Tool input event:', data.type, data.id);
+                }
+
                 // Route to session-specific handler
                 if (sessionId && this.eventHandlers.has(sessionId)) {
                     this.eventHandlers.get(sessionId)!(data);

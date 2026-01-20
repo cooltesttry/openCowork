@@ -166,7 +166,7 @@ class SessionManager:
             settings.model.model_name = model_name
         
         # Build options with can_use_tool if websocket provided
-        can_use_tool = self._create_can_use_tool(websocket, security_mode) if websocket else None
+        can_use_tool = self._create_can_use_tool(websocket, session_id, security_mode) if websocket else None
         options = build_agent_options(settings, streaming=True, can_use_tool=can_use_tool, security_mode=security_mode)
         
         if cwd:
@@ -192,7 +192,7 @@ class SessionManager:
         logger.info(f"[SessionManager] Created session: {session_id} (endpoint={endpoint_name}, model={model_name}, security={security_mode})")
         return session
     
-    def _create_can_use_tool(self, websocket: WebSocket, security_mode: Optional[str] = None):
+    def _create_can_use_tool(self, websocket: WebSocket, session_id: str, security_mode: Optional[str] = None):
         """Create can_use_tool callback for tool permission approval.
         
         NOTE: This callback is ONLY called by the SDK when permission_mode='default'.
@@ -214,6 +214,7 @@ class SessionManager:
                     request_id=request_id,
                     questions=questions,
                     websocket=websocket,
+                    session_id=session_id,
                 )
                 
                 if answers:

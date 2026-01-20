@@ -49,6 +49,9 @@ interface ChatContextType {
     sessionStatuses: Map<string, SessionStatus>;
     setSessionStatus: (sessionId: string, status: SessionStatus) => void;
     getSessionStatus: (sessionId: string) => SessionStatus;
+
+    // Ref for stable access in async callbacks (shared across all hook instances)
+    currentSessionIdRef: React.MutableRefObject<string | null>;
 }
 
 interface ChatSessionsContextType {
@@ -93,9 +96,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const [sessionStatuses, setSessionStatuses] = useState<Map<string, SessionStatus>>(new Map());
     // Ref for stable access in callbacks without triggering re-renders
     const sessionStatusesRef = useRef(sessionStatuses);
+
+    // Shared ref for currentSessionId - used in async callbacks to avoid stale closures
+    // This is crucial because multiple useChatLogic instances may exist due to Dockview portals
+    const currentSessionIdRef = useRef<string | null>(currentSessionId);
     useEffect(() => {
         sessionStatusesRef.current = sessionStatuses;
     }, [sessionStatuses]);
+
+    // Keep currentSessionIdRef in sync with state
+    // This is safe because this is the ONLY place where the ref is synced from state
+    useEffect(() => {
+        currentSessionIdRef.current = currentSessionId;
+    }, [currentSessionId]);
 
     const setSessionStatus = useCallback((sessionId: string, status: SessionStatus) => {
         setSessionStatuses(prev => {
@@ -196,6 +209,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             activeModel, setActiveModel,
             previewHTMLCallback, setPreviewHTMLCallback,
             sessionStatuses, setSessionStatus, getSessionStatus,
+            currentSessionIdRef,
         }}>
             <ChatSessionsContext.Provider value={sessionsContextValue}>
                 {children}

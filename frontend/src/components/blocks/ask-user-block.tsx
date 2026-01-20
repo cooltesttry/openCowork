@@ -31,9 +31,16 @@ interface AskUserBlockProps {
 
 export function AskUserBlock({ block, onSubmit, onSkip }: AskUserBlockProps) {
     const { status, content, metadata } = block;
+    console.log('[AskUserBlock] Full block:', JSON.stringify(block, null, 2));
     const requestId = metadata?.requestId || block.id;
-    const questions: Question[] = content?.input?.questions || [];
+
+    // Safely extract questions - ensure it's always an array
+    const rawQuestions = content?.input?.questions;
+    const questions: Question[] = Array.isArray(rawQuestions) ? rawQuestions : [];
     const timeout = content?.input?.timeout || 60;
+
+    console.log('[AskUserBlock] rawQuestions type:', typeof rawQuestions, 'isArray:', Array.isArray(rawQuestions));
+    console.log('[AskUserBlock] questions.length:', questions.length);
 
     // Check if already answered (from history)
     const savedAnswers = content?.result;

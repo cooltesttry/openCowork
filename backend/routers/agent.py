@@ -392,6 +392,9 @@ async def websocket_session(websocket: WebSocket):
             all_blocks: list[dict] = []
             # Map tool_use_id to index in all_blocks for updating with results
             tool_block_indices: dict[str, int] = {}
+            # Thinking content accumulator for streaming thinking events
+            thinking_content = ""
+            thinking_block_index = -1  # Index in all_blocks for updating thinking content
             
             # Queue to receive messages from background listener
             message_queue: asyncio.Queue = asyncio.Queue()
@@ -498,15 +501,46 @@ async def websocket_session(websocket: WebSocket):
                                 "metadata": {"toolCallId": tool_use_id},
                             })
                     
-                    # Handle thinking blocks - append to ordered list
+                    # Handle thinking blocks - append to ordered list (non-streaming)
+                    # Skip if we already have a thinking block from streaming events
                     elif event_type == "thinking":
+                        if thinking_block_index < 0:  # Only create if no streaming block exists
+                            thinking_content = event_dict.get("content", "")
+                            thinking_block_index = len(all_blocks)
+                            all_blocks.append({
+                                "id": f"thinking-{event_count}",
+                                "type": "thinking",
+                                "content": thinking_content,
+                                "status": "success",
+                                "metadata": {},
+                            })
+                    
+                    # Handle streaming thinking events
+                    elif event_type == "thinking_start":
+                        # Create thinking block placeholder
+                        thinking_content = ""
+                        thinking_block_index = len(all_blocks)
                         all_blocks.append({
                             "id": f"thinking-{event_count}",
                             "type": "thinking",
-                            "content": event_dict.get("content", ""),
-                            "status": "success",
+                            "content": "",
+                            "status": "streaming",
                             "metadata": {},
                         })
+                    
+                    elif event_type == "thinking_delta":
+                        # Accumulate thinking content
+                        delta = event_dict.get("content", "")
+                        if delta:
+                            thinking_content += delta
+                            # Update the existing thinking block
+                            if thinking_block_index >= 0 and thinking_block_index < len(all_blocks):
+                                all_blocks[thinking_block_index]["content"] = thinking_content
+                    
+                    elif event_type == "thinking_end":
+                        # Finalize thinking block status
+                        if thinking_block_index >= 0 and thinking_block_index < len(all_blocks):
+                            all_blocks[thinking_block_index]["status"] = "success"
                     
                     # Handle todos (plan) blocks
                     elif event_type == "todos":
@@ -676,6 +710,9 @@ async def websocket_multiplexed(websocket: WebSocket):
             assistant_content = ""
             all_blocks = []
             tool_block_indices = {}
+            # Thinking content accumulator for streaming thinking events
+            thinking_content = ""
+            thinking_block_index = -1
             event_count = 0
             
             try:
@@ -731,15 +768,42 @@ async def websocket_multiplexed(websocket: WebSocket):
                             all_blocks[idx]["content"]["is_error"] = block_content.get("is_error", False)
                             all_blocks[idx]["status"] = "error" if block_content.get("is_error") else "success"
                     
-                    # Handle thinking
+                    # Handle thinking (non-streaming)
+                    # Skip if we already have a thinking block from streaming events
                     elif event_type == "thinking":
+                        if thinking_block_index < 0:  # Only create if no streaming block exists
+                            thinking_content = event_dict.get("content", "")
+                            thinking_block_index = len(all_blocks)
+                            all_blocks.append({
+                                "id": f"thinking-{event_count}",
+                                "type": "thinking",
+                                "content": thinking_content,
+                                "status": "success",
+                                "metadata": {},
+                            })
+                    
+                    # Handle streaming thinking events
+                    elif event_type == "thinking_start":
+                        thinking_content = ""
+                        thinking_block_index = len(all_blocks)
                         all_blocks.append({
                             "id": f"thinking-{event_count}",
                             "type": "thinking",
-                            "content": event_dict.get("content", ""),
-                            "status": "success",
+                            "content": "",
+                            "status": "streaming",
                             "metadata": {},
                         })
+                    
+                    elif event_type == "thinking_delta":
+                        delta = event_dict.get("content", "")
+                        if delta:
+                            thinking_content += delta
+                            if thinking_block_index >= 0 and thinking_block_index < len(all_blocks):
+                                all_blocks[thinking_block_index]["content"] = thinking_content
+                    
+                    elif event_type == "thinking_end":
+                        if thinking_block_index >= 0 and thinking_block_index < len(all_blocks):
+                            all_blocks[thinking_block_index]["status"] = "success"
                     
                     # Handle todos/plan
                     elif event_type == "todos":

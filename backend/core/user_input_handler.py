@@ -41,6 +41,7 @@ class UserInputHandler:
         request_id: str, 
         questions: list[dict], 
         websocket: WebSocket,
+        session_id: str = "",
         timeout: float = 55.0  # Leave 5 seconds buffer for SDK's 60s timeout
     ) -> Optional[dict]:
         """
@@ -50,6 +51,7 @@ class UserInputHandler:
             request_id: Unique identifier for this request
             questions: List of questions from Claude
             websocket: WebSocket connection to send the request
+            session_id: Session ID for event routing
             timeout: Maximum seconds to wait for response
             
         Returns:
@@ -76,9 +78,11 @@ class UserInputHandler:
                     "questions": questions,
                     "timeout": timeout,
                 },
-                "metadata": {}
+                "metadata": {
+                    "session_id": session_id,
+                }
             })
-            logger.info(f"[UserInput] Sent ask_user request: {request_id}")
+            logger.info(f"[UserInput] Sent ask_user request: {request_id} (session: {session_id})")
             
             # Wait for response with timeout
             try:

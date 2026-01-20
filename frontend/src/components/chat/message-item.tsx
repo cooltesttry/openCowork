@@ -116,33 +116,44 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                     )}
 
                     {/* File operations summary - extracted from blocks */}
-                    {!isUser && fileOperations.length > 0 && (
-                        <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-700">
-                            <div className="flex flex-wrap gap-2">
-                                {fileOperations.map((op, index) => (
-                                    <button
-                                        key={`${op.type}-${op.path}-${index}`}
-                                        onClick={() => handleFileClick(op.path)}
-                                        className={cn(
-                                            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer",
-                                            op.type === 'Write'
-                                                ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50"
-                                                : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50"
-                                        )}
-                                        title={`Click to preview: ${op.path}`}
-                                    >
-                                        {op.type === 'Write' ? (
-                                            <FilePlus className="h-3 w-3" />
-                                        ) : (
-                                            <FileEdit className="h-3 w-3" />
-                                        )}
-                                        <span>{op.type}</span>
-                                        <span className="underline underline-offset-2">{getFileName(op.path)}</span>
-                                    </button>
-                                ))}
+                    {!isUser && fileOperations.length > 0 && (() => {
+                        // Deduplicate by path, keeping only the first occurrence
+                        const seenPaths = new Set<string>();
+                        const uniqueOperations = fileOperations.filter(op => {
+                            if (seenPaths.has(op.path)) {
+                                return false;
+                            }
+                            seenPaths.add(op.path);
+                            return true;
+                        });
+
+                        return (
+                            <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-700">
+                                <div className="flex flex-wrap gap-2">
+                                    {uniqueOperations.map((op, index) => (
+                                        <button
+                                            key={`file-${op.path}-${index}`}
+                                            onClick={() => handleFileClick(op.path)}
+                                            className={cn(
+                                                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer",
+                                                op.type === 'Write'
+                                                    ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50"
+                                                    : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50"
+                                            )}
+                                            title={`Click to preview: ${op.path}`}
+                                        >
+                                            {op.type === 'Write' ? (
+                                                <FilePlus className="h-3 w-3" />
+                                            ) : (
+                                                <FileEdit className="h-3 w-3" />
+                                            )}
+                                            <span className="underline underline-offset-2">{getFileName(op.path)}</span>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
                 </div>
             </div>
         </div>

@@ -29,6 +29,7 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
     const isError = status === 'error';
     const isExecuting = status === 'executing';
     const isPending = status === 'pending';
+    const isStreaming = status === 'streaming';
 
     // Auto-collapse ONLY when status transitions to 'success' (one-time)
     useEffect(() => {
@@ -52,15 +53,17 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
         if (isComplete) return <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />;
         if (isError) return <XCircle className="h-4 w-4 text-red-500 shrink-0" />;
         if (isExecuting) return <Loader2 className="h-4 w-4 text-blue-500 animate-spin shrink-0" />;
+        if (isStreaming) return <Loader2 className="h-4 w-4 text-purple-500 animate-spin shrink-0" />;
         if (isPending) return <span className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />;
         return null;
-    }, [isComplete, isError, isExecuting, isPending]);
+    }, [isComplete, isError, isExecuting, isStreaming, isPending]);
 
     // Get status background color
     const getBgClass = () => {
         if (isError) return "bg-red-50 dark:bg-red-900/20";
         if (isComplete) return "bg-green-50/50 dark:bg-green-900/10";
         if (isExecuting) return "bg-blue-50 dark:bg-blue-900/20";
+        if (isStreaming) return "bg-purple-50 dark:bg-purple-900/20";
         if (isPending) return "bg-yellow-50 dark:bg-yellow-900/20";
         return "bg-muted/30";
     };
@@ -92,6 +95,7 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
                 </Badge>
                 <span className="flex-1 text-left text-xs text-muted-foreground truncate">
                     {isPending && "Waiting..."}
+                    {isStreaming && "Generating..."}
                     {isExecuting && "Executing..."}
                     {isComplete && "Completed"}
                     {isError && "Failed"}

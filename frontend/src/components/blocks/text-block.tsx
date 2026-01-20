@@ -56,7 +56,6 @@ function CodeBlockWrapper({
     const handlePreview = () => {
         // Get text content from the pre element directly (same as handleCopy)
         const htmlToPreview = preRef.current?.textContent || codeContent;
-        console.log('[Preview] Button clicked, onPreviewHTML exists:', !!onPreviewHTML, 'htmlToPreview length:', htmlToPreview.length);
         if (onPreviewHTML) {
             onPreviewHTML(htmlToPreview);
         } else {
@@ -113,7 +112,7 @@ export function TextBlock({ block, onPreviewHTML }: TextBlockProps) {
     const { previewHTMLCallback } = useChat();
     const previewCallback = previewHTMLCallback || onPreviewHTML;
 
-    console.log('[TextBlock] previewCallback exists:', !!previewCallback);
+
 
     if (!content) return null;
 

@@ -24,6 +24,7 @@ export function useChatLogic() {
         activeModel, setActiveModel,
         setSessionStatus,
         getSessionStatus,
+        currentSessionIdRef,  // Use shared ref from Context
     } = useChat();
 
     // Compute if CURRENT session is processing (for per-session input blocking)
@@ -34,15 +35,12 @@ export function useChatLogic() {
     const inputAreaRef = useRef<InputAreaRef>(null);
     // Refs to track state inside async functions without dependency issues
     const isProcessingRef = useRef(isProcessing);
-    const currentSessionIdRef = useRef(currentSessionId);
+    // NOTE: currentSessionIdRef is now obtained from Context (shared across all hook instances)
+    // This is crucial for Dockview portals where multiple useChatLogic instances may exist
 
     useEffect(() => {
         isProcessingRef.current = isProcessing;
     }, [isProcessing]);
-
-    useEffect(() => {
-        currentSessionIdRef.current = currentSessionId;
-    }, [currentSessionId]);
 
     const [askUserRequest, setAskUserRequest] = useState<AskUserContent | null>(null);
     const [securityMode, setSecurityMode] = useState<SecurityMode>('bypassPermissions');
@@ -51,23 +49,36 @@ export function useChatLogic() {
 
 
     // Load sessions from API
+    // Note: This only sets currentSessionId on INITIAL load or if current session was deleted
+    // It does NOT change session during normal operations to avoid conflicts with user actions
     const loadSessions = useCallback(async () => {
+        const startSessionId = currentSessionIdRef.current;
+        console.log('[loadSessions] Called, startSessionId:', startSessionId);
         try {
             setIsSessionsLoading(true);
             const sessionList = await sessionsApi.list();
             setSessions(sessionList);
 
-            const activeSessionId = currentSessionIdRef.current;
-            if (activeSessionId) {
-                const sessionExists = sessionList.some((s: any) => s.id === activeSessionId);
+            // Re-read ref AFTER async call to get the latest value
+            // User may have switched sessions while we were waiting for the API
+            const currentActiveId = currentSessionIdRef.current;
+            console.log('[loadSessions] After API: currentActiveId:', currentActiveId, 'sessionList length:', sessionList.length);
+
+            if (currentActiveId) {
+                const sessionExists = sessionList.some((s: { id: string }) => s.id === currentActiveId);
+                console.log('[loadSessions] sessionExists:', sessionExists);
                 if (!sessionExists) {
-                    console.warn(`Current session ${activeSessionId} no longer exists, resetting...`);
+                    // Session was deleted, select first available
+                    console.warn(`[loadSessions] Session ${currentActiveId} no longer exists, resetting...`);
                     const nextSessionId = sessionList.length > 0 ? sessionList[0].id : null;
                     currentSessionIdRef.current = nextSessionId;
                     setCurrentSessionId(nextSessionId);
                     setMessages([]);
                 }
-            } else if (sessionList.length > 0) {
+                // If session exists, do NOT modify currentSessionId - user may have switched
+            } else if (sessionList.length > 0 && !currentActiveId) {
+                // Initial load - no session selected, pick the first one
+                console.log('[loadSessions] No active session, setting to first:', sessionList[0].id);
                 currentSessionIdRef.current = sessionList[0].id;
                 setCurrentSessionId(sessionList[0].id);
             }
@@ -104,13 +115,35 @@ export function useChatLogic() {
             const msgs: Message[] = session.messages.map((m: any, mIndex: number) => {
                 let blocks: MessageBlock[] | undefined = undefined;
                 if (m.blocks && Array.isArray(m.blocks)) {
-                    blocks = m.blocks.map((b: any, bIndex: number) => ({
-                        id: b.id || `block-${mIndex}-${bIndex}`,
-                        type: b.type || 'text',
-                        content: b.content,
-                        status: b.status || 'success',
-                        metadata: b.metadata || {},
-                    }));
+                    blocks = m.blocks.map((b: any, bIndex: number) => {
+                        // Special handling for TodoWrite - convert to plan block
+                        if (b.type === 'tool_use' && (b.metadata?.toolName === 'TodoWrite' || b.content?.name === 'TodoWrite')) {
+                            const input = b.content?.input || b.content || {};
+                            const todos = input.todos || [];
+                            return {
+                                id: b.id || `plan-${mIndex}-${bIndex}`,
+                                type: 'plan' as const,
+                                content: input,
+                                status: b.status || 'success',
+                                metadata: {
+                                    ...b.metadata,
+                                    toolName: 'TodoWrite',
+                                    todos: todos.map((todo: any, index: number) => ({
+                                        id: `todo-${index}`,
+                                        content: todo.content || todo.task || String(todo),
+                                        status: (todo.status || 'pending') as 'pending' | 'in_progress' | 'completed',
+                                    })),
+                                },
+                            };
+                        }
+                        return {
+                            id: b.id || `block-${mIndex}-${bIndex}`,
+                            type: b.type || 'text',
+                            content: b.content,
+                            status: b.status || 'success',
+                            metadata: b.metadata || {},
+                        };
+                    });
                 }
 
                 return {
@@ -149,30 +182,47 @@ export function useChatLogic() {
         const sessionId = event.metadata?.session_id;
         if (!sessionId) return;
 
-        // Only handle done/error events for status updates
+        const isCurrentSession = sessionId === currentSessionIdRef.current;
+
+        // Handle status events (done/error) for ALL sessions
         if (event.type === 'done') {
-            console.log(`[useChatLogic] Global done event for ${sessionId}`);
-            const isCurrentSession = sessionId === currentSessionIdRef.current;
+            console.log(`[handleGlobalEvent] Done event for ${sessionId}`);
+            console.log(`[handleGlobalEvent] isCurrentSession: ${isCurrentSession}`);
             setSessionStatus(sessionId, {
                 status: 'idle',
-                hasUnread: !isCurrentSession, // Mark unread if not viewing this session
+                hasUnread: !isCurrentSession,
             });
             if (isCurrentSession) {
                 setIsProcessing(false);
+                // Mark current turn message as not streaming
+                setMessages(prev => prev.map(msg =>
+                    msg.id.startsWith(`current-turn-${sessionId}`)
+                        ? { ...msg, isStreaming: false }
+                        : msg
+                ));
+                sessionsApi.markRead(sessionId).catch(err =>
+                    console.warn(`Failed to mark session ${sessionId} as read:`, err)
+                );
             }
-            loadSessions(); // Refresh titles
+            // Refresh session list to update title (backend may have auto-generated title)
+            loadSessions();
+            return;
         } else if (event.type === 'error') {
-            console.log(`[useChatLogic] Global error event for ${sessionId}`);
+            console.log(`[handleGlobalEvent] Error event for ${sessionId}`);
             setSessionStatus(sessionId, {
                 status: 'error',
                 hasUnread: true,
                 error: event.content?.message || 'An error occurred',
             });
-            if (sessionId === currentSessionIdRef.current) {
+            if (isCurrentSession) {
                 setIsProcessing(false);
             }
+            return;
         }
-    }, [setSessionStatus, setIsProcessing, loadSessions]);
+
+        // Content events are handled by handleSend's callback, not here
+        // handleGlobalEvent only handles status events (done/error) for all sessions
+    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions]);
 
     // Stable wrapper that always calls the latest handler
     const handleGlobalEvent = useCallback((event: StreamEvent) => {
@@ -184,16 +234,81 @@ export function useChatLogic() {
         if (!events || events.length === 0) return;
 
         const assistantMessageId = `replayed-${sessionId}-${Date.now()}`;
+        // Track text content accumulation for inline text block creation
         let textContent = '';
+        let textBlockIndex = -1;  // Index of current text block in blocks array
         const blocks: MessageBlock[] = [];
 
         for (const event of events as Array<{ type: string; content?: unknown; id?: string; metadata?: Record<string, unknown> }>) {
             switch (event.type) {
                 case 'text':
-                case 'text_delta':
-                    textContent += (event.content as string) || '';
+                case 'text_delta': {
+                    const delta = (event.content as string) || '';
+                    textContent += delta;
+                    // Update or create text block at current position
+                    if (textBlockIndex >= 0 && blocks[textBlockIndex]) {
+                        blocks[textBlockIndex].content = textContent;
+                    } else {
+                        textBlockIndex = blocks.length;
+                        blocks.push({
+                            id: `text-${assistantMessageId}-${blocks.length}`,
+                            type: 'text',
+                            content: textContent,
+                            status: 'streaming',
+                        });
+                    }
                     break;
+                }
+                case 'thinking': {
+                    // Complete thinking event - only use if no existing block (fallback)
+                    // Skip if thinking block already exists (was created by thinking_start/delta)
+                    if (!blocks.find(b => b.type === 'thinking')) {
+                        blocks.push({
+                            id: `thinking-${assistantMessageId}`,
+                            type: 'thinking',
+                            content: (event.content as string) || '',
+                            status: 'success',
+                        });
+                    }
+                    break;
+                }
+                case 'thinking_delta': {
+                    // Incremental thinking - find or create and append
+                    const thinkingBlock = blocks.find(b => b.type === 'thinking');
+                    if (thinkingBlock) {
+                        thinkingBlock.content = ((thinkingBlock.content as string) || '') + ((event.content as string) || '');
+                    } else {
+                        // Insert thinking at current position (before any text that follows)
+                        blocks.push({
+                            id: `thinking-${assistantMessageId}`,
+                            type: 'thinking',
+                            content: (event.content as string) || '',
+                            status: 'streaming',
+                        });
+                    }
+                    break;
+                }
+                case 'thinking_start': {
+                    if (!blocks.find(b => b.type === 'thinking')) {
+                        blocks.push({
+                            id: `thinking-${assistantMessageId}`,
+                            type: 'thinking',
+                            content: '',
+                            status: 'streaming',
+                        });
+                    }
+                    break;
+                }
+                case 'thinking_end': {
+                    const thinkingBlock = blocks.find(b => b.type === 'thinking');
+                    if (thinkingBlock) {
+                        thinkingBlock.status = 'success';
+                    }
+                    break;
+                }
                 case 'tool_use':
+                    // Reset text block tracking since tool interrupts text flow
+                    textBlockIndex = -1;
                     blocks.push({
                         id: event.id || `tool-${blocks.length}`,
                         type: 'tool_use',
@@ -211,16 +326,26 @@ export function useChatLogic() {
                         metadata: (event.metadata as Record<string, string>) || {},
                     });
                     break;
+                case 'todos': {
+                    const todos = (event.content as { todos?: Array<{ content?: string; task?: string; text?: string; status?: string }> })?.todos || [];
+                    if (todos.length > 0) {
+                        blocks.push({
+                            id: `plan-${assistantMessageId}`,
+                            type: 'plan',
+                            content: event.content,
+                            status: 'success',
+                            metadata: {
+                                todos: todos.map((todo, index) => ({
+                                    id: `todo-${index}`,
+                                    content: todo.content || todo.task || todo.text || String(todo),
+                                    status: (todo.status || 'pending') as 'pending' | 'in_progress' | 'completed',
+                                })),
+                            },
+                        });
+                    }
+                    break;
+                }
             }
-        }
-
-        if (textContent) {
-            blocks.unshift({
-                id: `text-${assistantMessageId}`,
-                type: 'text',
-                content: textContent,
-                status: 'streaming',
-            });
         }
 
         const assistantMessage: Message = {
@@ -243,6 +368,177 @@ export function useChatLogic() {
             return [...prev, assistantMessage];
         });
     }, [setMessages]);
+
+    // Append current turn events to existing messages (for running sessions)
+    // This is called AFTER loadSessionMessages, so history is already loaded
+    const appendCurrentTurnFromEvents = useCallback((events: unknown[], sessionId: string) => {
+        if (!events || events.length === 0) return;
+
+        const assistantMessageId = `current-turn-${sessionId}-${Date.now()}`;
+        // Track text content accumulation for inline text block creation
+        let textContent = '';
+        let textBlockIndex = -1;  // Index of current text block in blocks array
+        const blocks: MessageBlock[] = [];
+
+        for (const event of events as Array<{ type: string; content?: unknown; id?: string; metadata?: Record<string, unknown> }>) {
+            switch (event.type) {
+                case 'text':
+                case 'text_delta': {
+                    const delta = (event.content as string) || '';
+                    textContent += delta;
+                    // Update or create text block at current position
+                    if (textBlockIndex >= 0 && blocks[textBlockIndex]) {
+                        blocks[textBlockIndex].content = textContent;
+                    } else {
+                        textBlockIndex = blocks.length;
+                        blocks.push({
+                            id: `text-${assistantMessageId}-${blocks.length}`,
+                            type: 'text',
+                            content: textContent,
+                            status: 'streaming',
+                        });
+                    }
+                    break;
+                }
+                case 'thinking': {
+                    // Complete thinking event - only use if no existing block (fallback)
+                    // Skip if thinking block already exists (was created by thinking_start/delta)
+                    if (!blocks.find(b => b.type === 'thinking')) {
+                        blocks.push({
+                            id: `thinking-${assistantMessageId}`,
+                            type: 'thinking',
+                            content: (event.content as string) || '',
+                            status: 'success',
+                        });
+                    }
+                    break;
+                }
+                case 'thinking_delta': {
+                    // Incremental thinking - find or create and append
+                    const thinkingBlock = blocks.find(b => b.type === 'thinking');
+                    if (thinkingBlock) {
+                        thinkingBlock.content = ((thinkingBlock.content as string) || '') + ((event.content as string) || '');
+                    } else {
+                        blocks.push({
+                            id: `thinking-${assistantMessageId}`,
+                            type: 'thinking',
+                            content: (event.content as string) || '',
+                            status: 'streaming',
+                        });
+                    }
+                    break;
+                }
+                case 'thinking_start': {
+                    if (!blocks.find(b => b.type === 'thinking')) {
+                        blocks.push({
+                            id: `thinking-${assistantMessageId}`,
+                            type: 'thinking',
+                            content: '',
+                            status: 'streaming',
+                        });
+                    }
+                    break;
+                }
+                case 'thinking_end': {
+                    const thinkingBlock = blocks.find(b => b.type === 'thinking');
+                    if (thinkingBlock) {
+                        thinkingBlock.status = 'success';
+                    }
+                    break;
+                }
+                case 'tool_use': {
+                    // Reset text block tracking since tool interrupts text flow
+                    textBlockIndex = -1;
+                    const toolContent = event.content as { name?: string; input?: { todos?: Array<{ content?: string; task?: string; status?: string }> }; id?: string };
+                    const toolName = toolContent?.name;
+
+                    // Special handling for TodoWrite - convert to plan block
+                    if (toolName === 'TodoWrite') {
+                        const todos = toolContent?.input?.todos || [];
+                        if (todos.length > 0) {
+                            blocks.push({
+                                id: `plan-${assistantMessageId}`,
+                                type: 'plan',
+                                content: toolContent.input,
+                                status: 'success',
+                                metadata: {
+                                    toolName: 'TodoWrite',
+                                    toolCallId: toolContent.id,
+                                    todos: todos.map((todo, index) => ({
+                                        id: `todo-${index}`,
+                                        content: todo.content || todo.task || String(todo),
+                                        status: (todo.status || 'pending') as 'pending' | 'in_progress' | 'completed',
+                                    })),
+                                },
+                            });
+                        }
+                        break;
+                    }
+
+                    blocks.push({
+                        id: event.id || `tool-${blocks.length}`,
+                        type: 'tool_use',
+                        content: event.content,
+                        status: 'executing',
+                        metadata: (event.metadata as Record<string, string>) || {},
+                    });
+                    break;
+                }
+                case 'tool_result':
+                    blocks.push({
+                        id: event.id || `result-${blocks.length}`,
+                        type: 'tool_result',
+                        content: event.content,
+                        status: 'success',
+                        metadata: (event.metadata as Record<string, string>) || {},
+                    });
+                    break;
+                case 'todos': {
+                    const todos = (event.content as { todos?: Array<{ content?: string; task?: string; text?: string; status?: string }> })?.todos || [];
+                    if (todos.length > 0) {
+                        blocks.push({
+                            id: `plan-${assistantMessageId}`,
+                            type: 'plan',
+                            content: event.content,
+                            status: 'success',
+                            metadata: {
+                                todos: todos.map((todo, index) => ({
+                                    id: `todo-${index}`,
+                                    content: todo.content || todo.task || todo.text || String(todo),
+                                    status: (todo.status || 'pending') as 'pending' | 'in_progress' | 'completed',
+                                })),
+                            },
+                        });
+                    }
+                    break;
+                }
+            }
+        }
+
+        const assistantMessage: Message = {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: textContent,
+            timestamp: Date.now(),
+            blocks: blocks.length > 0 ? blocks : undefined,
+            isStreaming: true,
+        };
+
+        // Append to existing messages (history already loaded)
+        setMessages(prev => {
+            // Check if we already have a current-turn message for this session
+            const existingIndex = prev.findIndex(m => m.id.startsWith(`current-turn-${sessionId}`));
+            if (existingIndex >= 0) {
+                const newPrev = [...prev];
+                newPrev[existingIndex] = assistantMessage;
+                return newPrev;
+            }
+            return [...prev, assistantMessage];
+        });
+
+        // Mark as processing since we're in a running session
+        setIsProcessing(true);
+    }, [setMessages, setIsProcessing]);
 
     // Recover all running sessions - subscribe to their events
     const recoverAllSessions = useCallback(async () => {
@@ -316,11 +612,19 @@ export function useChatLogic() {
     }, [loadSessions, recoverAllSessions, handleGlobalEvent]);
 
     // Load session messages when currentSessionId changes
+    // NOTE: For running sessions, handleSelectSession already handles loading with proper sequencing.
+    // This useEffect is for: initial page load, or switching to idle sessions.
     useEffect(() => {
         if (currentSessionId) {
+            const status = getSessionStatus(currentSessionId);
+            // Skip if running session - handleSelectSession handles these
+            if (status.status === 'running') {
+                console.log(`[useEffect] Session ${currentSessionId} is running, skipping loadSessionMessages (handled by handleSelectSession)`);
+                return;
+            }
             loadSessionMessages(currentSessionId);
         }
-    }, [currentSessionId, loadSessionMessages]);
+    }, [currentSessionId, loadSessionMessages, getSessionStatus]);
 
     // Create a new session
     const handleNewSession = useCallback(async () => {
@@ -339,45 +643,79 @@ export function useChatLogic() {
     }, [setCurrentSessionId, setMessages, setSessions, setSteps]);
 
     // Select a session
+    // NOTE: Uses currentSessionIdRef.current for comparisons to keep callback stable
+    // and avoid re-render cascades when currentSessionId state changes
     const handleSelectSession = useCallback(async (id: string) => {
-        if (id !== currentSessionId) {
+        const currentId = currentSessionIdRef.current;
+        console.log(`[handleSelectSession] Called with id: ${id}, currentSessionIdRef.current: ${currentId}`);
+
+        if (id !== currentId) {
+            console.log(`[handleSelectSession] Switching from ${currentId} to ${id}`);
+
             // Only unsubscribe from previous session if it's NOT running
             // Running sessions should stay subscribed to receive done/error events
-            if (currentSessionId) {
-                const prevStatus = getSessionStatus(currentSessionId);
+            if (currentId) {
+                const prevStatus = getSessionStatus(currentId);
+                console.log(`[handleSelectSession] Previous session status:`, prevStatus);
                 if (prevStatus.status !== 'running') {
-                    sessionClient.unsubscribe(currentSessionId);
+                    sessionClient.unsubscribe(currentId);
+                    console.log(`[handleSelectSession] Unsubscribed from ${currentId}`);
                 }
             }
 
+            console.log(`[handleSelectSession] Setting currentSessionIdRef.current = ${id}`);
             currentSessionIdRef.current = id;
+            console.log(`[handleSelectSession] Calling setCurrentSessionId(${id})`);
             setCurrentSessionId(id);
             setSteps([]);
 
-            // Check if new session is running - if so, load cached events and subscribe
+            // Check session status
             const sessionStatus = getSessionStatus(id);
+            console.log(`[handleSelectSession] New session status:`, sessionStatus);
+
+            // Clear unread status when user selects this session
+            if (sessionStatus.hasUnread) {
+                setSessionStatus(id, {
+                    ...sessionStatus,
+                    hasUnread: false,
+                });
+                // Also persist to backend so it survives refresh
+                sessionsApi.markRead(id).catch(err =>
+                    console.warn(`Failed to mark session ${id} as read:`, err)
+                );
+            }
+
+            // Step 1: Load historical messages first (await to prevent race condition)
+            console.log(`[handleSelectSession] Loading history for session: ${id}`);
+            await loadSessionMessages(id);
+
+            // Step 2: If running, append current turn events and subscribe
             if (sessionStatus.status === 'running') {
-                console.log(`[useChatLogic] Loading events for running session: ${id}`);
+                console.log(`[handleSelectSession] Session is running, loading current turn events...`);
 
                 try {
-                    // Get cached events from backend
+                    // Get cached events from backend (current turn only)
                     const eventsData = await sessionsApi.getEvents(id);
+                    console.log(`[handleSelectSession] Got ${eventsData.events?.length || 0} current turn events`);
 
-                    // Rebuild message state from events using shared function
+                    // Append current turn to messages (not replace)
                     if (eventsData.events && eventsData.events.length > 0) {
-                        rebuildMessagesFromEvents(eventsData.events, id);
+                        appendCurrentTurnFromEvents(eventsData.events, id);
                     }
 
-                    // Subscribe for live updates using global handler
+                    // Step 3: Subscribe for live updates using global handler
                     sessionClient.subscribe(id, handleGlobalEvent);
+                    console.log(`[handleSelectSession] Subscribed for live updates: ${id}`);
                 } catch (err) {
-                    console.error(`[useChatLogic] Failed to load events for session ${id}:`, err);
+                    console.error(`[handleSelectSession] Failed to load events for session ${id}:`, err);
                 }
             }
 
             setTimeout(() => inputAreaRef.current?.focus(), 100);
+        } else {
+            console.log(`[handleSelectSession] Same session, skipping`);
         }
-    }, [currentSessionId, setCurrentSessionId, setSteps, getSessionStatus, rebuildMessagesFromEvents, handleGlobalEvent]);
+    }, [setCurrentSessionId, setSteps, getSessionStatus, setSessionStatus, loadSessionMessages, appendCurrentTurnFromEvents, handleGlobalEvent, currentSessionIdRef]);
 
     // Delete a session
     const handleDeleteSession = useCallback(async (id: string) => {
@@ -540,7 +878,12 @@ export function useChatLogic() {
 
     // Main send handler with FULL WebSocket event handling
     const handleSend = async (content: string) => {
-        if (isProcessing) return;
+        // Use per-session processing check to allow concurrent sessions
+        if (isCurrentSessionProcessing) return;
+
+        // Capture the original session ID at send time
+        // This is used to detect new session creation vs background session events
+        const originalSessionId = currentSessionIdRef.current;
 
         const userMessage: Message = {
             id: crypto.randomUUID(),
@@ -612,10 +955,18 @@ export function useChatLogic() {
                 model_name: activeModel || undefined,
                 security_mode: securityMode,
             }, (event) => {
-                // Update session ID for new sessions
+                // Update session ID ONLY for NEW session creation
+                // Capture the original session ID at send time - only sync if we started with none
                 const eventSessionId = event.metadata?.session_id;
-                if (eventSessionId && eventSessionId !== currentSessionIdRef.current) {
-                    // Sync to server session id (new or corrected)
+
+                // CRITICAL FIX: Only sync session ID if:
+                // 1. We have an event with a session ID
+                // 2. The ORIGINAL session ID at send time was null (new session)
+                // 3. The current ref still matches the original (user hasn't switched away)
+                // This prevents pulling user back to a background session
+                if (eventSessionId && !originalSessionId && currentSessionIdRef.current !== eventSessionId) {
+                    // This is a newly created session - sync the ID
+                    console.log(`[handleSend] New session created: ${eventSessionId}`);
                     currentSessionIdRef.current = eventSessionId;
                     setCurrentSessionId(eventSessionId);
                     // Refresh the session list in background to show the new item
@@ -707,7 +1058,16 @@ export function useChatLogic() {
                         if (toolName === 'TodoWrite') {
                             const todos = toolInput?.todos || [];
                             if (todos.length > 0) {
-                                const planBlockId = `plan-${assistantMessageId}`;
+                                const toolCallId = event.content?.id;
+
+                                // Find and remove any streaming tool block for this TodoWrite
+                                const streamingBlockId = toolCallId ? activeToolCalls.get(toolCallId) : null;
+                                if (toolCallId && streamingBlockId) {
+                                    activeToolCalls.delete(toolCallId);
+                                }
+
+                                // Each TodoWrite creates a new plan block at its position
+                                const planBlockId = `plan-${toolCallId || crypto.randomUUID()}`;
                                 const planBlock: MessageBlock = {
                                     id: planBlockId,
                                     type: 'plan',
@@ -715,7 +1075,7 @@ export function useChatLogic() {
                                     status: 'success',
                                     metadata: {
                                         toolName: 'TodoWrite',
-                                        toolCallId: event.content?.id,
+                                        toolCallId: toolCallId,
                                         todos: todos.map((todo: any, index: number) => ({
                                             id: `todo-${index}`,
                                             content: todo.content || todo.task || String(todo),
@@ -726,17 +1086,14 @@ export function useChatLogic() {
 
                                 setMessages((prev) =>
                                     prev.map((msg) => {
-                                        if (msg.id === assistantMessageId) {
-                                            const existingPlanIndex = msg.blocks?.findIndex(b => b.id === planBlockId);
-                                            if (existingPlanIndex !== undefined && existingPlanIndex >= 0) {
-                                                const newBlocks = [...(msg.blocks || [])];
-                                                newBlocks[existingPlanIndex] = planBlock;
-                                                return { ...msg, blocks: newBlocks };
-                                            } else {
-                                                return { ...msg, blocks: [...(msg.blocks || []), planBlock] };
-                                            }
-                                        }
-                                        return msg;
+                                        if (msg.id !== assistantMessageId) return msg;
+
+                                        // Remove streaming tool block and add plan block
+                                        const filteredBlocks = streamingBlockId
+                                            ? (msg.blocks || []).filter(b => b.id !== streamingBlockId)
+                                            : (msg.blocks || []);
+
+                                        return { ...msg, blocks: [...filteredBlocks, planBlock] };
                                     })
                                 );
                             }
@@ -745,6 +1102,29 @@ export function useChatLogic() {
 
                         if (toolName === 'AskUserQuestion') break;
 
+                        const toolCallId = event.content?.id;
+
+                        // Check if a streaming block already exists for this tool (from tool_input_start)
+                        const existingBlockId = toolCallId ? activeToolCalls.get(toolCallId) : null;
+
+                        if (existingBlockId) {
+                            // Update existing streaming block with complete input and change status
+                            updateBlock(assistantMessageId, existingBlockId, {
+                                status: 'executing',
+                                content: {
+                                    name: toolName,
+                                    input: toolInput,
+                                },
+                                metadata: {
+                                    toolName: toolName,
+                                    toolCallId: toolCallId,
+                                    isStreaming: false,
+                                },
+                            });
+                            break;
+                        }
+
+                        // No existing block - create new one (fallback for non-streaming tools)
                         const toolBlockId = crypto.randomUUID();
                         const toolBlock: MessageBlock = {
                             id: toolBlockId,
@@ -756,13 +1136,13 @@ export function useChatLogic() {
                             status: 'executing',
                             metadata: {
                                 toolName: toolName,
-                                toolCallId: event.content?.id,
+                                toolCallId: toolCallId,
                             },
                         };
                         addBlock(assistantMessageId, toolBlock);
 
-                        if (event.content?.id) {
-                            activeToolCalls.set(event.content.id, toolBlockId);
+                        if (toolCallId) {
+                            activeToolCalls.set(toolCallId, toolBlockId);
                         }
                         toolBlocksInOrder.push(toolBlockId);
                         break;
@@ -779,14 +1159,28 @@ export function useChatLogic() {
 
                         if (blockId) {
                             const isError = event.content?.is_error === true;
-                            updateBlock(assistantMessageId, blockId, {
-                                status: isError ? 'error' : 'success',
-                                content: {
-                                    name: event.content?.name,
-                                    input: event.content?.input,
-                                    result: event.content?.result,
-                                },
-                            });
+                            // Use functional update to preserve existing content.name and content.input
+                            setMessages((prev) =>
+                                prev.map((msg) => {
+                                    if (msg.id === assistantMessageId && msg.blocks) {
+                                        const blocks = msg.blocks.map((block) => {
+                                            if (block.id === blockId) {
+                                                return {
+                                                    ...block,
+                                                    status: isError ? 'error' : 'success',
+                                                    content: {
+                                                        ...block.content,  // Preserve existing name, input, etc.
+                                                        result: event.content?.result,
+                                                    },
+                                                } as MessageBlock;
+                                            }
+                                            return block;
+                                        });
+                                        return { ...msg, blocks };
+                                    }
+                                    return msg;
+                                })
+                            );
                             if (toolUseId) {
                                 activeToolCalls.delete(toolUseId);
                             }
@@ -803,6 +1197,13 @@ export function useChatLogic() {
                         }
 
                         const toolName = event.content?.name || 'Tool';
+
+                        // Skip creating tool_use block for AskUserQuestion
+                        // The ask_user event will handle it with complete question data
+                        if (toolName === 'AskUserQuestion') {
+                            break;
+                        }
+
                         const toolId = event.id || crypto.randomUUID();
                         const toolBlockId = `tool-streaming-${toolId}`;
 
@@ -832,8 +1233,10 @@ export function useChatLogic() {
                     }
 
                     case 'tool_input_delta': {
+                        console.log('[tool_input_delta] Event received:', event);
                         // Find the streaming tool block by event.id
                         const toolBlockId = event.id ? activeToolCalls.get(event.id) : null;
+                        console.log('[tool_input_delta] Looking for block:', event.id, '→', toolBlockId);
                         if (toolBlockId && event.content) {
                             // Append partial JSON to the input buffer for display
                             setMessages((prev) =>
@@ -1018,6 +1421,9 @@ export function useChatLogic() {
 
                     case 'ask_user': {
                         const content = event.content as AskUserContent;
+                        console.log('[ask_user] Event received:', event);
+                        console.log('[ask_user] Content:', content);
+                        console.log('[ask_user] Questions:', content?.questions);
                         const askUserBlockId = `ask-user-${content.request_id}`;
                         const askUserBlock: MessageBlock = {
                             id: askUserBlockId,
