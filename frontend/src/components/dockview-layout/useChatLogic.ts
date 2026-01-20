@@ -7,6 +7,7 @@ import { sessionsApi } from '@/lib/sessions-api';
 import { useChat } from '@/lib/store';
 import { toast } from 'sonner';
 import type { InputAreaRef, SecurityMode } from '@/components/chat/input-area';
+import { useEventProcessor } from './useEventProcessor';
 
 /**
  * Shared hook containing all the business logic from ChatPanel
@@ -174,6 +175,18 @@ export function useChatLogic() {
         }
     }, [loadSessions, setActiveEndpoint, setActiveModel, setCurrentSessionId, setMessages]);
 
+    // Track resumed session state for processing events after session switch
+    // When user switches to a running session, we store the session ID here
+    // handleGlobalEvent will then process content events for this session
+    interface ResumeSessionState {
+        sessionId: string;
+        assistantMessageId: string;
+    }
+    const resumeSessionStateRef = useRef<ResumeSessionState | null>(null);
+
+    // Ref for appendCurrentTurnFromEvents to use in handleGlobalEvent
+    const appendCurrentTurnFromEventsRef = useRef<(events: unknown[], sessionId: string) => void>(() => { });
+
     // Global event handler for processing events from any session
     // Use a ref to avoid re-render loops when this is used as a dependency
     const handleGlobalEventRef = useRef<(event: StreamEvent) => void>(() => { });
@@ -183,11 +196,16 @@ export function useChatLogic() {
         if (!sessionId) return;
 
         const isCurrentSession = sessionId === currentSessionIdRef.current;
+        const isResumedSession = resumeSessionStateRef.current?.sessionId === sessionId;
 
         // Handle status events (done/error) for ALL sessions
         if (event.type === 'done') {
             console.log(`[handleGlobalEvent] Done event for ${sessionId}`);
             console.log(`[handleGlobalEvent] isCurrentSession: ${isCurrentSession}`);
+            // Clear resume state when done
+            if (isResumedSession) {
+                resumeSessionStateRef.current = null;
+            }
             setSessionStatus(sessionId, {
                 status: 'idle',
                 hasUnread: !isCurrentSession,
@@ -209,6 +227,10 @@ export function useChatLogic() {
             return;
         } else if (event.type === 'error') {
             console.log(`[handleGlobalEvent] Error event for ${sessionId}`);
+            // Clear resume state on error
+            if (isResumedSession) {
+                resumeSessionStateRef.current = null;
+            }
             setSessionStatus(sessionId, {
                 status: 'error',
                 hasUnread: true,
@@ -220,8 +242,18 @@ export function useChatLogic() {
             return;
         }
 
-        // Content events are handled by handleSend's callback, not here
-        // handleGlobalEvent only handles status events (done/error) for all sessions
+        // For resumed sessions, process content events by refetching all events
+        // This ensures the UI stays in sync with the backend state
+        if (isResumedSession && isCurrentSession) {
+            console.log(`[handleGlobalEvent] Content event for resumed session: ${sessionId}, refetching...`);
+            sessionsApi.getEvents(sessionId).then(eventsData => {
+                if (eventsData.events && eventsData.events.length > 0) {
+                    appendCurrentTurnFromEventsRef.current(eventsData.events, sessionId);
+                }
+            }).catch(err => {
+                console.error(`[handleGlobalEvent] Failed to fetch events for ${sessionId}:`, err);
+            });
+        }
     }, [setSessionStatus, setIsProcessing, setMessages, loadSessions]);
 
     // Stable wrapper that always calls the latest handler
@@ -374,11 +406,18 @@ export function useChatLogic() {
     const appendCurrentTurnFromEvents = useCallback((events: unknown[], sessionId: string) => {
         if (!events || events.length === 0) return;
 
-        const assistantMessageId = `current-turn-${sessionId}-${Date.now()}`;
+        // Use stable ID without timestamp - this is crucial for avoiding duplicate keys
+        // when the same events are processed multiple times (e.g., during resume streaming)
+        const assistantMessageId = `current-turn-${sessionId}`;
         // Track text content accumulation for inline text block creation
         let textContent = '';
         let textBlockIndex = -1;  // Index of current text block in blocks array
         const blocks: MessageBlock[] = [];
+
+        // Track toolCallId -> blockIndex mapping for updating tool_use blocks with results
+        const toolCallToBlockIndex = new Map<string, number>();
+        // Track tool blocks in order for result matching when toolCallId is not available
+        const toolBlocksInOrder: number[] = [];
 
         for (const event of events as Array<{ type: string; content?: unknown; id?: string; metadata?: Record<string, unknown> }>) {
             switch (event.type) {
@@ -451,19 +490,26 @@ export function useChatLogic() {
                     textBlockIndex = -1;
                     const toolContent = event.content as { name?: string; input?: { todos?: Array<{ content?: string; task?: string; status?: string }> }; id?: string };
                     const toolName = toolContent?.name;
+                    const toolCallId = toolContent?.id;
+
+                    // Skip AskUserQuestion - will be handled by ask_user event
+                    if (toolName === 'AskUserQuestion') {
+                        break;
+                    }
 
                     // Special handling for TodoWrite - convert to plan block
                     if (toolName === 'TodoWrite') {
                         const todos = toolContent?.input?.todos || [];
                         if (todos.length > 0) {
+                            const planBlockId = `plan-${toolCallId || assistantMessageId}`;
                             blocks.push({
-                                id: `plan-${assistantMessageId}`,
+                                id: planBlockId,
                                 type: 'plan',
                                 content: toolContent.input,
                                 status: 'success',
                                 metadata: {
                                     toolName: 'TodoWrite',
-                                    toolCallId: toolContent.id,
+                                    toolCallId: toolCallId,
                                     todos: todos.map((todo, index) => ({
                                         id: `todo-${index}`,
                                         content: todo.content || todo.task || String(todo),
@@ -475,24 +521,55 @@ export function useChatLogic() {
                         break;
                     }
 
+                    // Create tool_use block with toolCallId-based ID for proper result matching
+                    const toolBlockId = toolCallId ? `tool-${toolCallId}` : `tool-${blocks.length}`;
+                    const blockIndex = blocks.length;
                     blocks.push({
-                        id: event.id || `tool-${blocks.length}`,
+                        id: toolBlockId,
                         type: 'tool_use',
                         content: event.content,
                         status: 'executing',
-                        metadata: (event.metadata as Record<string, string>) || {},
+                        metadata: {
+                            toolName: toolName,
+                            toolCallId: toolCallId,
+                            ...(event.metadata as Record<string, unknown> || {}),
+                        },
                     });
+
+                    // Track for result matching
+                    if (toolCallId) {
+                        toolCallToBlockIndex.set(toolCallId, blockIndex);
+                    }
+                    toolBlocksInOrder.push(blockIndex);
                     break;
                 }
-                case 'tool_result':
-                    blocks.push({
-                        id: event.id || `result-${blocks.length}`,
-                        type: 'tool_result',
-                        content: event.content,
-                        status: 'success',
-                        metadata: (event.metadata as Record<string, string>) || {},
-                    });
+                case 'tool_result': {
+                    // Update existing tool_use block instead of creating new block
+                    const resultContent = event.content as { tool_use_id?: string; result?: unknown; is_error?: boolean };
+                    const toolUseId = resultContent?.tool_use_id;
+
+                    let blockIndex = toolUseId ? toolCallToBlockIndex.get(toolUseId) : undefined;
+                    if (blockIndex === undefined && toolBlocksInOrder.length > 0) {
+                        // Fallback: use first unprocessed tool block
+                        blockIndex = toolBlocksInOrder.shift();
+                    } else if (blockIndex !== undefined && toolUseId) {
+                        toolCallToBlockIndex.delete(toolUseId);
+                        // Remove from order tracking
+                        const orderIdx = toolBlocksInOrder.indexOf(blockIndex);
+                        if (orderIdx >= 0) toolBlocksInOrder.splice(orderIdx, 1);
+                    }
+
+                    if (blockIndex !== undefined && blocks[blockIndex]) {
+                        const isError = resultContent?.is_error === true;
+                        // Update the tool_use block with result (same as streaming does)
+                        blocks[blockIndex].status = isError ? 'error' : 'success';
+                        blocks[blockIndex].content = {
+                            ...(blocks[blockIndex].content as object),
+                            result: resultContent?.result,
+                        };
+                    }
                     break;
+                }
                 case 'todos': {
                     const todos = (event.content as { todos?: Array<{ content?: string; task?: string; text?: string; status?: string }> })?.todos || [];
                     if (todos.length > 0) {
@@ -510,6 +587,26 @@ export function useChatLogic() {
                             },
                         });
                     }
+                    break;
+                }
+                case 'ask_user': {
+                    // Handle ask_user events - must have pending status for buttons to work
+                    const askContent = event.content as { request_id?: string; questions?: unknown[]; timeout?: number };
+                    const requestId = askContent?.request_id || event.id || `ask-user-${blocks.length}`;
+                    blocks.push({
+                        id: `ask-user-${requestId}`,
+                        type: 'ask_user',
+                        content: {
+                            input: {
+                                questions: askContent?.questions || [],
+                                timeout: askContent?.timeout || 60,
+                            },
+                        },
+                        status: 'pending',  // Must be pending for interactive form to show
+                        metadata: {
+                            requestId: requestId,
+                        },
+                    });
                     break;
                 }
             }
@@ -539,6 +636,9 @@ export function useChatLogic() {
         // Mark as processing since we're in a running session
         setIsProcessing(true);
     }, [setMessages, setIsProcessing]);
+
+    // Keep ref updated so handleGlobalEvent can call this function
+    appendCurrentTurnFromEventsRef.current = appendCurrentTurnFromEvents;
 
     // Recover all running sessions - subscribe to their events
     const recoverAllSessions = useCallback(async () => {
@@ -698,12 +798,18 @@ export function useChatLogic() {
                     const eventsData = await sessionsApi.getEvents(id);
                     console.log(`[handleSelectSession] Got ${eventsData.events?.length || 0} current turn events`);
 
-                    // Append current turn to messages (not replace)
+                    // Append current turn to messages (not replace) - this does the "fast-forward"
                     if (eventsData.events && eventsData.events.length > 0) {
                         appendCurrentTurnFromEvents(eventsData.events, id);
                     }
 
-                    // Step 3: Subscribe for live updates using global handler
+                    // Step 3: Set resume state so handleGlobalEvent processes content events
+                    resumeSessionStateRef.current = {
+                        sessionId: id,
+                        assistantMessageId: `current-turn-${id}`,  // Prefix used by appendCurrentTurnFromEvents
+                    };
+
+                    // Step 4: Subscribe for live updates using global handler
                     sessionClient.subscribe(id, handleGlobalEvent);
                     console.log(`[handleSelectSession] Subscribed for live updates: ${id}`);
                 } catch (err) {
@@ -1443,6 +1549,11 @@ export function useChatLogic() {
                         setMessages((prev) =>
                             prev.map((msg) => {
                                 if (msg.id === assistantMessageId) {
+                                    // Check if ask_user block already exists (prevent duplicates)
+                                    const existingBlock = msg.blocks?.find(b => b.id === askUserBlockId);
+                                    if (existingBlock) {
+                                        return msg;  // Already exists, don't add again
+                                    }
                                     return { ...msg, blocks: [...(msg.blocks || []), askUserBlock] };
                                 }
                                 return msg;

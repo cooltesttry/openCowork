@@ -242,15 +242,15 @@ class SessionManager:
                     "tool_name": tool_name,
                     "input": input_data,
                 },
-                "metadata": {}
+                "metadata": {
+                    "session_id": session_id,
+                }
             }
             
-            try:
-                await websocket.send_json(permission_event)
-            except Exception as e:
-                logger.error(f"[Permission] Failed to send permission request: {e}")
-                # If can't send, deny for safety
-                return PermissionResultDeny(message="Failed to request permission from user")
+            # Save to task_runner event cache - this also notifies subscribers
+            # No need to send via websocket again as task_runner._append_event handles it
+            from core.task_runner import task_runner
+            task_runner._append_event(session_id, permission_event)
             
             # Wait for user response
             approved = await user_input_handler.request_permission(

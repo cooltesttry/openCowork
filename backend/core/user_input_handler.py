@@ -20,6 +20,7 @@ class UserInputRequest:
     questions: list[dict]
     future: asyncio.Future
     websocket: WebSocket
+    session_id: str = ""  # For result event caching
 
 
 class UserInputHandler:
@@ -67,11 +68,12 @@ class UserInputHandler:
                 questions=questions,
                 future=future,
                 websocket=websocket,
+                session_id=session_id,
             )
         
         try:
-            # Send ask_user event to frontend
-            await websocket.send_json({
+            # Build the ask_user event
+            ask_user_event = {
                 "type": "ask_user",
                 "content": {
                     "request_id": request_id,
@@ -81,16 +83,59 @@ class UserInputHandler:
                 "metadata": {
                     "session_id": session_id,
                 }
-            })
+            }
+            
+            # Save to task_runner event cache - this also notifies subscribers
+            # Only send directly via websocket if NOT using task_runner
+            if session_id:
+                from core.task_runner import task_runner
+                task_runner._append_event(session_id, ask_user_event)
+                # task_runner._append_event notifies subscribers, so no need to send again
+            else:
+                # Fallback: send directly if no session_id
+                await websocket.send_json(ask_user_event)
             logger.info(f"[UserInput] Sent ask_user request: {request_id} (session: {session_id})")
             
             # Wait for response with timeout
             try:
                 answers = await asyncio.wait_for(future, timeout=timeout)
                 logger.info(f"[UserInput] Received response for: {request_id}")
+                
+                # Save response result event to cache
+                if session_id and answers:
+                    from core.task_runner import task_runner
+                    result_event = {
+                        "type": "ask_user_result",
+                        "content": {
+                            "request_id": request_id,
+                            "status": "answered",
+                            "answers": answers,
+                        },
+                        "metadata": {
+                            "session_id": session_id,
+                        }
+                    }
+                    task_runner._append_event(session_id, result_event)
+                
                 return answers
             except asyncio.TimeoutError:
                 logger.warning(f"[UserInput] Request timed out: {request_id}")
+                
+                # Save timeout result event to cache
+                if session_id:
+                    from core.task_runner import task_runner
+                    timeout_event = {
+                        "type": "ask_user_result",
+                        "content": {
+                            "request_id": request_id,
+                            "status": "timeout",
+                        },
+                        "metadata": {
+                            "session_id": session_id,
+                        }
+                    }
+                    task_runner._append_event(session_id, timeout_event)
+                
                 return None
                 
         finally:
@@ -133,6 +178,21 @@ class UserInputHandler:
             return False
         
         if not request.future.done():
+            # Save skip result event to cache
+            if request.session_id:
+                from core.task_runner import task_runner
+                skip_event = {
+                    "type": "ask_user_result",
+                    "content": {
+                        "request_id": request_id,
+                        "status": "skipped",
+                    },
+                    "metadata": {
+                        "session_id": request.session_id,
+                    }
+                }
+                task_runner._append_event(request.session_id, skip_event)
+            
             request.future.set_result(None)
             logger.info(f"[UserInput] Cancelled request: {request_id}")
             return True

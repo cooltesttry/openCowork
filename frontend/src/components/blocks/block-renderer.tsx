@@ -66,7 +66,13 @@ export function BlockRenderer({ block, onPermissionResponse, onAskUserSubmit, on
                         requestId: block.metadata?.toolCallId || block.id,
                     },
                 };
-                return <AskUserBlock block={askUserBlock} />;
+                return (
+                    <AskUserBlock
+                        block={askUserBlock}
+                        onSubmit={onAskUserSubmit}
+                        onSkip={onAskUserSkip}
+                    />
+                );
             }
             return <ToolBlock block={block} />;
 
