@@ -1,7 +1,14 @@
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useRef } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Message, AgentStep, Session } from './types';
+
+// Session execution status for task management
+export interface SessionStatus {
+    status: 'idle' | 'running' | 'completed' | 'error';
+    hasUnread: boolean;
+    error?: string;
+}
 
 interface ChatContextType {
     // Messages for current session
@@ -37,6 +44,11 @@ interface ChatContextType {
     // Preview HTML callback (set by dockview, used by code blocks)
     previewHTMLCallback: ((htmlContent: string) => void) | null;
     setPreviewHTMLCallback: React.Dispatch<React.SetStateAction<((htmlContent: string) => void) | null>>;
+
+    // Session status tracking for background tasks
+    sessionStatuses: Map<string, SessionStatus>;
+    setSessionStatus: (sessionId: string, status: SessionStatus) => void;
+    getSessionStatus: (sessionId: string) => SessionStatus;
 }
 
 interface ChatSessionsContextType {
@@ -76,6 +88,27 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     // Preview HTML callback (registered by dockview-main)
     const [previewHTMLCallback, setPreviewHTMLCallback] = useState<((htmlContent: string) => void) | null>(null);
+
+    // Session status tracking for background tasks
+    const [sessionStatuses, setSessionStatuses] = useState<Map<string, SessionStatus>>(new Map());
+    // Ref for stable access in callbacks without triggering re-renders
+    const sessionStatusesRef = useRef(sessionStatuses);
+    useEffect(() => {
+        sessionStatusesRef.current = sessionStatuses;
+    }, [sessionStatuses]);
+
+    const setSessionStatus = useCallback((sessionId: string, status: SessionStatus) => {
+        setSessionStatuses(prev => {
+            const next = new Map(prev);
+            next.set(sessionId, status);
+            return next;
+        });
+    }, []);
+
+    // Use ref for stable reference - won't cause dependency chain updates
+    const getSessionStatus = useCallback((sessionId: string): SessionStatus => {
+        return sessionStatusesRef.current.get(sessionId) || { status: 'idle', hasUnread: false };
+    }, []);
 
     // Track if we've loaded from localStorage to prevent race condition
     const isHydrated = useRef(false);
@@ -161,6 +194,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             activeEndpoint, setActiveEndpoint,
             activeModel, setActiveModel,
             previewHTMLCallback, setPreviewHTMLCallback,
+            sessionStatuses, setSessionStatus, getSessionStatus,
         }}>
             <ChatSessionsContext.Provider value={sessionsContextValue}>
                 {children}

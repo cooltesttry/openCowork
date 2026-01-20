@@ -1,9 +1,10 @@
 "use client";
 
 import { Session } from "@/lib/types";
+import { SessionStatus } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Plus, MessageSquare, Trash2, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { Plus, MessageSquare, Trash2, PanelLeftClose, PanelLeftOpen, X, Loader2, CircleDot, AlertCircle } from "lucide-react";
 import { useState } from "react";
 
 interface SessionSidebarProps {
@@ -15,6 +16,7 @@ interface SessionSidebarProps {
     onNewSession: () => void;
     onSelectSession: (id: string) => void;
     onDeleteSession: (id: string) => void;
+    getSessionStatus?: (sessionId: string) => SessionStatus;
 }
 
 const SIDEBAR_WIDTH = 238;
@@ -28,9 +30,26 @@ export function SessionSidebar({
     onNewSession,
     onSelectSession,
     onDeleteSession,
+    getSessionStatus,
 }: SessionSidebarProps) {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [fadingOutId, setFadingOutId] = useState<string | null>(null);
+
+    // Helper to get status icon for a session
+    const getStatusIcon = (sessionId: string) => {
+        const status = getSessionStatus?.(sessionId) || { status: 'idle', hasUnread: false };
+
+        if (status.status === 'running') {
+            return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-500" />;
+        }
+        if (status.status === 'error') {
+            return <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />;
+        }
+        if (status.hasUnread) {
+            return <CircleDot className="h-3.5 w-3.5 shrink-0 text-blue-500" />;
+        }
+        return <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-50" />;
+    };
 
     const handleDeleteClick = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
@@ -127,7 +146,7 @@ export function SessionSidebar({
                                                 : "hover:bg-muted"
                                         )}
                                     >
-                                        <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                                        {getStatusIcon(session.id)}
                                         <div className="flex-1 min-w-0 overflow-hidden transition-all duration-150 group-hover:pr-7">
                                             <div className="text-sm truncate">
                                                 {session.title || "New Chat"}

@@ -1,7 +1,7 @@
 'use client';
 
 import { SessionSidebar } from '@/components/chat/session-sidebar-new';
-import { useChatSessions } from '@/lib/store';
+import { useChatSessions, useChat } from '@/lib/store';
 
 interface SessionPanelContentProps {
     params?: {
@@ -19,6 +19,8 @@ export function SessionPanelContent({ params }: SessionPanelContentProps) {
         isSessionsLoading,
     } = useChatSessions();
 
+    const { getSessionStatus } = useChat();
+
     return (
         <SessionSidebar
             sessions={sessions}
@@ -29,6 +31,7 @@ export function SessionPanelContent({ params }: SessionPanelContentProps) {
             onNewSession={params?.onNewSession || (() => { })}
             onSelectSession={params?.onSelectSession || (() => { })}
             onDeleteSession={params?.onDeleteSession || (() => { })}
+            getSessionStatus={getSessionStatus}
         />
     );
 }

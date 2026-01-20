@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import agent, config, sessions, files, terminal
 from models.settings import AppSettings
 from core.session_manager import session_manager
+from core.task_runner import task_runner
 
 
 # Configure logging with file and console output
@@ -94,6 +95,9 @@ async def lifespan(app: FastAPI):
     # Start session manager for ClaudeSDKClient lifecycle management
     await session_manager.start()
     
+    # Start task runner for background task execution
+    await task_runner.start()
+    
     # Start file watcher if workdir is configured
     if app.state.settings.default_workdir:
         await file_watcher_service.start(app.state.settings.default_workdir)
@@ -103,6 +107,7 @@ async def lifespan(app: FastAPI):
     
     # Cleanup on shutdown
     await file_watcher_service.stop()
+    await task_runner.stop()
     await session_manager.stop()
     save_settings(app.state.settings)
 

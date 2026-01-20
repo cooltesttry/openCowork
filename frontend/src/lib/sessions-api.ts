@@ -81,4 +81,64 @@ export const sessionsApi = {
             throw new Error(`Failed to delete session: ${response.statusText}`);
         }
     },
+
+    /**
+     * Get the execution status of a session.
+     */
+    async getStatus(id: string): Promise<{
+        status: 'idle' | 'running' | 'completed' | 'error';
+        has_unread: boolean;
+        task_id: string | null;
+        error: string | null;
+    }> {
+        const response = await fetch(`${API_BASE}/sessions/${id}/status`);
+        if (!response.ok) {
+            throw new Error(`Failed to get session status: ${response.statusText}`);
+        }
+        return response.json();
+    },
+
+    /**
+     * Mark a session as read (clear unread badge).
+     */
+    async markRead(id: string): Promise<void> {
+        const response = await fetch(`${API_BASE}/sessions/${id}/mark-read`, {
+            method: 'POST',
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to mark session as read: ${response.statusText}`);
+        }
+    },
+
+    /**
+     * Get status of all sessions with active or recent tasks.
+     */
+    async getActiveStatus(): Promise<Record<string, {
+        status: 'idle' | 'running' | 'completed' | 'error';
+        has_unread: boolean;
+        task_id: string;
+        error: string | null;
+    }>> {
+        const response = await fetch(`${API_BASE}/sessions/active/status`);
+        if (!response.ok) {
+            throw new Error(`Failed to get active sessions status: ${response.statusText}`);
+        }
+        const data = await response.json();
+        return data.sessions;
+    },
+
+    /**
+     * Get cached events for a session (for replay on reconnect).
+     */
+    async getEvents(id: string): Promise<{
+        events: any[];
+        status: string;
+        error: string | null;
+    }> {
+        const response = await fetch(`${API_BASE}/sessions/${id}/events`);
+        if (!response.ok) {
+            throw new Error(`Failed to get session events: ${response.statusText}`);
+        }
+        return response.json();
+    },
 };

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from core.agent_client import stream_agent_response, AgentSession, StreamEvent
 from core.session_manager import session_manager
+from core.task_runner import task_runner
 from core.user_input_handler import user_input_handler
 from core import session_storage
 from models.settings import AppSettings
@@ -387,8 +388,10 @@ async def websocket_session(websocket: WebSocket):
             # Stream response using SessionManager (ClaudeSDKClient-based)
             event_count = 0
             assistant_content = ""
-            tool_blocks: dict[str, dict] = {}
-            thinking_blocks: list[dict] = []
+            # Use a single ordered list to preserve event sequence
+            all_blocks: list[dict] = []
+            # Map tool_use_id to index in all_blocks for updating with results
+            tool_block_indices: dict[str, int] = {}
             
             # Queue to receive messages from background listener
             message_queue: asyncio.Queue = asyncio.Queue()
@@ -444,15 +447,23 @@ async def websocket_session(websocket: WebSocket):
                         await websocket.send_json(event_dict)
                         continue
                     
-                    # Accumulate text content
+                    # Accumulate text content and add as block
                     if event_type == "text":
-                        assistant_content += str(event_dict.get("content", ""))
+                        text_content = str(event_dict.get("content", ""))
+                        assistant_content += text_content
+                        all_blocks.append({
+                            "id": f"text-{event_count}",
+                            "type": "text",
+                            "content": text_content,
+                            "status": "success",
+                            "metadata": {},
+                        })
                     
-                    # Handle tool_use: create new block
+                    # Handle tool_use: create new block and append to ordered list
                     elif event_type == "tool_use":
                         block_content = event_dict.get("content", {})
                         tool_use_id = block_content.get("id", f"tool-{event_count}")
-                        tool_blocks[tool_use_id] = {
+                        tool_block = {
                             "id": tool_use_id,
                             "type": "tool_use",
                             "content": {
@@ -465,27 +476,31 @@ async def websocket_session(websocket: WebSocket):
                                 "toolCallId": tool_use_id,
                             },
                         }
+                        tool_block_indices[tool_use_id] = len(all_blocks)
+                        all_blocks.append(tool_block)
                     
-                    # Handle tool_result: merge into existing tool_use block
+                    # Handle tool_result: merge into existing tool_use block in all_blocks
                     elif event_type == "tool_result":
                         block_content = event_dict.get("content", {})
                         tool_use_id = block_content.get("tool_use_id", "")
-                        if tool_use_id in tool_blocks:
-                            tool_blocks[tool_use_id]["content"]["result"] = block_content.get("content", "")
-                            tool_blocks[tool_use_id]["content"]["is_error"] = block_content.get("is_error", False)
-                            tool_blocks[tool_use_id]["status"] = "error" if block_content.get("is_error") else "success"
+                        if tool_use_id in tool_block_indices:
+                            idx = tool_block_indices[tool_use_id]
+                            all_blocks[idx]["content"]["result"] = block_content.get("content", "")
+                            all_blocks[idx]["content"]["is_error"] = block_content.get("is_error", False)
+                            all_blocks[idx]["status"] = "error" if block_content.get("is_error") else "success"
                         else:
-                            tool_blocks[tool_use_id] = {
+                            # Orphan result - append as new block
+                            all_blocks.append({
                                 "id": tool_use_id,
                                 "type": "tool_use",
                                 "content": {"result": block_content.get("content", "")},
                                 "status": "success",
                                 "metadata": {"toolCallId": tool_use_id},
-                            }
+                            })
                     
-                    # Handle thinking blocks
+                    # Handle thinking blocks - append to ordered list
                     elif event_type == "thinking":
-                        thinking_blocks.append({
+                        all_blocks.append({
                             "id": f"thinking-{event_count}",
                             "type": "thinking",
                             "content": event_dict.get("content", ""),
@@ -493,12 +508,42 @@ async def websocket_session(websocket: WebSocket):
                             "metadata": {},
                         })
                     
+                    # Handle todos (plan) blocks
+                    elif event_type == "todos":
+                        all_blocks.append({
+                            "id": f"todos-{event_count}",
+                            "type": "plan",
+                            "content": event_dict.get("content", {}),
+                            "status": "success",
+                            "metadata": {
+                                "todos": event_dict.get("content", {}).get("todos", []),
+                            },
+                        })
+                    
+                    # Handle ask_user blocks
+                    elif event_type == "ask_user":
+                        content = event_dict.get("content", {})
+                        all_blocks.append({
+                            "id": f"ask-user-{content.get('request_id', event_count)}",
+                            "type": "ask_user",
+                            "content": {
+                                "input": {
+                                    "questions": content.get("questions", []),
+                                    "timeout": content.get("timeout", 60),
+                                },
+                            },
+                            "status": "success",  # Will be updated when response received
+                            "metadata": {
+                                "requestId": content.get("request_id", ""),
+                            },
+                        })
+                    
                     # Add session_id to metadata and send to client
                     event_dict["metadata"]["session_id"] = storage_session.id
                     await websocket.send_json(event_dict)
                 
-                # Build final blocks list: thinking first, then tools
-                assistant_blocks = thinking_blocks + list(tool_blocks.values())
+                # Use the ordered blocks list directly (already in event sequence)
+                assistant_blocks = all_blocks
                 
                 # Save assistant response to storage
                 if assistant_content or assistant_blocks:
@@ -549,5 +594,312 @@ async def websocket_session(websocket: WebSocket):
         # Note: We don't close the managed session here, it stays for reuse
         # SessionManager will clean it up after idle timeout
         logger.info("Session WebSocket closed")
+
+
+@router.websocket("/ws/multiplexed")
+async def websocket_multiplexed(websocket: WebSocket):
+    """
+    Multiplexed WebSocket endpoint supporting concurrent background tasks.
+    
+    Features:
+    - Multiple sessions can execute concurrently
+    - Tasks run in background, independent of WebSocket connection
+    - Supports reconnect/replay via cached events
+    - Session status tracking (running, completed, unread)
+    
+    Protocol:
+    - Client sends: {"type": "query", "session_id": "uuid", "content": "message", ...}
+    - Client sends: {"type": "subscribe", "session_id": "uuid"} - Subscribe to session events
+    - Client sends: {"type": "unsubscribe", "session_id": "uuid"} - Unsubscribe from session
+    - Client sends: {"type": "user_response", "request_id": "...", "answers": {...}}
+    - Client sends: {"type": "permission_response", "request_id": "...", "approved": bool}
+    - Server sends: {"type": "...", "metadata": {"session_id": "..."}, ...}
+    """
+    await websocket.accept()
+    logger.info("[Multiplexed] WebSocket connection accepted")
+    
+    settings: AppSettings = websocket.app.state.settings
+    
+    # Track active subscriptions for this connection
+    subscriptions: dict[str, asyncio.Task] = {}
+    
+    async def subscribe_to_session(session_id: str):
+        """Subscribe to events from a session and forward to WebSocket."""
+        try:
+            async for event in task_runner.subscribe(session_id):
+                event["metadata"] = event.get("metadata", {})
+                event["metadata"]["session_id"] = session_id
+                try:
+                    await websocket.send_json(event)
+                except Exception as e:
+                    logger.error(f"[Multiplexed] Failed to send event: {e}")
+                    break
+        except Exception as e:
+            logger.error(f"[Multiplexed] Subscription error for {session_id}: {e}")
+        finally:
+            subscriptions.pop(session_id, None)
+    
+    async def start_task_for_session(session_id: str, message: ChatMessage):
+        """Start a background task for a session."""
+        # Get or create storage session
+        storage_session = session_storage.get_session(session_id)
+        if not storage_session:
+            storage_session = session_storage.create_session()
+            session_id = storage_session.id
+        
+        # Save user message
+        user_msg = SessionMessage.create(role="user", content=message.content)
+        storage_session.add_message(user_msg)
+        session_storage.save_session(storage_session)
+        
+        # Determine effective settings
+        effective_endpoint = message.endpoint_name or settings.model.selected_endpoint
+        effective_model = message.model_name or settings.model.model_name
+        resume_sdk_session_id = storage_session.sdk_session_id
+        
+        # Create the task coroutine
+        async def task_coroutine():
+            """Generator that yields events from session_manager.stream_message."""
+            # Get or create managed session
+            managed_session = await session_manager.get_or_create(
+                session_id=storage_session.id,
+                settings=settings,
+                endpoint_name=effective_endpoint,
+                model_name=effective_model,
+                websocket=websocket,  # For can_use_tool callbacks
+                resume_sdk_session_id=resume_sdk_session_id,
+                cwd=message.cwd,
+                security_mode=message.security_mode,
+            )
+            
+            # Accumulate response for saving
+            assistant_content = ""
+            all_blocks = []
+            tool_block_indices = {}
+            event_count = 0
+            
+            try:
+                async for event in session_manager.stream_message(
+                    managed_session, message.content, security_mode=message.security_mode
+                ):
+                    event_count += 1
+                    event_dict = event.to_dict()
+                    event_type = event_dict.get("type", "unknown")
+                    
+                    # Handle system events (SDK session ID)
+                    if event_type == "system":
+                        content = event_dict.get("content", {})
+                        if isinstance(content, dict) and "sdk_session_id" in content:
+                            storage_session.sdk_session_id = content["sdk_session_id"]
+                            session_storage.save_session(storage_session)
+                    
+                    # Accumulate text
+                    if event_type == "text":
+                        assistant_content += str(event_dict.get("content", ""))
+                        all_blocks.append({
+                            "id": f"text-{event_count}",
+                            "type": "text",
+                            "content": event_dict.get("content", ""),
+                            "status": "success",
+                            "metadata": {},
+                        })
+                    
+                    # Handle tool_use
+                    elif event_type == "tool_use":
+                        block_content = event_dict.get("content", {})
+                        tool_use_id = block_content.get("id", f"tool-{event_count}")
+                        tool_block = {
+                            "id": tool_use_id,
+                            "type": "tool_use",
+                            "content": {
+                                "name": block_content.get("name", ""),
+                                "input": block_content.get("input", {}),
+                            },
+                            "status": "running",
+                            "metadata": {"toolName": block_content.get("name", "")},
+                        }
+                        tool_block_indices[tool_use_id] = len(all_blocks)
+                        all_blocks.append(tool_block)
+                    
+                    # Handle tool_result
+                    elif event_type == "tool_result":
+                        block_content = event_dict.get("content", {})
+                        tool_use_id = block_content.get("tool_use_id", "")
+                        if tool_use_id in tool_block_indices:
+                            idx = tool_block_indices[tool_use_id]
+                            all_blocks[idx]["content"]["result"] = block_content.get("content", "")
+                            all_blocks[idx]["content"]["is_error"] = block_content.get("is_error", False)
+                            all_blocks[idx]["status"] = "error" if block_content.get("is_error") else "success"
+                    
+                    # Handle thinking
+                    elif event_type == "thinking":
+                        all_blocks.append({
+                            "id": f"thinking-{event_count}",
+                            "type": "thinking",
+                            "content": event_dict.get("content", ""),
+                            "status": "success",
+                            "metadata": {},
+                        })
+                    
+                    # Handle todos/plan
+                    elif event_type == "todos":
+                        all_blocks.append({
+                            "id": f"todos-{event_count}",
+                            "type": "plan",
+                            "content": event_dict.get("content", {}),
+                            "status": "success",
+                            "metadata": {},
+                        })
+                    
+                    # Handle ask_user
+                    elif event_type == "ask_user":
+                        content = event_dict.get("content", {})
+                        all_blocks.append({
+                            "id": f"ask-user-{content.get('request_id', event_count)}",
+                            "type": "ask_user",
+                            "content": {"input": content},
+                            "status": "success",
+                            "metadata": {"requestId": content.get("request_id", "")},
+                        })
+                    
+                    yield event_dict
+                
+                # Save assistant response after completion
+                if assistant_content or all_blocks:
+                    assistant_msg = SessionMessage.create(
+                        role="assistant",
+                        content=assistant_content,
+                        blocks=all_blocks if all_blocks else None,
+                    )
+                    storage_session.add_message(assistant_msg)
+                    storage_session.last_model_name = effective_model
+                    storage_session.last_endpoint_name = effective_endpoint or "(legacy)"
+                    session_storage.save_session(storage_session)
+                
+                logger.info(f"[Multiplexed] Task completed for session {session_id}")
+                
+            except Exception as e:
+                logger.error(f"[Multiplexed] Task error for session {session_id}: {e}", exc_info=True)
+                yield {"type": "error", "content": str(e), "metadata": {"error_type": type(e).__name__}}
+        
+        # Start the background task
+        task_id = await task_runner.start_task(
+            session_id=storage_session.id,
+            prompt=message.content,
+            task_coroutine=task_coroutine,
+        )
+        
+        return storage_session.id, task_id
+    
+    try:
+        while True:
+            data = await websocket.receive_text()
+            
+            try:
+                parsed = json.loads(data)
+                msg_type = parsed.get("type", "query")
+                
+                # Handle user_response for AskUserQuestion
+                if msg_type == "user_response":
+                    request_id = parsed.get("request_id")
+                    answers = parsed.get("answers", {})
+                    logger.info(f"[Multiplexed] Received user_response for: {request_id}")
+                    await user_input_handler.receive_user_response(request_id, answers)
+                    continue
+                
+                # Handle permission_response
+                if msg_type == "permission_response":
+                    request_id = parsed.get("request_id")
+                    approved = parsed.get("approved", False)
+                    logger.info(f"[Multiplexed] Received permission_response for: {request_id}")
+                    await user_input_handler.receive_permission_response(request_id, approved)
+                    continue
+                
+                # Handle subscribe request
+                if msg_type == "subscribe":
+                    session_id = parsed.get("session_id")
+                    if session_id and session_id not in subscriptions:
+                        task = asyncio.create_task(subscribe_to_session(session_id))
+                        subscriptions[session_id] = task
+                        logger.info(f"[Multiplexed] Subscribed to session: {session_id}")
+                        
+                        # Mark as viewed when subscribing
+                        task_runner.mark_viewed(session_id)
+                    continue
+                
+                # Handle unsubscribe request
+                if msg_type == "unsubscribe":
+                    session_id = parsed.get("session_id")
+                    if session_id and session_id in subscriptions:
+                        subscriptions[session_id].cancel()
+                        subscriptions.pop(session_id, None)
+                        logger.info(f"[Multiplexed] Unsubscribed from session: {session_id}")
+                    continue
+                
+                # Handle query (start new task)
+                if msg_type == "query":
+                    message = ChatMessage.model_validate(parsed)
+                    session_id = message.session_id
+                    
+                    # Check if session already has a running task
+                    if session_id and task_runner.is_running(session_id):
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": "Session already has a running task",
+                            "metadata": {"session_id": session_id}
+                        })
+                        continue
+                    
+                    try:
+                        actual_session_id, task_id = await start_task_for_session(
+                            session_id or "", message
+                        )
+                        
+                        # Auto-subscribe to the new task
+                        if actual_session_id not in subscriptions:
+                            task = asyncio.create_task(subscribe_to_session(actual_session_id))
+                            subscriptions[actual_session_id] = task
+                        
+                        # Send task started confirmation
+                        await websocket.send_json({
+                            "type": "task_started",
+                            "content": {"task_id": task_id},
+                            "metadata": {"session_id": actual_session_id}
+                        })
+                        
+                    except Exception as e:
+                        logger.error(f"[Multiplexed] Failed to start task: {e}", exc_info=True)
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": str(e),
+                            "metadata": {"session_id": session_id, "error_type": type(e).__name__}
+                        })
+                    continue
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"[Multiplexed] Invalid JSON: {e}")
+                await websocket.send_json({
+                    "type": "error",
+                    "content": f"Invalid JSON: {e}",
+                    "metadata": {}
+                })
+            except Exception as e:
+                logger.error(f"[Multiplexed] Error processing message: {e}", exc_info=True)
+                await websocket.send_json({
+                    "type": "error",
+                    "content": str(e),
+                    "metadata": {"error_type": type(e).__name__}
+                })
+    
+    except WebSocketDisconnect:
+        logger.info("[Multiplexed] WebSocket disconnected by client")
+    except Exception as e:
+        logger.error(f"[Multiplexed] WebSocket error: {e}", exc_info=True)
+    finally:
+        # Cancel all active subscriptions
+        for session_id, task in subscriptions.items():
+            task.cancel()
+        logger.info("[Multiplexed] WebSocket closed, subscriptions cancelled")
+
 
 

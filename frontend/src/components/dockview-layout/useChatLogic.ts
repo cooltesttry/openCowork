@@ -22,7 +22,14 @@ export function useChatLogic() {
         isSessionsLoading, setIsSessionsLoading,
         activeEndpoint, setActiveEndpoint,
         activeModel, setActiveModel,
+        setSessionStatus,
+        getSessionStatus,
     } = useChat();
+
+    // Compute if CURRENT session is processing (for per-session input blocking)
+    const isCurrentSessionProcessing = currentSessionId
+        ? getSessionStatus(currentSessionId).status === 'running'
+        : false;
 
     const inputAreaRef = useRef<InputAreaRef>(null);
     // Refs to track state inside async functions without dependency issues
@@ -64,24 +71,35 @@ export function useChatLogic() {
                 currentSessionIdRef.current = sessionList[0].id;
                 setCurrentSessionId(sessionList[0].id);
             }
+
+            // Load session statuses for running/unread indicators
+            try {
+                const activeStatuses = await sessionsApi.getActiveStatus();
+                for (const [sessionId, status] of Object.entries(activeStatuses)) {
+                    setSessionStatus(sessionId, {
+                        status: status.status,
+                        hasUnread: status.has_unread,
+                        error: status.error || undefined,
+                    });
+                }
+            } catch (statusError) {
+                console.warn('Failed to load session statuses:', statusError);
+            }
         } catch (error) {
             console.error('Failed to load sessions:', error);
         } finally {
             setIsSessionsLoading(false);
         }
-    }, [setSessions, setCurrentSessionId, setMessages, setIsSessionsLoading]);
+    }, [setSessions, setCurrentSessionId, setMessages, setIsSessionsLoading, setSessionStatus]);
 
     // Load messages for a specific session
     const loadSessionMessages = useCallback(async (sessionId: string) => {
         try {
             const session = await sessionsApi.get(sessionId);
 
-            // Critical fix: If we are currently processing a message for THIS session,
-            // DO NOT overwrite the messages with backend data, as local state is fresher (streaming).
-            if (isProcessingRef.current && sessionId === currentSessionIdRef.current) {
-                console.log('Skipping loadSessionMessages because we are processing this session');
-                return;
-            }
+            // Note: We always load messages now, even for running sessions.
+            // For running sessions, this shows historical messages.
+            // Live streaming updates for running sessions require the /ws/multiplexed endpoint.
 
             const msgs: Message[] = session.messages.map((m: any, mIndex: number) => {
                 let blocks: MessageBlock[] | undefined = undefined;
@@ -337,6 +355,14 @@ export function useChatLogic() {
         setMessages((prev) => [...prev, userMessage]);
         setSteps([]);
         setIsProcessing(true);
+
+        // Update session status to running
+        if (currentSessionIdRef.current) {
+            setSessionStatus(currentSessionIdRef.current, {
+                status: 'running',
+                hasUnread: false,
+            });
+        }
 
         const assistantMessageId = crypto.randomUUID();
         const thinkingPlaceholderId = `thinking-placeholder-${assistantMessageId}`;
@@ -758,6 +784,13 @@ export function useChatLogic() {
 
                     case 'done': {
                         setIsProcessing(false);
+                        // Update session status to idle (task completed)
+                        if (currentSessionIdRef.current) {
+                            setSessionStatus(currentSessionIdRef.current, {
+                                status: 'idle',
+                                hasUnread: false,
+                            });
+                        }
                         loadSessions();
                         setMessages((prev) =>
                             prev.map((msg) => {
@@ -845,6 +878,15 @@ export function useChatLogic() {
 
                     case 'error': {
                         setIsProcessing(false);
+                        // Update session status to error
+                        if (currentSessionIdRef.current) {
+                            const errorMsg = event.content?.message || 'An error occurred';
+                            setSessionStatus(currentSessionIdRef.current, {
+                                status: 'error',
+                                hasUnread: false,
+                                error: errorMsg,
+                            });
+                        }
                         const errorMessage = event.content?.message || 'An error occurred';
                         toast.error('Error', { description: errorMessage });
 
@@ -872,6 +914,7 @@ export function useChatLogic() {
         // State
         messages,
         isProcessing,
+        isCurrentSessionProcessing, // Per-session processing state
         securityMode,
         slashCommands,
         inputAreaRef,

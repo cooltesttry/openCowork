@@ -20,9 +20,14 @@ interface ChatPanelContentProps {
 }
 
 export function ChatPanelContent({ params }: ChatPanelContentProps) {
-    const { messages, isProcessing } = useChat();
+    const { messages, currentSessionId, getSessionStatus } = useChat();
     const localInputRef = useRef<InputAreaRef>(null);
     const inputRef = params?.inputAreaRef || localInputRef;
+
+    // Per-session processing check - only disable input if CURRENT session is running
+    const isCurrentSessionProcessing = currentSessionId
+        ? getSessionStatus(currentSessionId).status === 'running'
+        : false;
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
@@ -41,7 +46,7 @@ export function ChatPanelContent({ params }: ChatPanelContentProps) {
                 <InputArea
                     ref={inputRef}
                     onSend={params?.onSend || (() => { })}
-                    disabled={isProcessing}
+                    disabled={isCurrentSessionProcessing}
                     securityMode={params?.securityMode || 'bypassPermissions'}
                     onSecurityModeChange={params?.onSecurityModeChange || (() => { })}
                 />
