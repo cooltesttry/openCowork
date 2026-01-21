@@ -141,4 +141,18 @@ export const sessionsApi = {
         }
         return response.json();
     },
+
+    /**
+     * Interrupt a running session.
+     * Cancels the current task and updates status.
+     */
+    async interrupt(id: string): Promise<{ success: boolean; message: string }> {
+        const response = await fetch(`${API_BASE}/sessions/${id}/interrupt`, {
+            method: 'POST',
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to interrupt session: ${response.statusText}`);
+        }
+        return response.json();
+    },
 };

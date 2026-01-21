@@ -159,3 +159,20 @@ async def get_session_events(session_id: str):
         "error": execution.error if execution else None,
     }
 
+
+@router.post("/sessions/{session_id}/interrupt")
+async def interrupt_session(session_id: str):
+    """
+    Interrupt a running session.
+    
+    Cancels the current task and updates status.
+    Returns success status.
+    """
+    success = await task_runner.interrupt_session(session_id)
+    
+    if not success:
+        # Not an error - just no running task to interrupt
+        return {"success": False, "message": "No running task to interrupt"}
+    
+    return {"success": True, "message": "Session interrupted"}
+

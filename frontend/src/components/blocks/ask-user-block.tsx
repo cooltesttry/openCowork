@@ -42,8 +42,9 @@ export function AskUserBlock({ block, onSubmit, onSkip }: AskUserBlockProps) {
     console.log('[AskUserBlock] rawQuestions type:', typeof rawQuestions, 'isArray:', Array.isArray(rawQuestions));
     console.log('[AskUserBlock] questions.length:', questions.length);
 
-    // Check if already answered (from history)
-    const savedAnswers = content?.result;
+    // Check if already answered (from history or from ask_user_result event processing)
+    // Answer can be in content.result (string format from tool_result) or metadata.answers (object from ask_user_result)
+    const savedAnswers = content?.result || (block.metadata as Record<string, unknown>)?.answers;
     // Detect skipped: status is error, OR is_error flag is true, OR result indicates no answer
     const isSkipped = status === 'error' || content?.is_error === true ||
         (typeof savedAnswers === 'string' && savedAnswers.includes('did not provide'));

@@ -15,7 +15,8 @@ import { IDockviewPanelProps } from "dockview";
 
 import { CustomVideoRenderer, CustomImageRenderer, CustomMarkdownRenderer, CustomRTFRenderer } from "../file-explorer/preview-renderers";
 
-import { Pencil } from 'lucide-react';
+import { Pencil, ExternalLink } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface FilePreviewPanelProps extends IDockviewPanelProps {
     params: {
@@ -86,6 +87,31 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
         return urlParams.get('path') || '';
     };
 
+    // Open file with system default application
+    const openWithDefaultApp = async () => {
+        const filePath = getFilePath();
+        if (!filePath) return;
+
+        try {
+            const res = await fetch('http://localhost:8000/api/files/open', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: filePath }),
+            });
+
+            if (!res.ok) {
+                const error = await res.json();
+                toast.error(`打开失败: ${error.detail || '未知错误'}`);
+                return;
+            }
+
+            toast.success(`已打开: ${fileName}`);
+        } catch (err) {
+            console.error('Open failed:', err);
+            toast.error('打开失败');
+        }
+    };
+
     // Fetch content for text files
     useEffect(() => {
         if (!shouldFetchContent || !currentDoc) return;
@@ -133,36 +159,50 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
 
     const ext = currentDoc.fileType?.toLowerCase();
 
+    // Check if we're displaying inline HTML content (no file, just HTML code)
+    const isInlineHtml = Boolean(currentDoc.htmlContent);
+
     // Render based on file type (same logic as popup)
     return (
         <Container className="flex flex-col h-full">
-            {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
-                <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                    <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 truncate">
-                        {fileName}
-                    </span>
-                    {isEditable && params.onOpenInEditor && (
+            {/* Header - hide when displaying inline HTML content */}
+            {!isInlineHtml && (
+                <div className="flex items-center justify-between px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                        <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 truncate">
+                            {fileName}
+                        </span>
+                        {/* Open button - always visible */}
                         <button
-                            onClick={() => {
-                                const filePath = getFilePath();
-                                if (filePath) {
-                                    params.onOpenInEditor!(filePath, fileName);
-                                }
-                            }}
-                            className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 shrink-0"
-                            title="Open in Editor"
+                            onClick={openWithDefaultApp}
+                            className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors text-zinc-500 dark:text-zinc-400 hover:text-green-600 dark:hover:text-green-400 shrink-0"
+                            title="Open with default app"
                         >
-                            <Pencil className="h-3.5 w-3.5" />
+                            <ExternalLink className="h-3.5 w-3.5" />
                         </button>
+                        {/* Edit button - conditional */}
+                        {isEditable && params.onOpenInEditor && (
+                            <button
+                                onClick={() => {
+                                    const filePath = getFilePath();
+                                    if (filePath) {
+                                        params.onOpenInEditor!(filePath, fileName);
+                                    }
+                                }}
+                                className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 shrink-0"
+                                title="Open in Editor"
+                            >
+                                <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                    </div>
+                    {currentDoc.size !== undefined && (
+                        <span className="text-xs text-zinc-400 shrink-0">
+                            {formatBytes(currentDoc.size)}
+                        </span>
                     )}
                 </div>
-                {currentDoc.size !== undefined && (
-                    <span className="text-xs text-zinc-400 shrink-0">
-                        {formatBytes(currentDoc.size)}
-                    </span>
-                )}
-            </div>
+            )}
 
             {/* Content */}
             <div className="flex-1 overflow-auto bg-zinc-50 dark:bg-zinc-900 relative">
@@ -226,7 +266,7 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
                         </div>
                     );
                 })() : isDocViewerType ? (
-                    <div className="h-full overflow-hidden">
+                    <div className="h-full overflow-auto">
                         <DocViewer
                             documents={docs}
                             pluginRenderers={[CustomVideoRenderer, CustomImageRenderer, CustomMarkdownRenderer, CustomRTFRenderer, ...DocViewerRenderers]}

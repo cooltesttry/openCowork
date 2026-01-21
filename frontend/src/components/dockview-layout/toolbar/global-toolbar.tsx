@@ -1,7 +1,6 @@
 'use client';
 
 import { useChat } from '@/lib/store';
-import { ModelSelector } from '@/components/chat/model-selector';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { PanelRightClose, PanelRightOpen, Settings } from 'lucide-react';
@@ -20,10 +19,8 @@ export function GlobalToolbar() {
                 />
             </div>
 
-            {/* Model Selector - Center */}
-            <div className="flex-1 flex justify-center">
-                <ModelSelector />
-            </div>
+            {/* Center spacer */}
+            <div className="flex-1" />
 
             <div className="flex items-center gap-2">
                 <div className="flex items-center gap-2 mr-4">

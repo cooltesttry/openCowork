@@ -11,7 +11,7 @@ import { ToolsPanelContent } from './panels/tools-panel';
 import { EditorPanel } from '../panels/editor-panel';
 import { TerminalPanel } from '../panels/terminal-panel';
 import { FilePreviewPanel } from '../panels/file-preview-panel';
-import { WebContainerPanel } from '../panels/webcontainer-panel';
+
 import { useChatLogic } from './useChatLogic';
 import { Toaster, toast } from 'sonner';
 import type { SecurityMode } from '@/components/chat/input-area';
@@ -23,7 +23,7 @@ const components = {
     editor: EditorPanel,
     terminal: TerminalPanel,
     files: FilePreviewPanel,
-    web: WebContainerPanel,
+
 };
 
 const SESSION_PANEL_WIDTH = 238;
@@ -42,6 +42,9 @@ export function DockviewMain() {
     useEffect(() => {
         chatLogicRef.current = chatLogic;
     }, [chatLogic]);
+
+    // Ref for Dockview container
+    const containerRef = useRef<HTMLDivElement>(null);
 
     const handleNewSession = useCallback(() => {
         chatLogicRef.current?.handleNewSession();
@@ -73,6 +76,10 @@ export function DockviewMain() {
 
     const handleSecurityModeChange = useCallback((mode: SecurityMode) => {
         chatLogicRef.current?.setSecurityMode(mode);
+    }, []);
+
+    const handleInterrupt = useCallback(() => {
+        chatLogicRef.current?.handleInterrupt();
     }, []);
 
     const handleMentionFile = useCallback((path: string) => {
@@ -335,6 +342,7 @@ export function DockviewMain() {
                 onPermissionResponse: handlePermissionResponse,
                 onAskUserSubmit: handleAskUserSubmit,
                 onAskUserSkip: handleAskUserSkip,
+                onInterrupt: handleInterrupt,
                 securityMode: chatLogic.securityMode,
                 onSecurityModeChange: handleSecurityModeChange,
                 inputAreaRef: chatLogic.inputAreaRef,
@@ -376,12 +384,6 @@ export function DockviewMain() {
                 params: {
                     onOpenInEditor: handleOpenInEditor,
                 }
-            });
-            api.addPanel({
-                id: 'web-panel',
-                component: 'web',
-                title: 'Web Container',
-                position: { referencePanel: editorPanel, direction: 'within' },
             });
 
             // Activate the Editor tab by default
@@ -533,7 +535,8 @@ export function DockviewMain() {
             <GlobalToolbar />
 
             {/* Dockview Layout with theme support */}
-            <div className="flex-1">
+            {/* min-h-0 is critical: allows flex item to shrink below content's intrinsic size */}
+            <div ref={containerRef} className="flex-1 min-h-0 overflow-hidden">
                 <div className="h-full w-full">
                     <style jsx global>{`
             /* Increase specificity to override library defaults without !important */

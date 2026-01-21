@@ -43,6 +43,23 @@ export function useChatLogic() {
         isProcessingRef.current = isProcessing;
     }, [isProcessing]);
 
+    // ============= UNIFIED EVENT PROCESSING STATE =============
+    // This state is shared between handleSend and session resume to ensure identical behavior
+    interface CurrentTurnState {
+        sessionId: string;
+        assistantMessageId: string;
+        activeToolCalls: Map<string, string>;    // toolCallId -> blockId
+        toolBlocksInOrder: string[];             // For result matching fallback
+        currentTextBlockId: string | null;
+        currentThinkingBlockId: string | null;
+        hasReceivedStreamingText: boolean;
+        hasReceivedStreamingThinking: boolean;
+        hasRemovedThinkingPlaceholder: boolean;
+        thinkingPlaceholderId: string;
+    }
+    const currentTurnStateRef = useRef<CurrentTurnState | null>(null);
+    // ============= END UNIFIED EVENT PROCESSING STATE =============
+
     const [askUserRequest, setAskUserRequest] = useState<AskUserContent | null>(null);
     const [securityMode, setSecurityMode] = useState<SecurityMode>('bypassPermissions');
     const [slashCommands, setSlashCommands] = useState<{ command: string; description: string }[]>([]);
@@ -54,7 +71,7 @@ export function useChatLogic() {
     // It does NOT change session during normal operations to avoid conflicts with user actions
     const loadSessions = useCallback(async () => {
         const startSessionId = currentSessionIdRef.current;
-        console.log('[loadSessions] Called, startSessionId:', startSessionId);
+        // console.log('[loadSessions] Called, startSessionId:', startSessionId);
         try {
             setIsSessionsLoading(true);
             const sessionList = await sessionsApi.list();
@@ -63,11 +80,11 @@ export function useChatLogic() {
             // Re-read ref AFTER async call to get the latest value
             // User may have switched sessions while we were waiting for the API
             const currentActiveId = currentSessionIdRef.current;
-            console.log('[loadSessions] After API: currentActiveId:', currentActiveId, 'sessionList length:', sessionList.length);
+            // console.log('[loadSessions] After API: currentActiveId:', currentActiveId, 'sessionList length:', sessionList.length);
 
             if (currentActiveId) {
                 const sessionExists = sessionList.some((s: { id: string }) => s.id === currentActiveId);
-                console.log('[loadSessions] sessionExists:', sessionExists);
+                // console.log('[loadSessions] sessionExists:', sessionExists);
                 if (!sessionExists) {
                     // Session was deleted, select first available
                     console.warn(`[loadSessions] Session ${currentActiveId} no longer exists, resetting...`);
@@ -79,7 +96,7 @@ export function useChatLogic() {
                 // If session exists, do NOT modify currentSessionId - user may have switched
             } else if (sessionList.length > 0 && !currentActiveId) {
                 // Initial load - no session selected, pick the first one
-                console.log('[loadSessions] No active session, setting to first:', sessionList[0].id);
+                // console.log('[loadSessions] No active session, setting to first:', sessionList[0].id);
                 currentSessionIdRef.current = sessionList[0].id;
                 setCurrentSessionId(sessionList[0].id);
             }
@@ -181,6 +198,7 @@ export function useChatLogic() {
     interface ResumeSessionState {
         sessionId: string;
         assistantMessageId: string;
+        processedEventCount: number;  // Track how many events have been processed to avoid duplication
     }
     const resumeSessionStateRef = useRef<ResumeSessionState | null>(null);
 
@@ -200,8 +218,8 @@ export function useChatLogic() {
 
         // Handle status events (done/error) for ALL sessions
         if (event.type === 'done') {
-            console.log(`[handleGlobalEvent] Done event for ${sessionId}`);
-            console.log(`[handleGlobalEvent] isCurrentSession: ${isCurrentSession}`);
+            // console.log(`[handleGlobalEvent] Done event for ${sessionId}`);
+            // console.log(`[handleGlobalEvent] isCurrentSession: ${isCurrentSession}`);
             // Clear resume state when done
             if (isResumedSession) {
                 resumeSessionStateRef.current = null;
@@ -226,7 +244,7 @@ export function useChatLogic() {
             loadSessions();
             return;
         } else if (event.type === 'error') {
-            console.log(`[handleGlobalEvent] Error event for ${sessionId}`);
+            // console.log(`[handleGlobalEvent] Error event for ${sessionId}`);
             // Clear resume state on error
             if (isResumedSession) {
                 resumeSessionStateRef.current = null;
@@ -242,16 +260,42 @@ export function useChatLogic() {
             return;
         }
 
-        // For resumed sessions, process content events by refetching all events
-        // This ensures the UI stays in sync with the backend state
-        if (isResumedSession && isCurrentSession) {
-            console.log(`[handleGlobalEvent] Content event for resumed session: ${sessionId}, refetching...`);
+        // For resumed sessions, process only NEW events (beyond what we've already processed)
+        // This prevents duplication from rebuilding on every event
+        if (isResumedSession && isCurrentSession && resumeSessionStateRef.current) {
+            // console.log(`[handleGlobalEvent] Content event for resumed session: ${sessionId}, fetching new events...`);
             sessionsApi.getEvents(sessionId).then(eventsData => {
-                if (eventsData.events && eventsData.events.length > 0) {
-                    appendCurrentTurnFromEventsRef.current(eventsData.events, sessionId);
+                // IMPORTANT: Re-check if this session is still the current one after async fetch
+                // User may have switched sessions while fetch was in progress
+                if (currentSessionIdRef.current !== sessionId) {
+                    // console.log(`[handleGlobalEvent] Session ${sessionId} no longer current, skipping update`);
+                    return;
+                }
+                // Also check if resume state is still valid for this session
+                if (resumeSessionStateRef.current?.sessionId !== sessionId) {
+                    return;
+                }
+
+                const allEvents = eventsData.events || [];
+                const processedCount = resumeSessionStateRef.current?.processedEventCount || 0;
+
+                // Only process new events
+                if (allEvents.length > processedCount) {
+                    // console.log(`[handleGlobalEvent] Processing ${allEvents.length - processedCount} new events (total: ${allEvents.length}, processed: ${processedCount})`);
+
+                    // Update the entire message with all events (including new ones)
+                    appendCurrentTurnFromEventsRef.current(allEvents, sessionId);
+
+                    // Update processed count
+                    if (resumeSessionStateRef.current) {
+                        resumeSessionStateRef.current.processedEventCount = allEvents.length;
+                    }
                 }
             }).catch(err => {
-                console.error(`[handleGlobalEvent] Failed to fetch events for ${sessionId}:`, err);
+                // Silently ignore errors if session is no longer current (user switched away)
+                if (currentSessionIdRef.current === sessionId) {
+                    console.error(`[handleGlobalEvent] Failed to fetch events for ${sessionId}:`, err);
+                }
             });
         }
     }, [setSessionStatus, setIsProcessing, setMessages, loadSessions]);
@@ -404,6 +448,8 @@ export function useChatLogic() {
     // Append current turn events to existing messages (for running sessions)
     // This is called AFTER loadSessionMessages, so history is already loaded
     const appendCurrentTurnFromEvents = useCallback((events: unknown[], sessionId: string) => {
+        console.log(`[appendCurrentTurnFromEvents] CALLED! sessionId=${sessionId}, events=${events?.length}`);
+        // console.trace('[appendCurrentTurnFromEvents] Call stack');
         if (!events || events.length === 0) return;
 
         // Use stable ID without timestamp - this is crucial for avoiding duplicate keys
@@ -421,8 +467,27 @@ export function useChatLogic() {
 
         for (const event of events as Array<{ type: string; content?: unknown; id?: string; metadata?: Record<string, unknown> }>) {
             switch (event.type) {
-                case 'text':
+                case 'text': {
+                    // Complete text event - REPLACE accumulated content (not accumulate)
+                    // This avoids double content when both text and text_delta are in cache
+                    const newContent = (event.content as string) || '';
+                    textContent = newContent;  // Replace, not accumulate
+                    // Update or create text block
+                    if (textBlockIndex >= 0 && blocks[textBlockIndex]) {
+                        blocks[textBlockIndex].content = textContent;
+                    } else {
+                        textBlockIndex = blocks.length;
+                        blocks.push({
+                            id: `text-${assistantMessageId}-${blocks.length}`,
+                            type: 'text',
+                            content: textContent,
+                            status: 'success',  // Complete text, not streaming
+                        });
+                    }
+                    break;
+                }
                 case 'text_delta': {
+                    // Incremental text delta - accumulate content
                     const delta = (event.content as string) || '';
                     textContent += delta;
                     // Update or create text block at current position
@@ -590,7 +655,7 @@ export function useChatLogic() {
                     break;
                 }
                 case 'ask_user': {
-                    // Handle ask_user events - must have pending status for buttons to work
+                    // Handle ask_user events - initially pending, will be updated by ask_user_result
                     const askContent = event.content as { request_id?: string; questions?: unknown[]; timeout?: number };
                     const requestId = askContent?.request_id || event.id || `ask-user-${blocks.length}`;
                     blocks.push({
@@ -602,11 +667,76 @@ export function useChatLogic() {
                                 timeout: askContent?.timeout || 60,
                             },
                         },
-                        status: 'pending',  // Must be pending for interactive form to show
+                        status: 'pending',  // Will be updated by ask_user_result
                         metadata: {
                             requestId: requestId,
                         },
                     });
+                    break;
+                }
+                case 'ask_user_result': {
+                    // Handle ask_user_result - update the corresponding ask_user block status
+                    const resultContent = event.content as { request_id?: string; status?: string; answers?: Record<string, unknown> };
+                    const requestId = resultContent?.request_id;
+                    if (requestId) {
+                        const askBlockIndex = blocks.findIndex(b => b.id === `ask-user-${requestId}`);
+                        if (askBlockIndex >= 0) {
+                            const status = resultContent?.status;
+                            // Update block status based on result
+                            if (status === 'answered') {
+                                blocks[askBlockIndex].status = 'success';
+                                // Store answers in metadata for display
+                                blocks[askBlockIndex].metadata = {
+                                    ...blocks[askBlockIndex].metadata,
+                                    answers: resultContent?.answers as Record<string, string> | undefined,
+                                };
+                            } else if (status === 'timeout') {
+                                blocks[askBlockIndex].status = 'error';
+                            } else if (status === 'skipped') {
+                                blocks[askBlockIndex].status = 'success';
+                            }
+                        }
+                    }
+                    break;
+                }
+                case 'permission_request': {
+                    // Handle permission_request events from backend cache
+                    const permContent = event.content as { request_id?: string; tool_name?: string; input?: unknown };
+                    const requestId = permContent?.request_id || event.id || `perm-${blocks.length}`;
+                    blocks.push({
+                        id: `permission-${requestId}`,
+                        type: 'tool_use',
+                        content: {
+                            name: permContent?.tool_name || 'Unknown Tool',
+                            input: permContent?.input,
+                            description: `Tool "${permContent?.tool_name}" is requesting permission to execute`,
+                        },
+                        status: 'pending',  // Will be updated by permission_response
+                        metadata: {
+                            requestId: requestId,
+                            toolName: permContent?.tool_name,
+                            requiresPermission: true,
+                        },
+                    });
+                    break;
+                }
+                case 'permission_response': {
+                    // Handle permission_response - update corresponding permission_request block
+                    const respContent = event.content as { request_id?: string; allowed?: boolean };
+                    const requestId = respContent?.request_id;
+                    if (requestId) {
+                        const permBlockIndex = blocks.findIndex(b => b.id === `permission-${requestId}`);
+                        if (permBlockIndex >= 0) {
+                            const allowed = respContent?.allowed;
+                            blocks[permBlockIndex].status = allowed ? 'success' : 'error';
+                            // Update metadata to reflect response
+                            blocks[permBlockIndex].metadata = {
+                                ...blocks[permBlockIndex].metadata,
+                                allowed: allowed,
+                                requiresPermission: false,  // No longer pending
+                            };
+                        }
+                    }
                     break;
                 }
             }
@@ -625,6 +755,13 @@ export function useChatLogic() {
         setMessages(prev => {
             // Check if we already have a current-turn message for this session
             const existingIndex = prev.findIndex(m => m.id.startsWith(`current-turn-${sessionId}`));
+
+            // Debug: log what blocks are being created
+            const askUserBlocks = blocks.filter(b => b.type === 'ask_user');
+            if (askUserBlocks.length > 0) {
+                console.log(`[appendCurrentTurnFromEvents] Creating ${askUserBlocks.length} ask_user blocks:`, askUserBlocks.map(b => ({ id: b.id, status: b.status })));
+            }
+
             if (existingIndex >= 0) {
                 const newPrev = [...prev];
                 newPrev[existingIndex] = assistantMessage;
@@ -642,7 +779,7 @@ export function useChatLogic() {
 
     // Recover all running sessions - subscribe to their events
     const recoverAllSessions = useCallback(async () => {
-        console.log('[useChatLogic] Recovering all session states...');
+        // console.log('[useChatLogic] Recovering all session states...');
 
         try {
             // 1. Get all session statuses
@@ -658,7 +795,7 @@ export function useChatLogic() {
 
                 // Subscribe to running sessions
                 if (status.status === 'running') {
-                    console.log(`[useChatLogic] Subscribing to running session: ${sessionId}`);
+                    // console.log(`[useChatLogic] Subscribing to running session: ${sessionId}`);
                     sessionClient.subscribe(sessionId, handleGlobalEvent);
                 }
             }
@@ -668,7 +805,7 @@ export function useChatLogic() {
             if (currentId) {
                 const currentStatus = activeStatuses[currentId];
                 if (currentStatus?.status === 'running') {
-                    console.log(`[useChatLogic] Loading events for current running session: ${currentId}`);
+                    // console.log(`[useChatLogic] Loading events for current running session: ${currentId}`);
                     const eventsData = await sessionsApi.getEvents(currentId);
                     if (eventsData.events && eventsData.events.length > 0) {
                         rebuildMessagesFromEvents(eventsData.events, currentId);
@@ -676,7 +813,7 @@ export function useChatLogic() {
                 }
             }
 
-            console.log('[useChatLogic] Recovery complete');
+            // console.log('[useChatLogic] Recovery complete');
         } catch (err) {
             console.error('[useChatLogic] Recovery failed:', err);
         }
@@ -701,7 +838,7 @@ export function useChatLogic() {
 
         // Set reconnect callback
         sessionClient.setOnReconnect(() => {
-            console.log('[useChatLogic] WebSocket reconnected, recovering sessions...');
+            // console.log('[useChatLogic] WebSocket reconnected, recovering sessions...');
             recoverAllSessions();
         });
 
@@ -719,7 +856,7 @@ export function useChatLogic() {
             const status = getSessionStatus(currentSessionId);
             // Skip if running session - handleSelectSession handles these
             if (status.status === 'running') {
-                console.log(`[useEffect] Session ${currentSessionId} is running, skipping loadSessionMessages (handled by handleSelectSession)`);
+                // console.log(`[useEffect] Session ${currentSessionId} is running, skipping loadSessionMessages (handled by handleSelectSession)`);
                 return;
             }
             loadSessionMessages(currentSessionId);
@@ -747,31 +884,34 @@ export function useChatLogic() {
     // and avoid re-render cascades when currentSessionId state changes
     const handleSelectSession = useCallback(async (id: string) => {
         const currentId = currentSessionIdRef.current;
-        console.log(`[handleSelectSession] Called with id: ${id}, currentSessionIdRef.current: ${currentId}`);
+        // console.log(`[handleSelectSession] Called with id: ${id}, currentSessionIdRef.current: ${currentId}`);
 
         if (id !== currentId) {
-            console.log(`[handleSelectSession] Switching from ${currentId} to ${id}`);
+            // console.log(`[handleSelectSession] Switching from ${currentId} to ${id}`);
 
             // Only unsubscribe from previous session if it's NOT running
             // Running sessions should stay subscribed to receive done/error events
+            // and content updates (but content will be filtered by isCurrentSession check)
             if (currentId) {
                 const prevStatus = getSessionStatus(currentId);
-                console.log(`[handleSelectSession] Previous session status:`, prevStatus);
                 if (prevStatus.status !== 'running') {
                     sessionClient.unsubscribe(currentId);
-                    console.log(`[handleSelectSession] Unsubscribed from ${currentId}`);
+                }
+                // Always clear resume state for the old session
+                if (resumeSessionStateRef.current?.sessionId === currentId) {
+                    resumeSessionStateRef.current = null;
                 }
             }
 
-            console.log(`[handleSelectSession] Setting currentSessionIdRef.current = ${id}`);
+            // console.log(`[handleSelectSession] Setting currentSessionIdRef.current = ${id}`);
             currentSessionIdRef.current = id;
-            console.log(`[handleSelectSession] Calling setCurrentSessionId(${id})`);
+            // console.log(`[handleSelectSession] Calling setCurrentSessionId(${id})`);
             setCurrentSessionId(id);
             setSteps([]);
 
             // Check session status
             const sessionStatus = getSessionStatus(id);
-            console.log(`[handleSelectSession] New session status:`, sessionStatus);
+            // console.log(`[handleSelectSession] New session status:`, sessionStatus);
 
             // Clear unread status when user selects this session
             if (sessionStatus.hasUnread) {
@@ -786,17 +926,17 @@ export function useChatLogic() {
             }
 
             // Step 1: Load historical messages first (await to prevent race condition)
-            console.log(`[handleSelectSession] Loading history for session: ${id}`);
+            // console.log(`[handleSelectSession] Loading history for session: ${id}`);
             await loadSessionMessages(id);
 
             // Step 2: If running, append current turn events and subscribe
             if (sessionStatus.status === 'running') {
-                console.log(`[handleSelectSession] Session is running, loading current turn events...`);
+                // console.log(`[handleSelectSession] Session is running, loading current turn events...`);
 
                 try {
                     // Get cached events from backend (current turn only)
                     const eventsData = await sessionsApi.getEvents(id);
-                    console.log(`[handleSelectSession] Got ${eventsData.events?.length || 0} current turn events`);
+                    // console.log(`[handleSelectSession] Got ${eventsData.events?.length || 0} current turn events`);
 
                     // Append current turn to messages (not replace) - this does the "fast-forward"
                     if (eventsData.events && eventsData.events.length > 0) {
@@ -807,11 +947,12 @@ export function useChatLogic() {
                     resumeSessionStateRef.current = {
                         sessionId: id,
                         assistantMessageId: `current-turn-${id}`,  // Prefix used by appendCurrentTurnFromEvents
+                        processedEventCount: eventsData.events?.length || 0,  // Track how many events we've processed
                     };
 
                     // Step 4: Subscribe for live updates using global handler
                     sessionClient.subscribe(id, handleGlobalEvent);
-                    console.log(`[handleSelectSession] Subscribed for live updates: ${id}`);
+                    // console.log(`[handleSelectSession] Subscribed for live updates: ${id}`);
                 } catch (err) {
                     console.error(`[handleSelectSession] Failed to load events for session ${id}:`, err);
                 }
@@ -819,7 +960,7 @@ export function useChatLogic() {
 
             setTimeout(() => inputAreaRef.current?.focus(), 100);
         } else {
-            console.log(`[handleSelectSession] Same session, skipping`);
+            // console.log(`[handleSelectSession] Same session, skipping`);
         }
     }, [setCurrentSessionId, setSteps, getSessionStatus, setSessionStatus, loadSessionMessages, appendCurrentTurnFromEvents, handleGlobalEvent, currentSessionIdRef]);
 
@@ -982,10 +1123,51 @@ export function useChatLogic() {
         setAskUserRequest(null);
     }, [setMessages]);
 
+    // Interrupt a running session
+    const handleInterrupt = useCallback(async () => {
+        const sessionId = currentSessionIdRef.current;
+        if (!sessionId) {
+            toast.warning('No active session to interrupt');
+            return;
+        }
+
+        const status = getSessionStatus(sessionId);
+        if (status.status !== 'running') {
+            toast.warning('Session is not running');
+            return;
+        }
+
+        try {
+            const result = await sessionsApi.interrupt(sessionId);
+            if (result.success) {
+                // Update session status to idle
+                setSessionStatus(sessionId, { status: 'idle', hasUnread: false });
+                setIsProcessing(false);
+
+                // Mark the current turn message as not streaming
+                setMessages(prev => prev.map(msg =>
+                    msg.id.startsWith(`current-turn-${sessionId}`)
+                        ? { ...msg, isStreaming: false }
+                        : msg
+                ));
+
+                toast.info('Session interrupted');
+            } else {
+                toast.warning(result.message || 'No running task to interrupt');
+            }
+        } catch (error: unknown) {
+            console.error('Failed to interrupt session:', error);
+            toast.error('Failed to interrupt session');
+        }
+    }, [getSessionStatus, setSessionStatus, setIsProcessing, setMessages]);
+
     // Main send handler with FULL WebSocket event handling
     const handleSend = async (content: string) => {
         // Use per-session processing check to allow concurrent sessions
-        if (isCurrentSessionProcessing) return;
+        if (isCurrentSessionProcessing) {
+            toast.warning('Session is still running. Press Stop to interrupt first.');
+            return;
+        }
 
         // Capture the original session ID at send time
         // This is used to detect new session creation vs background session events
@@ -1072,7 +1254,7 @@ export function useChatLogic() {
                 // This prevents pulling user back to a background session
                 if (eventSessionId && !originalSessionId && currentSessionIdRef.current !== eventSessionId) {
                     // This is a newly created session - sync the ID
-                    console.log(`[handleSend] New session created: ${eventSessionId}`);
+                    // console.log(`[handleSend] New session created: ${eventSessionId}`);
                     currentSessionIdRef.current = eventSessionId;
                     setCurrentSessionId(eventSessionId);
                     // Refresh the session list in background to show the new item
@@ -1339,10 +1521,10 @@ export function useChatLogic() {
                     }
 
                     case 'tool_input_delta': {
-                        console.log('[tool_input_delta] Event received:', event);
+                        // console.log('[tool_input_delta] Event received:', event);
                         // Find the streaming tool block by event.id
                         const toolBlockId = event.id ? activeToolCalls.get(event.id) : null;
-                        console.log('[tool_input_delta] Looking for block:', event.id, '→', toolBlockId);
+                        // console.log('[tool_input_delta] Looking for block:', event.id, '→', toolBlockId);
                         if (toolBlockId && event.content) {
                             // Append partial JSON to the input buffer for display
                             setMessages((prev) =>
@@ -1527,9 +1709,9 @@ export function useChatLogic() {
 
                     case 'ask_user': {
                         const content = event.content as AskUserContent;
-                        console.log('[ask_user] Event received:', event);
-                        console.log('[ask_user] Content:', content);
-                        console.log('[ask_user] Questions:', content?.questions);
+                        // console.log('[ask_user] Event received:', event);
+                        // console.log('[ask_user] Content:', content);
+                        // console.log('[ask_user] Questions:', content?.questions);
                         const askUserBlockId = `ask-user-${content.request_id}`;
                         const askUserBlock: MessageBlock = {
                             id: askUserBlockId,
@@ -1642,6 +1824,7 @@ export function useChatLogic() {
         handleSelectSession,
         handleDeleteSession,
         handleSend,
+        handleInterrupt,
         handlePermissionResponse,
         handleAskUserSubmit,
         handleAskUserSkip,

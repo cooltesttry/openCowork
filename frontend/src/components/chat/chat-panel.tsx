@@ -8,7 +8,6 @@ import { MessageList } from "./message-list";
 import { InputArea, InputAreaRef, SecurityMode } from "./input-area";
 import { McpSidebarPanel } from "./mcp-sidebar-panel";
 import { SessionSidebar, SessionSidebarToggle } from "./session-sidebar-new";
-import { ModelSelector } from "./model-selector";
 import { AskUserDialog } from "./ask-user-dialog";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Button } from "@/components/ui/button";
@@ -891,10 +890,8 @@ export function ChatPanel() {
                                     />
                                 </div>
 
-                                {/* Model Selector - Center */}
-                                <div className="flex-1 flex justify-center">
-                                    <ModelSelector />
-                                </div>
+                                {/* Center spacer */}
+                                <div className="flex-1" />
 
                                 <div className="flex items-center gap-2">
                                     <div className="flex items-center gap-2 mr-4">
@@ -931,7 +928,7 @@ export function ChatPanel() {
                                 <InputArea
                                     ref={inputAreaRef}
                                     onSend={handleSend}
-                                    disabled={isProcessing}
+                                    isRunning={isProcessing}
                                     securityMode={securityMode}
                                     onSecurityModeChange={setSecurityMode}
                                     slashCommands={slashCommands.length > 0 ? slashCommands : undefined}

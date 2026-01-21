@@ -6,6 +6,6 @@
   "started_at": "2026-01-20T10:24:22.535067Z",
   "completed_at": "2026-01-20T10:25:33.795123Z",
   "error": null,
-  "was_viewed": false,
+  "was_viewed": true,
   "event_count": 2441
 }

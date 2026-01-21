@@ -358,6 +358,61 @@ class TaskRunner:
             return state.events.copy()
         return []
     
+    async def interrupt_session(self, session_id: str) -> bool:
+        """
+        Interrupt a running task for a session.
+        
+        Uses SDK's official interrupt() method for graceful interruption.
+        This preserves session state and allows proper cleanup.
+        
+        Returns:
+            True if a task was interrupted, False if no running task.
+        """
+        async with self._lock:
+            state = self._sessions.get(session_id)
+            if not state or not state.execution:
+                return False
+            
+            if state.execution.status != "running":
+                return False
+            
+            # Use SDK's official interrupt() method via session_manager
+            from core.session_manager import session_manager
+            sdk_interrupted = await session_manager.interrupt_session(session_id)
+            
+            if sdk_interrupted:
+                logger.info(f"[TaskRunner] SDK interrupt sent for session {session_id}")
+            else:
+                # Fallback: cancel asyncio task if SDK interrupt failed
+                logger.warning(f"[TaskRunner] SDK interrupt failed, falling back to task.cancel()")
+                if state.task and not state.task.done():
+                    state.task.cancel()
+                    try:
+                        await state.task
+                    except asyncio.CancelledError:
+                        pass
+            
+            # Update status to completed (user-initiated interruption)
+            state.execution.status = "completed"
+            state.execution.completed_at = datetime.utcnow().isoformat() + "Z"
+            state.execution.error = None
+            self._save_execution(state.execution)
+            
+            # Append interrupt event and done event
+            self._append_event(session_id, {
+                "type": "system",
+                "content": "Task interrupted by user",
+            })
+            
+            self._append_event(session_id, {
+                "type": "done",
+                "content": {"interrupted": True},
+            })
+            
+            logger.info(f"[TaskRunner] Session {session_id} interrupted by user")
+            return True
+
+    
     def clear_session(self, session_id: str):
         """Clear task state for a session (e.g., when session is deleted)."""
         state = self._sessions.pop(session_id, None)

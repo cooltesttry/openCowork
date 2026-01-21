@@ -117,21 +117,44 @@ class SessionManager:
             existing = self._sessions.get(session_id)
             
             if existing:
-                # Check if model/endpoint changed (security_mode can be changed dynamically)
-                if (existing.endpoint_name == endpoint_name and 
-                    existing.model_name == model_name):
-                    # Reuse existing session - DON'T update security_mode here
-                    # It will be updated in stream_message after calling set_permission_mode
+                # Smart switching: handle model and endpoint changes differently
+                endpoint_changed = existing.endpoint_name != endpoint_name
+                model_changed = existing.model_name != model_name
+                
+                if not endpoint_changed and not model_changed:
+                    # No change - reuse existing session
                     existing.update_activity()
                     existing.websocket = websocket
                     logger.info(f"[SessionManager] Reusing session: {session_id} (pending security_mode: {security_mode})")
                     return existing
-                else:
-                    # Model/endpoint changed - close and recreate
-                    logger.info(f"[SessionManager] Config changed (endpoint={endpoint_name}, model={model_name}), recreating session: {session_id}")
-                    await self._close_session_internal(session_id)
+                
+                elif not endpoint_changed and model_changed:
+                    # Model-only change - use set_model() to preserve context
+                    try:
+                        if existing.is_started and existing.client:
+                            old_model = existing.model_name
+                            await existing.client.set_model(model_name)
+                            existing.model_name = model_name
+                            existing.update_activity()
+                            existing.websocket = websocket
+                            logger.info(f"[SessionManager] Model switched via set_model(): {old_model} -> {model_name}")
+                            return existing
+                        else:
+                            # Client not started yet, fall through to recreate
+                            logger.info(f"[SessionManager] Client not started, will recreate with new model: {model_name}")
+                    except Exception as e:
+                        # set_model failed, fall back to recreate
+                        logger.warning(f"[SessionManager] set_model failed: {e}, falling back to recreate")
+                
+                # Endpoint changed (or set_model failed) - rebuild with resume
+                sdk_session_id_to_resume = existing.sdk_session_id
+                logger.info(f"[SessionManager] Endpoint/model changed, rebuilding with resume: endpoint={endpoint_name}, model={model_name}, resume_id={sdk_session_id_to_resume}")
+                await self._close_session_internal(session_id)
+                
+                # Use the captured SDK session ID for resume
+                resume_sdk_session_id = sdk_session_id_to_resume or resume_sdk_session_id
             
-            # Create new session
+            # Create new session (or recreate after close)
             session = await self._create_session(
                 session_id=session_id,
                 settings=settings,
@@ -514,6 +537,28 @@ class SessionManager:
                 logger.info(f"[SessionManager] Cleaning up idle session: {session_id}")
                 await self._close_session_internal(session_id)
     
+    async def interrupt_session(self, session_id: str) -> bool:
+        """
+        Interrupt a running session using SDK's official interrupt() method.
+        
+        This is the proper way to interrupt a streaming session, allowing
+        the SDK to cleanly handle the interruption internally.
+        
+        Returns:
+            True if interrupt was called, False if session not found/not started.
+        """
+        session = self._sessions.get(session_id)
+        if not session or not session.is_started or not session.client:
+            return False
+        
+        try:
+            await session.client.interrupt()
+            logger.info(f"[SessionManager] Interrupted session: {session_id}")
+            return True
+        except Exception as e:
+            logger.error(f"[SessionManager] Failed to interrupt session {session_id}: {e}")
+            return False
+    
     def get_session(self, session_id: str) -> Optional[ManagedSession]:
         """Get a session by ID (without lock, for read-only access)."""
         return self._sessions.get(session_id)
@@ -522,6 +567,7 @@ class SessionManager:
     def active_count(self) -> int:
         """Number of active sessions."""
         return len(self._sessions)
+
 
 
 # Global instance

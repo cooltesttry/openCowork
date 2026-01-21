@@ -36,6 +36,8 @@ export interface MessageBlock {
         isPlaceholder?: boolean;  // Used for thinking placeholder blocks
         requestId?: string;  // Used for AskUserQuestion blocks
         isStreaming?: boolean;  // Used for tool input streaming
+        answers?: Record<string, string>;  // Used for ask_user responses
+        allowed?: boolean;  // Used for permission responses
     };
 }
 

@@ -11,6 +11,7 @@ interface ChatPanelContentProps {
         onPermissionResponse?: (blockId: string, approved: boolean) => void;
         onAskUserSubmit?: (requestId: string, answers: Record<string, string>) => void;
         onAskUserSkip?: (requestId: string) => void;
+        onInterrupt?: () => void;
         securityMode?: SecurityMode;
         onSecurityModeChange?: (mode: SecurityMode) => void;
         inputAreaRef?: React.RefObject<InputAreaRef>;
@@ -46,7 +47,8 @@ export function ChatPanelContent({ params }: ChatPanelContentProps) {
                 <InputArea
                     ref={inputRef}
                     onSend={params?.onSend || (() => { })}
-                    disabled={isCurrentSessionProcessing}
+                    isRunning={isCurrentSessionProcessing}
+                    onInterrupt={params?.onInterrupt}
                     securityMode={params?.securityMode || 'bypassPermissions'}
                     onSecurityModeChange={params?.onSecurityModeChange || (() => { })}
                 />

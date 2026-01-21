@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useChat } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Cpu, ChevronDown, List, Check } from "lucide-react";
+import { Sparkles, List, Check } from "lucide-react";
 import { fetchConfig, fetchModels } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -54,6 +54,37 @@ export function ModelSelector() {
     const [modelListOpen, setModelListOpen] = useState(false);
     const [availableModels, setAvailableModels] = useState<string[]>([]);
     const [fetchingModels, setFetchingModels] = useState(false);
+    const [modelSearchQuery, setModelSearchQuery] = useState("");
+
+    // Custom filter to prioritize exact matches
+    // Returns sorted models: 1) starts with query, 2) contains query exactly, 3) others
+    const filteredAndSortedModels = useMemo(() => {
+        if (!modelSearchQuery.trim()) {
+            return availableModels;
+        }
+        const query = modelSearchQuery.toLowerCase();
+
+        // Filter models that match
+        const matched = availableModels.filter(m =>
+            m.toLowerCase().includes(query)
+        );
+
+        // Sort: startsWith > contains > others
+        return matched.sort((a, b) => {
+            const aLower = a.toLowerCase();
+            const bLower = b.toLowerCase();
+            const aStartsWith = aLower.startsWith(query);
+            const bStartsWith = bLower.startsWith(query);
+
+            if (aStartsWith && !bStartsWith) return -1;
+            if (!aStartsWith && bStartsWith) return 1;
+
+            // If both or neither starts with query, sort by position of match
+            const aIndex = aLower.indexOf(query);
+            const bIndex = bLower.indexOf(query);
+            return aIndex - bIndex;
+        });
+    }, [availableModels, modelSearchQuery]);
 
     // Load endpoints from config on mount
     useEffect(() => {
@@ -129,9 +160,16 @@ export function ModelSelector() {
         setOpen(false);
     };
 
-    // Get display text for current selection
-    const displayText = activeEndpoint && activeModel
-        ? `${activeEndpoint} / ${activeModel.length > 25 ? activeModel.slice(0, 25) + '...' : activeModel}`
+    // Get display text for current selection - only show last part after "/"
+    const getShortModelName = (modelName: string) => {
+        if (!modelName) return '';
+        // Extract last part after "/" (handles paths like "anthropic/claude-3-5-sonnet")
+        const parts = modelName.split('/');
+        return parts[parts.length - 1];
+    };
+
+    const displayText = activeModel
+        ? getShortModelName(activeModel)
         : "Select Model";
 
     return (
@@ -139,11 +177,10 @@ export function ModelSelector() {
             <PopoverTrigger asChild>
                 <Button
                     variant="ghost"
-                    className="h-8 px-3 text-sm font-normal gap-2 hover:bg-accent"
+                    className="h-6 px-2 text-sm font-normal gap-1 hover:bg-accent text-muted-foreground"
                 >
-                    <Cpu className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-foreground">{displayText}</span>
-                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>{displayText}</span>
                 </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80" align="center">
@@ -192,18 +229,23 @@ export function ModelSelector() {
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="p-0 w-64" align="end">
-                                    <Command>
-                                        <CommandInput placeholder="Search model..." />
+                                    <Command filter={() => 1}>
+                                        <CommandInput
+                                            placeholder="Search model..."
+                                            value={modelSearchQuery}
+                                            onValueChange={setModelSearchQuery}
+                                        />
                                         <CommandList>
                                             <CommandEmpty>No models found.</CommandEmpty>
                                             <CommandGroup>
-                                                {availableModels.map((model) => (
+                                                {filteredAndSortedModels.map((model) => (
                                                     <CommandItem
                                                         key={model}
                                                         value={model}
                                                         onSelect={(val) => {
                                                             setTempModel(val);
                                                             setModelListOpen(false);
+                                                            setModelSearchQuery("");
                                                         }}
                                                     >
                                                         <Check
@@ -228,6 +270,6 @@ export function ModelSelector() {
                     </Button>
                 </div>
             </PopoverContent>
-        </Popover>
+        </Popover >
     );
 }

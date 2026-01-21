@@ -1,9 +1,11 @@
 "use client"
 
-import { useState, KeyboardEvent, forwardRef, useImperativeHandle, useRef, useCallback, useEffect } from "react";
+import { useState, KeyboardEvent, forwardRef, useImperativeHandle, useRef, useCallback, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { SendIcon, Paperclip, Slash, AtSign, ShieldCheck, ShieldAlert, ShieldOff, X } from "lucide-react";
+import { SendIcon, Square, Paperclip, Slash, AtSign, ShieldCheck, ShieldAlert, ShieldOff, X } from "lucide-react";
+import { ModelSelector } from "./model-selector";
+import { cn } from "@/lib/utils";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -58,7 +60,8 @@ const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
 
 interface InputAreaProps {
     onSend: (message: string, attachedFiles?: string[]) => void;
-    disabled?: boolean;
+    isRunning?: boolean;      // Session is running - show stop button
+    onInterrupt?: () => void; // Callback to interrupt running session
     securityMode?: SecurityMode;
     onSecurityModeChange?: (mode: SecurityMode) => void;
     // New props for smart input
@@ -75,7 +78,8 @@ export interface InputAreaRef {
 export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
     function InputArea({
         onSend,
-        disabled,
+        isRunning = false,
+        onInterrupt,
         securityMode = 'bypassPermissions',
         onSecurityModeChange,
         slashCommands = DEFAULT_SLASH_COMMANDS,
@@ -290,8 +294,15 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
             });
         }, [content]);
 
+        // Button state: 'stop' | 'disabled' | 'send'
+        const buttonState = useMemo(() => {
+            if (isRunning) return 'stop';
+            if (!content.trim() && attachedFiles.length === 0) return 'disabled';
+            return 'send';
+        }, [isRunning, content, attachedFiles.length]);
+
         const handleSend = () => {
-            if ((content.trim() || attachedFiles.length > 0) && !disabled) {
+            if ((content.trim() || attachedFiles.length > 0) && !isRunning) {
                 // Format message with attachments according to SDK format
                 // Use full absolute paths as required by SDK
                 let messageText = content.trim();
@@ -304,6 +315,15 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
                 onSend(messageText, attachedFiles.map(f => f.fullPath));
                 setContent("");
                 setAttachedFiles([]);
+            }
+        };
+
+        // Handle button click based on state
+        const handleButtonClick = () => {
+            if (buttonState === 'stop') {
+                onInterrupt?.();
+            } else if (buttonState === 'send') {
+                handleSend();
             }
         };
 
@@ -326,10 +346,13 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
                 }
             }
 
-            // Normal Enter to send
+            // Normal Enter to send (blocked when session is running)
             if (e.key === "Enter" && !e.shiftKey && !quickPanelOpen) {
                 e.preventDefault();
-                handleSend();
+                // Only send if not running
+                if (!isRunning) {
+                    handleSend();
+                }
             }
         };
 
@@ -349,18 +372,25 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
                                 value={content}
                                 onChange={(e) => handleContentChange(e.target.value)}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Type a message... (/ for commands, @ for files)"
+                                placeholder={isRunning ? "Session is running... (type here, press Stop to interrupt)" : "Type a message... (/ for commands, @ for files)"}
                                 className="min-h-[48px] max-h-[200px] w-full resize-none border-0 focus-visible:ring-0 shadow-none bg-transparent px-3 pt-1 pb-0 flex-1"
-                                disabled={disabled}
                             />
-                            {/* Send Button moved here */}
+                            {/* Send/Stop Button */}
                             <Button
-                                onClick={handleSend}
-                                disabled={disabled || (!content.trim() && attachedFiles.length === 0)}
+                                onClick={handleButtonClick}
+                                disabled={buttonState === 'disabled'}
                                 size="icon"
-                                className="h-8 w-8 rounded-lg mb-1"
+                                className={cn(
+                                    "h-8 w-8 rounded-lg mb-1 transition-colors",
+                                    buttonState === 'stop' && "bg-red-500 hover:bg-red-600 text-white"
+                                )}
+                                title={buttonState === 'stop' ? 'Stop' : 'Send'}
                             >
-                                <SendIcon className="h-4 w-4" />
+                                {buttonState === 'stop' ? (
+                                    <Square className="h-4 w-4 fill-current" />
+                                ) : (
+                                    <SendIcon className="h-4 w-4" />
+                                )}
                             </Button>
                         </div>
 
@@ -420,7 +450,7 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
                                         const selectedFiles = e.target.files;
                                         if (selectedFiles && selectedFiles.length > 0) {
                                             const newFiles = Array.from(selectedFiles).map(f => ({
-                                                fullPath: (f as any).path || f.name,
+                                                fullPath: (f as File & { path?: string }).path || f.name,
                                                 displayName: f.name
                                             }));
                                             setAttachedFiles(prev => [...prev, ...newFiles]);
@@ -467,6 +497,9 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
                                         </TooltipContent>
                                     </Tooltip>
                                 </TooltipProvider>
+
+                                {/* Model Selector - shows only short model name */}
+                                <ModelSelector />
                             </div>
 
                             {/* Right Actions: Security Only */}
