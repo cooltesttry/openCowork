@@ -2,9 +2,10 @@
 
 import React from "react";
 import * as Collapsible from "@radix-ui/react-collapsible";
-import { File, Folder, FolderOpen, MoreHorizontal, AtSign } from "lucide-react";
+import { Folder, FolderOpen, MoreHorizontal, AtSign } from "lucide-react";
 import { FileEntry } from "./types";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { FileIcon } from "./file-icons";
 
 // We'll fallback if cn doesn't exist
 function classNames(...classes: (string | undefined | null | false)[]) {
@@ -152,7 +153,7 @@ export function FileTreeItem({
                         {isDirectory ? (
                             isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />
                         ) : (
-                            <File size={16} />
+                            <FileIcon filename={entry.name} size={16} />
                         )}
                     </span>
                     {/* Name - inline edit when isEditing */}

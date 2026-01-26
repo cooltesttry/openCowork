@@ -40,8 +40,8 @@ export interface ScrapeResult {
     statusCode?: number;
     /** Error message if failed */
     error?: string;
-    /** Which engine was used (fetch or browser) */
-    engine?: 'fetch' | 'browser';
+    /** Which engine was used (fetch, browser, or pdf) */
+    engine?: 'fetch' | 'browser' | 'pdf';
 }
 
 export interface PageMetadata {

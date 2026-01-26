@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useChat } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,9 +23,8 @@ import {
     CommandItem,
     CommandList,
 } from "@/components/ui/command";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sparkles, List, Check } from "lucide-react";
+import { Sparkles, Check, Loader2 } from "lucide-react";
 import { fetchConfig, fetchModels } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -51,25 +50,24 @@ export function ModelSelector() {
     const [tempModel, setTempModel] = useState("");
 
     // Model list state
-    const [modelListOpen, setModelListOpen] = useState(false);
     const [availableModels, setAvailableModels] = useState<string[]>([]);
     const [fetchingModels, setFetchingModels] = useState(false);
     const [modelSearchQuery, setModelSearchQuery] = useState("");
 
+    // Ref for auto-focus
+    const commandInputRef = useRef<HTMLInputElement>(null);
+
     // Custom filter to prioritize exact matches
-    // Returns sorted models: 1) starts with query, 2) contains query exactly, 3) others
     const filteredAndSortedModels = useMemo(() => {
         if (!modelSearchQuery.trim()) {
             return availableModels;
         }
         const query = modelSearchQuery.toLowerCase();
 
-        // Filter models that match
         const matched = availableModels.filter(m =>
             m.toLowerCase().includes(query)
         );
 
-        // Sort: startsWith > contains > others
         return matched.sort((a, b) => {
             const aLower = a.toLowerCase();
             const bLower = b.toLowerCase();
@@ -79,32 +77,18 @@ export function ModelSelector() {
             if (aStartsWith && !bStartsWith) return -1;
             if (!aStartsWith && bStartsWith) return 1;
 
-            // If both or neither starts with query, sort by position of match
             const aIndex = aLower.indexOf(query);
             const bIndex = bLower.indexOf(query);
             return aIndex - bIndex;
         });
     }, [availableModels, modelSearchQuery]);
 
-    // Load endpoints from config on mount
-    useEffect(() => {
-        loadConfig();
-    }, []);
-
-    // Sync temp values when popover opens
-    useEffect(() => {
-        if (open) {
-            setTempEndpoint(activeEndpoint);
-            setTempModel(activeModel);
-        }
-    }, [open, activeEndpoint, activeModel]);
-
-    const loadConfig = async () => {
+    // Load config - defined early so it can be called in useEffect
+    const loadConfig = useCallback(async () => {
         try {
             const config = await fetchConfig("/model") as ModelConfig;
             setEndpoints(config.endpoints || []);
 
-            // Initialize active model from settings if not set
             if (!activeEndpoint && config.selected_endpoint) {
                 setActiveEndpoint(config.selected_endpoint);
             }
@@ -114,24 +98,15 @@ export function ModelSelector() {
         } catch (err) {
             console.error("Failed to load model config:", err);
         }
-    };
+    }, [activeEndpoint, activeModel, setActiveEndpoint, setActiveModel]);
 
-    const handleFetchModels = async () => {
-        if (!tempEndpoint) {
-            toast.error("Please select an endpoint first");
-            return;
-        }
+    // Fetch models for a specific endpoint
+    const handleFetchModelsForEndpoint = useCallback(async (endpointName: string) => {
+        const endpoint = endpoints.find(ep => ep.name === endpointName);
+        if (!endpoint) return;
 
         setFetchingModels(true);
         try {
-            // Find the endpoint config
-            const endpoint = endpoints.find(ep => ep.name === tempEndpoint);
-            if (!endpoint) {
-                toast.error("Endpoint not found");
-                return;
-            }
-
-            // Build config for API call
             const configForFetch = {
                 provider: endpoint.provider,
                 api_key: endpoint.api_key,
@@ -140,30 +115,72 @@ export function ModelSelector() {
 
             const models = await fetchModels(configForFetch);
             setAvailableModels(models);
-
-            if (models.length > 0) {
-                setModelListOpen(true);
-                toast.success(`Found ${models.length} models`);
-            } else {
-                toast.info("No models found");
-            }
-        } catch (err: any) {
-            toast.error("Failed to fetch models", { description: err.message });
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Unknown error';
+            toast.error("Failed to fetch models", { description: message });
         } finally {
             setFetchingModels(false);
         }
-    };
+    }, [endpoints]);
 
-    const handleApply = () => {
-        setActiveEndpoint(tempEndpoint);
-        setActiveModel(tempModel);
-        setOpen(false);
-    };
+    // Load endpoints from config on mount
+    useEffect(() => {
+        loadConfig();
+    }, [loadConfig]);
 
-    // Get display text for current selection - only show last part after "/"
+    // Sync temp values and auto-fetch models when popover opens
+    useEffect(() => {
+        if (open) {
+            setTempEndpoint(activeEndpoint);
+            setTempModel(activeModel);
+            setModelSearchQuery("");
+
+            // Auto-fetch models when opening if endpoint is set
+            if (activeEndpoint) {
+                handleFetchModelsForEndpoint(activeEndpoint);
+            }
+
+            // Auto-focus the search input after a short delay
+            setTimeout(() => {
+                commandInputRef.current?.focus();
+            }, 100);
+        }
+    }, [open, activeEndpoint, activeModel, handleFetchModelsForEndpoint]);
+
+    // When endpoint changes, auto-fetch models
+    const handleEndpointChange = useCallback((newEndpoint: string) => {
+        setTempEndpoint(newEndpoint);
+        setTempModel(""); // Clear model when endpoint changes
+        if (newEndpoint) {
+            handleFetchModelsForEndpoint(newEndpoint);
+        } else {
+            setAvailableModels([]);
+        }
+    }, [handleFetchModelsForEndpoint]);
+
+    // Handle model selection - directly apply and close (keyboard Enter or click)
+    const handleSelectModel = useCallback((model: string) => {
+        if (tempEndpoint && model) {
+            setActiveEndpoint(tempEndpoint);
+            setActiveModel(model);
+            setOpen(false);
+        }
+    }, [tempEndpoint, setActiveEndpoint, setActiveModel]);
+
+    // Apply and close (for Apply button)
+    const handleApply = useCallback(() => {
+        if (tempEndpoint && tempModel) {
+            setActiveEndpoint(tempEndpoint);
+            setActiveModel(tempModel);
+            setOpen(false);
+        } else {
+            toast.warning("Please select an endpoint and model");
+        }
+    }, [tempEndpoint, tempModel, setActiveEndpoint, setActiveModel]);
+
+    // Get display text for current selection
     const getShortModelName = (modelName: string) => {
         if (!modelName) return '';
-        // Extract last part after "/" (handles paths like "anthropic/claude-3-5-sonnet")
         const parts = modelName.split('/');
         return parts[parts.length - 1];
     };
@@ -183,12 +200,15 @@ export function ModelSelector() {
                     <span>{displayText}</span>
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80" align="center">
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Endpoint</Label>
-                        <Select value={tempEndpoint} onValueChange={setTempEndpoint}>
-                            <SelectTrigger>
+            <PopoverContent className="w-80 p-0" align="start">
+                <div className="flex flex-col">
+                    {/* Top: Endpoint Selector */}
+                    <div className="p-3 border-b">
+                        <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                            Endpoint
+                        </Label>
+                        <Select value={tempEndpoint} onValueChange={handleEndpointChange}>
+                            <SelectTrigger className="h-8">
                                 <SelectValue placeholder="Select endpoint" />
                             </SelectTrigger>
                             <SelectContent>
@@ -207,69 +227,69 @@ export function ModelSelector() {
                         </Select>
                     </div>
 
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Model Name</Label>
-                        <div className="flex gap-2">
-                            <Input
-                                className="flex-1"
-                                value={tempModel}
-                                onChange={(e) => setTempModel(e.target.value)}
-                                placeholder="claude-3-5-sonnet-20241022"
+                    {/* Middle: Model List with Search */}
+                    <div className="flex-1">
+                        <Command filter={() => 1} className="border-0">
+                            <CommandInput
+                                ref={commandInputRef}
+                                placeholder="Search models..."
+                                value={modelSearchQuery}
+                                onValueChange={setModelSearchQuery}
+                                className="h-9"
                             />
-                            <Popover open={modelListOpen} onOpenChange={setModelListOpen}>
-                                <PopoverTrigger asChild>
-                                    <Button
-                                        variant="outline"
-                                        size="icon"
-                                        onClick={handleFetchModels}
-                                        disabled={fetchingModels || !tempEndpoint}
-                                        title="Fetch Available Models"
-                                    >
-                                        <List className={cn("h-4 w-4", fetchingModels && "animate-pulse")} />
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="p-0 w-64" align="end">
-                                    <Command filter={() => 1}>
-                                        <CommandInput
-                                            placeholder="Search model..."
-                                            value={modelSearchQuery}
-                                            onValueChange={setModelSearchQuery}
-                                        />
-                                        <CommandList>
-                                            <CommandEmpty>No models found.</CommandEmpty>
-                                            <CommandGroup>
-                                                {filteredAndSortedModels.map((model) => (
-                                                    <CommandItem
-                                                        key={model}
-                                                        value={model}
-                                                        onSelect={(val) => {
-                                                            setTempModel(val);
-                                                            setModelListOpen(false);
-                                                            setModelSearchQuery("");
-                                                        }}
-                                                    >
-                                                        <Check
-                                                            className={cn(
-                                                                "mr-2 h-4 w-4",
-                                                                tempModel === model ? "opacity-100" : "opacity-0"
-                                                            )}
-                                                        />
-                                                        <span className="truncate">{model}</span>
-                                                    </CommandItem>
-                                                ))}
-                                            </CommandGroup>
-                                        </CommandList>
-                                    </Command>
-                                </PopoverContent>
-                            </Popover>
-                        </div>
+                            <CommandList className="max-h-[240px]">
+                                {fetchingModels ? (
+                                    <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        Loading models...
+                                    </div>
+                                ) : availableModels.length === 0 ? (
+                                    <CommandEmpty>
+                                        {tempEndpoint
+                                            ? "No models available"
+                                            : "Select an endpoint first"}
+                                    </CommandEmpty>
+                                ) : filteredAndSortedModels.length === 0 ? (
+                                    <CommandEmpty>No matching models</CommandEmpty>
+                                ) : (
+                                    <CommandGroup>
+                                        {filteredAndSortedModels.map((model) => (
+                                            <CommandItem
+                                                key={model}
+                                                value={model}
+                                                onSelect={() => handleSelectModel(model)}
+                                                className={cn(
+                                                    "cursor-pointer",
+                                                    tempModel === model && "bg-accent"
+                                                )}
+                                            >
+                                                <Check
+                                                    className={cn(
+                                                        "mr-2 h-4 w-4",
+                                                        tempModel === model ? "opacity-100" : "opacity-0"
+                                                    )}
+                                                />
+                                                <span className="truncate">{model}</span>
+                                            </CommandItem>
+                                        ))}
+                                    </CommandGroup>
+                                )}
+                            </CommandList>
+                        </Command>
                     </div>
 
-                    <Button onClick={handleApply} className="w-full">
-                        Apply
-                    </Button>
+                    {/* Bottom: Apply Button */}
+                    <div className="p-3 border-t">
+                        <Button
+                            onClick={handleApply}
+                            className="w-full"
+                            disabled={!tempEndpoint || !tempModel}
+                        >
+                            Apply
+                        </Button>
+                    </div>
                 </div>
             </PopoverContent>
-        </Popover >
+        </Popover>
     );
 }

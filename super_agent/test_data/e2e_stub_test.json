@@ -1,0 +1,26 @@
+{
+    "worker": {
+        "id": "e2e-test-worker",
+        "model": "claude-3-5-sonnet-20241022",
+        "prompt": {
+            "system": "You are a test agent.",
+            "user": "Echo back the input."
+        }
+    },
+    "task": {
+        "task_id": "e2e-test-01",
+        "objective": "Verify the agent loop functionality using a stub worker.",
+        "inputs": {
+            "message": "HelloWorld"
+        },
+        "expected_output": {
+            "status": "ok"
+        }
+    },
+    "session": {
+        "max_cycles": 2,
+        "input_payload": {
+            "test_key": "test_value"
+        }
+    }
+}

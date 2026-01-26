@@ -11,7 +11,7 @@ export function GlobalToolbar() {
     const { isProcessing, isSidebarOpen, setIsSidebarOpen, isSessionSidebarOpen, setIsSessionSidebarOpen } = useChat();
 
     return (
-        <header className="px-6 py-3 border-b flex items-center justify-between bg-card/50 backdrop-blur z-10 flex-none">
+        <header className="h-10 px-4 border-b flex items-center justify-between bg-card/50 backdrop-blur z-10 flex-none">
             <div className="flex items-center gap-2">
                 <SessionSidebarToggle
                     isOpen={isSessionSidebarOpen}

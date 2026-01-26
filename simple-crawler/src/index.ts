@@ -4,7 +4,7 @@
  */
 
 import type { ScrapeOptions, ScrapeResult, EngineResult } from './types.js';
-import { fetchWithHttp, shouldFallbackToBrowser, fetchWithBrowser, closeBrowser } from './engines/index.js';
+import { fetchWithHttp, shouldFallbackToBrowser, fetchWithBrowser, closeBrowser, isPdfUrl, fetchPdf } from './engines/index.js';
 import { cleanHtml, htmlToMarkdown, extractLinks, extractMetadata } from './processors/index.js';
 
 export * from './types.js';
@@ -40,12 +40,22 @@ export async function scrape(url: string, options: ScrapeOptions = {}): Promise<
         };
     }
 
+    // Check if URL is a PDF
+    if (isPdfUrl(url)) {
+        return scrapePdf(url, options);
+    }
+
     let engineResult: EngineResult;
-    let engine: 'fetch' | 'browser' = 'fetch';
+    let engine: 'fetch' | 'browser' | 'pdf' = 'fetch';
 
     // Try HTTP fetch first (unless forced to use browser)
     if (!options.forceBrowser) {
         engineResult = await fetchWithHttp(url, options);
+
+        // Check if response is a PDF (by content-type)
+        if (engineResult.contentType?.includes('application/pdf')) {
+            return scrapePdf(url, options);
+        }
 
         // Check if we should fall back to browser
         if (shouldFallbackToBrowser(engineResult)) {
@@ -101,6 +111,42 @@ export async function scrape(url: string, options: ScrapeOptions = {}): Promise<
         metadata,
         statusCode: engineResult.statusCode,
         engine,
+    };
+}
+
+/**
+ * Scrape a PDF file
+ */
+async function scrapePdf(url: string, options: ScrapeOptions): Promise<ScrapeResult> {
+    const result = await fetchPdf(url, { timeout: options.timeout });
+
+    if (result.error) {
+        return {
+            success: false,
+            url,
+            finalUrl: result.url,
+            statusCode: result.statusCode,
+            error: result.error,
+            engine: 'pdf',
+        };
+    }
+
+    // PDF text is returned in html field
+    const text = result.html;
+
+    return {
+        success: true,
+        url,
+        finalUrl: result.url,
+        markdown: text,
+        html: text,
+        rawHtml: text,
+        links: [],
+        metadata: {
+            title: url.split('/').pop() ?? 'PDF Document',
+        },
+        statusCode: result.statusCode,
+        engine: 'pdf',
     };
 }
 

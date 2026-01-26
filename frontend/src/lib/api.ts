@@ -173,3 +173,197 @@ export async function warmupSession(options: {
     if (!res.ok) throw new Error("Failed to warmup session");
     return res.json();
 }
+
+
+// ============== Worker Templates ==============
+
+export interface WorkerConfig {
+    id: string;
+    name: string;
+    model: string;
+    provider?: string;
+    api_key?: string;
+    endpoint?: string;
+    mcp_inherit_system?: boolean;
+    mcp_selected?: string[];
+    mcp_servers?: object;
+    prompt?: {
+        system?: string;
+        user?: string;
+    };
+    tools_allow?: string[];
+    tools_block?: string[];
+    env?: Record<string, string>;
+    cwd?: string;
+    max_turns?: number;
+    max_tokens?: number;
+    max_thinking_tokens?: number;
+    setting_sources?: string[];
+    permission_mode?: string;
+    include_partial_messages?: boolean;
+    output_format?: object;
+    preserve_context?: boolean;
+}
+
+export interface WorkersListResponse {
+    status: string;
+    workers: WorkerConfig[];
+}
+
+export interface WorkerResponse {
+    status: string;
+    worker: WorkerConfig;
+}
+
+export interface WorkerValidationResponse {
+    valid: boolean;
+    errors?: string[];
+}
+
+export async function listWorkers(): Promise<WorkersListResponse> {
+    const res = await fetch(`${API_ROOT}/agents/`);
+    if (!res.ok) throw new Error("Failed to list workers");
+    return res.json();
+}
+
+export async function getWorker(id: string): Promise<WorkerResponse> {
+    const res = await fetch(`${API_ROOT}/agents/${encodeURIComponent(id)}`);
+    if (!res.ok) throw new Error(`Failed to get worker ${id}`);
+    return res.json();
+}
+
+export async function createWorker(config: WorkerConfig): Promise<{ status: string; id: string }> {
+    const res = await fetch(`${API_ROOT}/agents/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to create worker");
+    }
+    return res.json();
+}
+
+export async function updateWorker(id: string, config: WorkerConfig): Promise<{ status: string; id: string }> {
+    const res = await fetch(`${API_ROOT}/agents/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to update worker");
+    }
+    return res.json();
+}
+
+export async function deleteWorker(id: string): Promise<{ status: string; id: string }> {
+    const res = await fetch(`${API_ROOT}/agents/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to delete worker");
+    }
+    return res.json();
+}
+
+export async function validateWorker(config: Partial<WorkerConfig>): Promise<WorkerValidationResponse> {
+    const res = await fetch(`${API_ROOT}/agents/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+    });
+    if (!res.ok) throw new Error("Failed to validate worker");
+    return res.json();
+}
+
+
+// ============== Super Agent ==============
+
+export interface SuperAgentRunRequest {
+    task_objective: string;
+    worker_id: string;
+    max_cycles?: number;
+    initial_input?: Record<string, unknown>;
+}
+
+export interface SuperAgentRunResponse {
+    session_id: string;
+}
+
+export interface SuperAgentCycleResult {
+    status: string;
+    summary: string;
+    output: Record<string, unknown>;
+    artifacts: string[];
+    error: string | null;
+}
+
+export interface SuperAgentCycle {
+    cycle_index: number;
+    started_at: string;
+    ended_at: string;
+    result: SuperAgentCycleResult;
+    passed: boolean;
+    checker_reason: string | null;
+}
+
+export interface SuperAgentSession {
+    session_id: string;
+    status: "pending" | "running" | "completed" | "failed" | "cancelled";
+    cycle_count: number;
+    max_cycles: number;
+    last_error: string | null;
+    created_at: string;
+    updated_at: string;
+    history: SuperAgentCycle[];
+}
+
+export interface SuperAgentSessionSummary {
+    session_id: string;
+    status: string;
+    cycle_count: number;
+    created_at: string;
+}
+
+export async function startSuperAgentRun(request: SuperAgentRunRequest): Promise<SuperAgentRunResponse> {
+    const res = await fetch(`${API_ROOT}/super-agent/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Failed to start Super Agent run" }));
+        throw new Error(err.detail || "Failed to start Super Agent run");
+    }
+    return res.json();
+}
+
+export async function getSuperAgentSession(sessionId: string): Promise<SuperAgentSession> {
+    const res = await fetch(`${API_ROOT}/super-agent/session/${encodeURIComponent(sessionId)}`);
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Session not found" }));
+        throw new Error(err.detail || "Session not found");
+    }
+    return res.json();
+}
+
+export async function cancelSuperAgentSession(sessionId: string): Promise<{ session_id: string; status: string }> {
+    const res = await fetch(`${API_ROOT}/super-agent/session/${encodeURIComponent(sessionId)}/cancel`, {
+        method: "POST",
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Failed to cancel session" }));
+        throw new Error(err.detail || "Failed to cancel session");
+    }
+    return res.json();
+}
+
+export async function listSuperAgentSessions(): Promise<{ sessions: SuperAgentSessionSummary[] }> {
+    const res = await fetch(`${API_ROOT}/super-agent/sessions`);
+    if (!res.ok) throw new Error("Failed to list Super Agent sessions");
+    return res.json();
+}
+

@@ -11,6 +11,8 @@ import { ToolsPanelContent } from './panels/tools-panel';
 import { EditorPanel } from '../panels/editor-panel';
 import { TerminalPanel } from '../panels/terminal-panel';
 import { FilePreviewPanel } from '../panels/file-preview-panel';
+import { AgentsPanel } from '../panels/agents-panel';
+import { SuperAgentPanel } from '../agent/super-agent-panel';
 
 import { useChatLogic } from './useChatLogic';
 import { Toaster, toast } from 'sonner';
@@ -23,7 +25,8 @@ const components = {
     editor: EditorPanel,
     terminal: TerminalPanel,
     files: FilePreviewPanel,
-
+    agents: AgentsPanel,
+    superagent: SuperAgentPanel,
 };
 
 const SESSION_PANEL_WIDTH = 238;
@@ -384,6 +387,18 @@ export function DockviewMain() {
                 params: {
                     onOpenInEditor: handleOpenInEditor,
                 }
+            });
+            api.addPanel({
+                id: 'agents-panel',
+                component: 'agents',
+                title: 'Agents',
+                position: { referencePanel: editorPanel, direction: 'within' },
+            });
+            api.addPanel({
+                id: 'super-agent-panel',
+                component: 'superagent',
+                title: 'Super Agent',
+                position: { referencePanel: editorPanel, direction: 'within' },
             });
 
             // Activate the Editor tab by default

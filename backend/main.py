@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import agent, config, sessions, files, terminal
+from routers import agent, config, sessions, files, terminal, agents, super_agent
 from models.settings import AppSettings
 from core.session_manager import session_manager
 from core.task_runner import task_runner
@@ -135,6 +135,8 @@ app.include_router(config.router, prefix="/api/config", tags=["config"])
 app.include_router(sessions.router, prefix="/api", tags=["sessions"])
 app.include_router(files.router, prefix="/api/files", tags=["files"])
 app.include_router(terminal.router)
+app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
+app.include_router(super_agent.router, prefix="/api/super-agent", tags=["super-agent"])
 
 
 @app.get("/health")
