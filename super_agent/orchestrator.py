@@ -11,7 +11,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from .checker import BasicChecker, Checker
+from .models import CheckerResult
 from .models import (
     CheckerResult,
     CycleRecord,
@@ -37,14 +37,12 @@ class Orchestrator:
         self,
         base_dir: Optional[Path] = None,
         worker: Optional[Worker] = None,
-        checker: Optional[Checker] = None,
         checker_config: Optional[WorkerConfig] = None,
         cycle_wait_seconds: int = 0,
     ):
         self.store = SessionStore(base_dir)
         self.worker = worker or StubWorker()
-        self.checker = checker or BasicChecker()
-        self.checker_config = checker_config  # Checker worker config (if using Worker-based checker)
+        self.checker_config = checker_config  # Checker worker config
         self.cycle_wait_seconds = max(0, cycle_wait_seconds)
 
     def create_session(
@@ -227,8 +225,6 @@ class AsyncOrchestrator(Orchestrator):
         except (json.JSONDecodeError, TypeError):
             output_data = llm_result.text
         
-        summary = llm_result.text.splitlines()[0] if llm_result.text else "no output"
-        
         prompt = f"""# Task Objective
 {task.objective}
 
@@ -236,8 +232,8 @@ class AsyncOrchestrator(Orchestrator):
 {json.dumps(task.expected_output, indent=2, ensure_ascii=False) if task.expected_output else "Not specified - use your judgment based on the objective."}
 
 # Worker's Claimed Output
-Summary: {summary}
-Output: {output_data}
+{output_data}
+
 Error reported: {llm_result.error or "None"}
 
 Please verify the Worker's claims using available tools and render your verdict as JSON."""
@@ -382,7 +378,21 @@ Please verify the Worker's claims using available tools and render your verdict 
                 logger.info(f"[Orchestrator] Session {session.session_id} - Found __output.json, ingesting...")
                 try:
                     content = output_file.read_text(encoding="utf-8")
-                    data = json.loads(content)
+                    # Try standard JSON parsing first
+                    try:
+                        data = json.loads(content)
+                    except json.JSONDecodeError as parse_err:
+                        # Fallback: use json-repair to fix malformed JSON
+                        # (e.g., unescaped quotes in LLM-generated content)
+                        logger.warning(f"[Orchestrator] Session {session.session_id} - JSON parse failed, attempting repair: {parse_err}")
+                        try:
+                            from json_repair import repair_json
+                            repaired = repair_json(content)
+                            data = json.loads(repaired)
+                            logger.info(f"[Orchestrator] Session {session.session_id} - JSON repair successful")
+                        except Exception as repair_err:
+                            logger.error(f"[Orchestrator] Session {session.session_id} - JSON repair also failed: {repair_err}")
+                            raise parse_err  # Re-raise original error
                     logger.debug(f"[Orchestrator] __output.json keys: {list(data.keys())}")
                     
                     # Override LLMResult text with structured output from __output.json

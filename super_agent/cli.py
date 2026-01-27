@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Optional, Tuple
 
-from .checker import BasicChecker
+# Checker now uses Worker directly, no separate checker class needed
 from .config import load_run_config, load_task_definition, load_worker_config
 from .models import SessionState, TaskDefinition, WorkerConfig
 from .orchestrator import AsyncOrchestrator, Orchestrator
@@ -40,13 +40,11 @@ def _make_orchestrator(
         return AsyncOrchestrator(
             base_dir=base_dir,
             worker=worker,
-            checker=BasicChecker(),
             cycle_wait_seconds=cycle_wait_seconds,
         )
     return Orchestrator(
         base_dir=base_dir,
         worker=worker,
-        checker=BasicChecker(),
         cycle_wait_seconds=cycle_wait_seconds,
     )
 

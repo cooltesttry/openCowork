@@ -1,4 +1,4 @@
-from .checker import BasicChecker, Checker
+# Checker classes removed - Worker-based checking is now used
 from .config import load_run_config, load_task_definition, load_worker_config
 from .models import (
     CheckerResult,
@@ -13,8 +13,6 @@ from .persistence import SessionStore, WorkspaceLayout, default_base_dir
 from .worker import ClaudeSdkWorker, StubWorker, Worker
 
 __all__ = [
-    "BasicChecker",
-    "Checker",
     "CheckerResult",
     "CycleRecord",
     "SessionState",

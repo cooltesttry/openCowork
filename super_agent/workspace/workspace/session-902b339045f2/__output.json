@@ -1,0 +1,8 @@
+{
+  "summary": "HBM market projected at $85-100B in 2027 (base case ~$90B), growing at ~50% from 2026, driven by AI infrastructure demand",
+  "text_content": "Comprehensive HBM 2027 market prediction report completed. Key findings:\n\n- Market Size 2027: $85-100 billion USD (base case: ~$90B)\n- Growth trajectory: $17B (2024 actual) → $35B (2025 est.) → $60B (2026 est.) → $90B (2027 projection)\n- Technology: HBM4/HBM4E will dominate with 70%+ market share\n- Competition: SK Hynix (55-60%), Samsung (25-30%), Micron (15-20%)\n- Primary driver: AI training and inference (65-70% of demand)\n- Supply: Continued constraints through 2027 despite capacity additions\n- Pricing: Premium pricing sustained due to oligopoly structure\n\nReport based on verified 2024-2025 data from TrendForce, JPMorgan, Korea Herald, and company sources. All projections clearly identified as estimates with methodology and limitations disclosed.",
+  "files": [
+    "/Users/huawang/pyproject/openCowork/super_agent/workspace/workspace/session-902b339045f2/HBM_2027_Market_Prediction.md"
+  ],
+  "instruction_to_user": "Review the HBM 2027 market prediction report in HBM_2027_Market_Prediction.md. The analysis uses verified 2024-2025 data and projects forward to 2027. All sources are from publicly available analyst reports and company disclosures, with clear disclaimers that projections are estimates."
+}

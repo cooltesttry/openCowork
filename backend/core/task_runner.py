@@ -63,7 +63,10 @@ class TaskRunner:
     Events are cached in memory and persisted to disk for reconnect support.
     """
     
-    def __init__(self, storage_path: str = "storage/tasks"):
+    def __init__(self, storage_path: Optional[Path] = None):
+        # Default to root storage/sessions directory (parallel to backend)
+        if storage_path is None:
+            storage_path = Path(__file__).parent.parent.parent / "storage" / "sessions"
         self._storage_path = Path(storage_path)
         self._sessions: Dict[str, SessionTaskState] = {}
         self._lock = asyncio.Lock()

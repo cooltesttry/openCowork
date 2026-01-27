@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>宝石消消乐 - 三消游戏</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>💎 宝石消消乐 💎</h1>
+
+        <!-- 游戏模式选择 -->
+        <div id="modeSelection" class="mode-selection">
+            <h2>选择游戏模式</h2>
+            <div class="mode-buttons">
+                <button class="mode-btn" data-mode="classic">
+                    <span class="mode-icon">🎮</span>
+                    <span class="mode-name">经典模式</span>
+                    <span class="mode-desc">无限游戏，挑战高分</span>
+                </button>
+                <button class="mode-btn" data-mode="timed">
+                    <span class="mode-icon">⏱️</span>
+                    <span class="mode-name">限时模式</span>
+                    <span class="mode-desc">60秒内尽可能高分</span>
+                </button>
+                <button class="mode-btn" data-mode="level">
+                    <span class="mode-icon">🎯</span>
+                    <span class="mode-name">关卡模式</span>
+                    <span class="mode-desc">完成目标，逐级挑战</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 游戏界面 -->
+        <div id="gameContainer" class="game-container hidden">
+            <!-- 顶部信息栏 -->
+            <div class="info-bar">
+                <div class="info-item">
+                    <span class="info-label">模式:</span>
+                    <span id="currentMode" class="info-value">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">分数:</span>
+                    <span id="score" class="info-value">0</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">移动:</span>
+                    <span id="moves" class="info-value">∞</span>
+                </div>
+                <div class="info-item" id="timerContainer" style="display: none;">
+                    <span class="info-label">时间:</span>
+                    <span id="timer" class="info-value">60</span>
+                </div>
+                <div class="info-item" id="levelContainer" style="display: none;">
+                    <span class="info-label">关卡:</span>
+                    <span id="level" class="info-value">1</span>
+                </div>
+                <div class="info-item" id="targetContainer" style="display: none;">
+                    <span class="info-label">目标:</span>
+                    <span id="target" class="info-value">0</span>
+                </div>
+            </div>
+
+            <!-- 道具栏 -->
+            <div class="powerups-bar">
+                <button class="powerup-btn" id="bombPowerup" title="炸弹 - 消除周围3x3区域">
+                    <span class="powerup-icon">💣</span>
+                    <span class="powerup-count" id="bombCount">3</span>
+                </button>
+                <button class="powerup-btn" id="shufflePowerup" title="重排 - 重新排列棋盘">
+                    <span class="powerup-icon">🔄</span>
+                    <span class="powerup-count" id="shuffleCount">2</span>
+                </button>
+                <button class="powerup-btn" id="hintPowerup" title="提示 - 显示可消除的组合">
+                    <span class="powerup-icon">💡</span>
+                    <span class="powerup-count" id="hintCount">5</span>
+                </button>
+                <button class="powerup-btn" id="colorBombPowerup" title="彩虹炸弹 - 消除同色宝石">
+                    <span class="powerup-icon">🌈</span>
+                    <span class="powerup-count" id="colorBombCount">1</span>
+                </button>
+            </div>
+
+            <!-- 游戏棋盘 -->
+            <div id="board" class="board"></div>
+
+            <!-- 连击提示 -->
+            <div id="comboDisplay" class="combo-display hidden"></div>
+
+            <!-- 控制按钮 -->
+            <div class="control-buttons">
+                <button id="backBtn" class="control-btn">返回菜单</button>
+                <button id="restartBtn" class="control-btn">重新开始</button>
+                <button id="pauseBtn" class="control-btn">暂停</button>
+            </div>
+        </div>
+
+        <!-- 游戏结束界面 -->
+        <div id="gameOver" class="game-over hidden">
+            <div class="game-over-content">
+                <h2 id="gameOverTitle">游戏结束</h2>
+                <p id="gameOverMessage" class="game-over-message"></p>
+                <div class="final-score">
+                    <span class="score-label">最终分数:</span>
+                    <span id="finalScore" class="score-value">0</span>
+                </div>
+                <div class="game-over-buttons">
+                    <button id="playAgainBtn" class="game-over-btn">再玩一次</button>
+                    <button id="backToMenuBtn" class="game-over-btn">返回菜单</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 暂停界面 -->
+        <div id="pauseMenu" class="pause-menu hidden">
+            <div class="pause-content">
+                <h2>游戏暂停</h2>
+                <div class="pause-buttons">
+                    <button id="resumeBtn" class="pause-btn">继续游戏</button>
+                    <button id="pauseRestartBtn" class="pause-btn">重新开始</button>
+                    <button id="pauseBackBtn" class="pause-btn">返回菜单</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>

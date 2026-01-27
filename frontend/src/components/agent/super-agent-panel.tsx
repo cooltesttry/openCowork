@@ -266,10 +266,10 @@ export function SuperAgentPanel() {
             )}
 
             {/* Main Content: Split view with events log */}
-            <div className="flex-1 flex min-h-0">
+            <div className="flex-1 flex min-h-0 overflow-hidden">
                 {/* Live Events Panel - shown when running or just completed */}
                 {(status === "running" || sessionId) && (
-                    <div className="w-56 border-r border-zinc-200 dark:border-zinc-700 shrink-0">
+                    <div className="w-56 border-r border-zinc-200 dark:border-zinc-700 shrink-0 overflow-hidden">
                         <SessionEventsLog
                             sessionId={sessionId}
                             isActive={status === "running"}
@@ -283,7 +283,7 @@ export function SuperAgentPanel() {
                 )}
 
                 {/* Event Details Panel - fills remaining space */}
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 overflow-hidden">
                     {selectedEvent ? (
                         <EventDetails event={selectedEvent} />
                     ) : (

@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 # Key: session_id, Value: asyncio.Task
 _running_tasks: dict[str, asyncio.Task] = {}
 
-# Base directory for Super Agent sessions
-SUPER_AGENT_BASE_DIR = Path(__file__).parent.parent.parent / "super_agent" / "workspace"
+# Base directory for Super Agent sessions (unified storage location)
+SUPER_AGENT_BASE_DIR = Path(__file__).parent.parent.parent / "storage" / "super_agent"
 
 
 # ============== Request/Response Models ==============
@@ -70,7 +70,6 @@ def get_orchestrator(worker_config: SAWorkerConfig, checker_config: SAWorkerConf
     return AsyncOrchestrator(
         base_dir=SUPER_AGENT_BASE_DIR,
         worker=ClaudeSdkWorker(),
-        checker=None,  # No longer using ReflectiveChecker
         checker_config=checker_config,  # Worker-based checker config
         cycle_wait_seconds=1,
     )
