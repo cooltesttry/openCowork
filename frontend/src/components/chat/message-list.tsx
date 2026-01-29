@@ -15,8 +15,13 @@ interface MessageListProps {
 export function MessageList({ messages, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onSelectFile, onPreviewHTML }: MessageListProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    // Auto-scroll to bottom
+    // Auto-scroll to bottom only when there's a streaming message
+    // This prevents unnecessary scrolling when switching sessions or loading history
     useEffect(() => {
+        // Only auto-scroll if there's an actively streaming message
+        const hasStreamingMessage = messages.some(msg => msg.isStreaming);
+        if (!hasStreamingMessage) return;
+
         if (scrollRef.current) {
             const scrollContainer = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
             if (scrollContainer) {

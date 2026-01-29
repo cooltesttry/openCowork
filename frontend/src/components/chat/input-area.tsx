@@ -19,7 +19,7 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { QuickPanel, SlashCommand, FileItem } from "./quick-panel";
-import { fetchWorkingDirectoryFiles } from "@/lib/api";
+import { fetchWorkingDirectoryFiles, uploadAttachment, resolvePath } from "@/lib/api";
 
 // Security mode types matching backend permission_mode
 export type SecurityMode = 'default' | 'acceptEdits' | 'bypassPermissions';
@@ -72,7 +72,7 @@ interface InputAreaProps {
 
 export interface InputAreaRef {
     focus: () => void;
-    insertText: (text: string) => void;
+    addFileReference: (path: string) => void;
 }
 
 export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
@@ -102,8 +102,8 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
         const [triggerPosition, setTriggerPosition] = useState<number | null>(null);
         const [filterText, setFilterText] = useState('');
 
-        // Attached files state - stores {fullPath, displayName}
-        const [attachedFiles, setAttachedFiles] = useState<{ fullPath: string, displayName: string }[]>([]);
+        // Attached files state - stores {fullPath, displayName, source}
+        const [attachedFiles, setAttachedFiles] = useState<{ fullPath: string; displayName: string; source: 'upload' | 'reference' }[]>([]);
 
         // Fetch working directory files on mount
         useEffect(() => {
@@ -124,31 +124,36 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
             loadFiles();
         }, []);
 
-        // Expose focus and insertText methods to parent
+        // Expose focus and addFileReference methods to parent
         useImperativeHandle(ref, () => ({
             focus: () => {
                 textareaRef.current?.focus();
             },
-            insertText: (text: string) => {
-                // Get current content directly from textarea to avoid stale closure
-                const currentContent = textareaRef.current?.value ?? '';
-                const cursorPos = textareaRef.current?.selectionStart ?? currentContent.length;
-                const before = currentContent.slice(0, cursorPos);
-                const after = currentContent.slice(cursorPos);
+            addFileReference: async (relativePath: string) => {
+                // Resolve to absolute path and add to attachments
+                try {
+                    const resolved = await resolvePath(relativePath);
+                    const absolutePath = resolved.absolute_path;
+                    const displayName = relativePath.split('/').pop() || relativePath;
 
-                // Add space before @ if needed
-                const needsSpace = before.length > 0 && !before.endsWith(' ') && !before.endsWith('\n');
-                const insertStr = (needsSpace ? ' ' : '') + '@' + text + ' ';
-
-                const newContent = before + insertStr + after;
-                setContent(newContent);
-
-                // Focus and move cursor after inserted text
-                requestAnimationFrame(() => {
-                    const newPos = cursorPos + insertStr.length;
-                    textareaRef.current?.setSelectionRange(newPos, newPos);
-                    textareaRef.current?.focus();
-                });
+                    setAttachedFiles(prev => {
+                        if (prev.some(f => f.fullPath === absolutePath)) {
+                            return prev;
+                        }
+                        return [...prev, { fullPath: absolutePath, displayName, source: 'reference' as const }];
+                    });
+                } catch (error) {
+                    console.error('Failed to resolve path:', relativePath, error);
+                    // Fallback: add with original path
+                    const displayName = relativePath.split('/').pop() || relativePath;
+                    setAttachedFiles(prev => {
+                        if (prev.some(f => f.fullPath === relativePath)) {
+                            return prev;
+                        }
+                        return [...prev, { fullPath: relativePath, displayName, source: 'reference' as const }];
+                    });
+                }
+                textareaRef.current?.focus();
             }
         }));
 
@@ -205,25 +210,66 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
         }, [quickPanelOpen]);
 
         // Handle Quick Panel selection
-        const handleQuickPanelSelect = useCallback((item: string) => {
+        const handleQuickPanelSelect = useCallback(async (item: string) => {
             if (triggerPosition !== null) {
                 const before = content.slice(0, triggerPosition);
                 const afterStartPos = triggerPosition + 1 + filterText.length;
                 const after = content.slice(afterStartPos);
 
-                // For slash commands: keep the full command (starts with /)
-                // For @ mentions: keep the @ symbol with the path
-                const insertText = triggerType === 'slash' ? item + ' ' : '@' + item + ' ';
+                if (triggerType === 'slash') {
+                    // For slash commands: keep the full command (starts with /)
+                    const insertText = item + ' ';
+                    const newContent = before + insertText + after;
+                    setContent(newContent);
 
-                const newContent = before + insertText + after;
-                setContent(newContent);
+                    // Move cursor after inserted text
+                    setTimeout(() => {
+                        const newPos = before.length + insertText.length;
+                        textareaRef.current?.setSelectionRange(newPos, newPos);
+                        textareaRef.current?.focus();
+                    }, 0);
+                } else {
+                    // For @ mentions: add to attachedFiles array instead of text
+                    // Remove the @ trigger from content
+                    const newContent = before + after;
+                    setContent(newContent);
 
-                // Move cursor after inserted text
-                setTimeout(() => {
-                    const newPos = before.length + insertText.length;
-                    textareaRef.current?.setSelectionRange(newPos, newPos);
-                    textareaRef.current?.focus();
-                }, 0);
+                    try {
+                        const resolved = await resolvePath(item);
+                        const absolutePath = resolved.absolute_path;
+
+                        // Add to attached files (avoid duplicates)
+                        setAttachedFiles(prev => {
+                            if (prev.some(f => f.fullPath === absolutePath)) {
+                                return prev;
+                            }
+                            return [...prev, {
+                                fullPath: absolutePath,
+                                displayName: item.split('/').pop() || item,
+                                source: 'reference' as const
+                            }];
+                        });
+                    } catch (error) {
+                        console.error('Failed to resolve path:', item, error);
+                        // Fallback: add with relative path
+                        setAttachedFiles(prev => {
+                            if (prev.some(f => f.fullPath === item)) {
+                                return prev;
+                            }
+                            return [...prev, {
+                                fullPath: item,
+                                displayName: item.split('/').pop() || item,
+                                source: 'reference' as const
+                            }];
+                        });
+                    }
+
+                    // Restore cursor
+                    setTimeout(() => {
+                        textareaRef.current?.setSelectionRange(before.length, before.length);
+                        textareaRef.current?.focus();
+                    }, 0);
+                }
             }
 
             setQuickPanelOpen(false);
@@ -403,7 +449,11 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
                                         className="flex items-center gap-1 px-2 py-1 bg-accent/50 rounded-md text-xs border border-accent/50 shrink-0"
                                         title={file.fullPath}
                                     >
-                                        <Paperclip className="h-3 w-3 text-muted-foreground shrink-0" />
+                                        {file.source === 'reference' ? (
+                                            <AtSign className="h-3 w-3 text-blue-500 shrink-0" />
+                                        ) : (
+                                            <Paperclip className="h-3 w-3 text-muted-foreground shrink-0" />
+                                        )}
                                         <span className="truncate max-w-[120px]">{file.displayName}</span>
                                         <button
                                             type="button"
@@ -446,14 +496,22 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
                                     type="file"
                                     className="hidden"
                                     multiple
-                                    onChange={(e) => {
+                                    onChange={async (e) => {
                                         const selectedFiles = e.target.files;
                                         if (selectedFiles && selectedFiles.length > 0) {
-                                            const newFiles = Array.from(selectedFiles).map(f => ({
-                                                fullPath: (f as File & { path?: string }).path || f.name,
-                                                displayName: f.name
-                                            }));
-                                            setAttachedFiles(prev => [...prev, ...newFiles]);
+                                            // Upload files to server and get absolute paths
+                                            for (const file of Array.from(selectedFiles)) {
+                                                try {
+                                                    const result = await uploadAttachment(file);
+                                                    setAttachedFiles(prev => [...prev, {
+                                                        fullPath: result.absolute_path,
+                                                        displayName: result.original_name,
+                                                        source: 'upload' as const
+                                                    }]);
+                                                } catch (error) {
+                                                    console.error('Failed to upload file:', file.name, error);
+                                                }
+                                            }
                                             onFileSelect?.();
                                         }
                                         e.target.value = '';

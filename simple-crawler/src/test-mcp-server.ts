@@ -2,7 +2,7 @@
  * Test MCP Server web_fetch tool with HTML and PDF
  */
 
-import { scrape, cleanup } from './index.js';
+import { scrape, cleanup } from './index';
 
 async function webFetch(url: string) {
     const result = await scrape(url, {

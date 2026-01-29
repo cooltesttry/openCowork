@@ -5,6 +5,7 @@ Provides endpoints for starting, monitoring, and canceling Super Agent sessions.
 Uses the AsyncOrchestrator from super_agent module.
 """
 import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Optional
@@ -47,6 +48,7 @@ class RunRequest(BaseModel):
     """Request body for starting a new Super Agent run."""
     task_objective: str = Field(..., description="The task description")
     worker_id: str = Field(..., description="ID of the Worker template to use")
+    checker_id: str = Field(..., description="ID of the Checker template to use")
     max_cycles: int = Field(default=3, ge=1, le=10, description="Maximum iteration cycles")
     initial_input: dict = Field(default_factory=dict, description="Initial context for the Worker")
 
@@ -188,7 +190,28 @@ async def run_session_async(orchestrator: AsyncOrchestrator, session_id: str, ev
         
         await orchestrator.run_async(session_id)
         
-        await event_manager.emit(EventType.SESSION_COMPLETE, {"session_id": session_id})
+        # Load final output from __output.json
+        output_data = {}
+        session_dir = SUPER_AGENT_BASE_DIR / "workspace" / session_id
+        output_file = session_dir / "__output.json"
+        logger.info(f"[SuperAgent] Looking for output file: {output_file}")
+        if output_file.exists():
+            try:
+                with output_file.open("r", encoding="utf-8") as f:
+                    output_data = json.load(f)
+                logger.info(f"[SuperAgent] Loaded output: summary={output_data.get('summary', '')[:50]}, files={len(output_data.get('files', []))}")
+            except Exception as e:
+                logger.warning(f"[SuperAgent] Failed to read __output.json: {e}")
+        else:
+            logger.warning(f"[SuperAgent] Output file not found: {output_file}")
+        
+        await event_manager.emit(EventType.SESSION_COMPLETE, {
+            "session_id": session_id,
+            "summary": output_data.get("summary", ""),
+            "text_content": output_data.get("text_content", ""),
+            "files": output_data.get("files", []),
+            "instruction_to_user": output_data.get("instruction_to_user", ""),
+        })
         logger.info(f"[SuperAgent] Session completed: {session_id}")
     except Exception as e:
         logger.error(f"[SuperAgent] Session failed: {session_id}, error: {e}")
@@ -226,11 +249,11 @@ async def start_run(run_request: RunRequest, request: Request):
     )
     
     # Create orchestrator and session
-    # Load checker worker config (worker ID 'checker')
+    # Load checker worker config using the specified checker_id
     try:
-        checker_config = get_worker_config("checker", request)
-    except KeyError:
-        logger.warning("[SuperAgent] 'checker' worker not found, using main worker for checker")
+        checker_config = get_worker_config(run_request.checker_id, request)
+    except HTTPException:
+        logger.warning(f"[SuperAgent] Checker '{run_request.checker_id}' not found, using main worker for checker")
         checker_config = worker_config
     
     orchestrator = get_orchestrator(worker_config, checker_config)

@@ -86,7 +86,7 @@ export function DockviewMain() {
     }, []);
 
     const handleMentionFile = useCallback((path: string) => {
-        chatLogicRef.current?.inputAreaRef.current?.insertText(path);
+        chatLogicRef.current?.inputAreaRef.current?.addFileReference(path);
     }, []);
 
     const handleOpenFile = useCallback(async (path: string) => {

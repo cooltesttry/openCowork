@@ -119,6 +119,55 @@ export async function saveFile(path: string, content: string): Promise<any> {
     return res.json();
 }
 
+// ============== File Attachment Upload ==============
+
+export interface UploadAttachmentResponse {
+    status: string;
+    absolute_path: string;
+    relative_path: string;
+    original_name: string;
+    size: number;
+}
+
+export async function uploadAttachment(file: File): Promise<UploadAttachmentResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(`${API_ROOT}/files/upload-attachment`, {
+        method: 'POST',
+        body: formData,
+    });
+
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Upload failed' }));
+        throw new Error(err.detail || 'Failed to upload attachment');
+    }
+    return res.json();
+}
+
+// ============== Path Resolution ==============
+
+export interface ResolvePathResponse {
+    status: string;
+    absolute_path: string;
+    relative_path: string;
+    is_directory: boolean;
+}
+
+export async function resolvePath(relativePath: string): Promise<ResolvePathResponse> {
+    const res = await fetch(`${API_ROOT}/files/resolve-path`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: relativePath }),
+    });
+
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Path resolution failed' }));
+        throw new Error(err.detail || 'Failed to resolve path');
+    }
+    return res.json();
+}
+
 
 // ============== Skills & Agents ==============
 
@@ -285,6 +334,7 @@ export async function validateWorker(config: Partial<WorkerConfig>): Promise<Wor
 export interface SuperAgentRunRequest {
     task_objective: string;
     worker_id: string;
+    checker_id: string;
     max_cycles?: number;
     initial_input?: Record<string, unknown>;
 }

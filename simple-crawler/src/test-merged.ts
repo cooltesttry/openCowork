@@ -2,7 +2,7 @@
  * Test merged web_fetch tool
  */
 
-import { scrape, extractLinksWithMetadata, cleanup } from './index.js';
+import { scrape, extractLinksWithMetadata, cleanup } from './index';
 
 async function webFetch(url: string, includeLinks: boolean = false) {
     console.log(`\n${'='.repeat(60)}`);

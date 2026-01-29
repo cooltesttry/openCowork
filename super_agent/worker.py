@@ -92,6 +92,7 @@ class ClaudeSdkWorker(Worker):
         # Enable resume if session ID provided
         if resume_sdk_session_id:
             options.resume = resume_sdk_session_id
+            options.system_prompt = None  # Let SDK use original session's system prompt
             logger.info(f"[Worker] Resuming SDK session: {resume_sdk_session_id}")
         
         # Replace placeholders in prompt

@@ -197,6 +197,7 @@ class SessionManager:
         
         if resume_sdk_session_id:
             options.resume = resume_sdk_session_id
+            options.system_prompt = None  # Let SDK use original session's system prompt
             logger.info(f"[SessionManager] Resuming SDK session: {resume_sdk_session_id}")
         
         # Create client
@@ -328,8 +329,45 @@ class SessionManager:
                 logger.warning(f"[SessionManager] Failed to set permission_mode: {e}")
         
         try:
-            # Send the query
-            await session.client.query(message)
+            # Process images in message using pipeline
+            processed_message = message
+            image_blocks = []
+            
+            try:
+                from core.image_pipeline import ImagePipeline
+                pipeline = ImagePipeline()
+                result = await pipeline.process(message)
+                
+                if result.images:
+                    # Convert to SDK format
+                    image_blocks = pipeline.get_sdk_content_blocks(result.images)
+                    processed_message = result.cleaned_prompt
+                    logger.info(f"[SessionManager] Processed {len(result.images)} image(s)")
+                    
+                    # Log any errors
+                    for error in result.errors:
+                        logger.warning(f"[SessionManager] Image processing error: {error}")
+            except ImportError:
+                logger.debug("[SessionManager] Image pipeline not available")
+            except Exception as e:
+                logger.warning(f"[SessionManager] Image processing failed: {e}")
+            
+            # Send query - use AsyncIterable for multimodal or simple string
+            if image_blocks:
+                # Build multimodal message as AsyncIterable[dict]
+                async def multimodal_stream():
+                    content = image_blocks.copy()
+                    content.append({"type": "text", "text": processed_message})
+                    yield {
+                        "type": "user",
+                        "message": {"role": "user", "content": content},
+                        "session_id": "default"
+                    }
+                
+                await session.client.query(multimodal_stream())
+            else:
+                await session.client.query(processed_message)
+            
             session.update_activity()
             
             turn_count = 0

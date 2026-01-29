@@ -2,7 +2,7 @@
  * Test MCP Server Tools
  */
 
-import { scrape, extractLinksWithMetadata, cleanup } from './index.js';
+import { scrape, extractLinksWithMetadata, cleanup } from './index';
 
 async function testWebFetch(url: string) {
     console.log('\n=== Testing web_fetch ===');

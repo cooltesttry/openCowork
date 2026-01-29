@@ -3,7 +3,7 @@
  * Compare results with different sites
  */
 
-import { scrape, cleanup } from './index.js';
+import { scrape, cleanup } from './index';
 
 async function main() {
     console.log('🕵️ Stealth Plugin Test\n');

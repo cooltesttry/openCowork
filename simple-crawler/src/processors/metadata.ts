@@ -4,7 +4,7 @@
  */
 
 import { load } from 'cheerio';
-import type { PageMetadata } from '../types.js';
+import type { PageMetadata } from '../types';
 
 /**
  * Extract metadata from HTML

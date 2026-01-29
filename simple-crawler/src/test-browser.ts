@@ -3,7 +3,7 @@
  * Test websites that require browser rendering
  */
 
-import { scrape, cleanup } from './index.js';
+import { scrape, cleanup } from './index';
 
 async function main() {
     console.log('🔥 Browser Fallback Test\n');

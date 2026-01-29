@@ -1,0 +1,10 @@
+model_list:
+  - model_name: "gpt-5.2"                 # Claude Code 里要用的模型名
+    litellm_params:
+      model: "openai/gpt-5.2"             # 关键：openai/ 前缀告诉 LiteLLM 走 OpenAI chat.completions :contentReference[oaicite:4]{index=4}
+      api_base: "http://localhost:8317/v1"
+      api_key: "test"
+
+#general_settings:
+  # 开启后，所有请求都必须带 Authorization: Bearer <master_key> :contentReference[oaicite:5]{index=5}
+#  master_key: "test"

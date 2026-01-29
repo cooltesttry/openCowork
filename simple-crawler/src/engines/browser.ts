@@ -6,10 +6,9 @@
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import type { Browser, BrowserContext, Page } from 'playwright';
-import type { EngineResult, ScrapeOptions } from '../types.js';
-import { getRandomUserAgent } from './user-agent.js';
+import type { EngineResult, ScrapeOptions } from '../types';
+import { getRandomUserAgent } from './user-agent';
 
-// Add stealth plugin
 chromium.use(StealthPlugin());
 
 // Domains to block (ads, trackers, etc.)
@@ -27,17 +26,10 @@ const BLOCKED_DOMAINS = [
     'facebook.net',
     'fbcdn.net',
     'amazon-adsystem.com',
-    'analytics.',
-    'tracking.',
-    'pixel.',
-    'beacon.',
 ];
 
 // Resource types to block for faster loading
-const BLOCKED_RESOURCE_TYPES = [
-    'media',
-    'font',
-];
+const BLOCKED_RESOURCE_TYPES = ['media', 'font'];
 
 let browserInstance: Browser | null = null;
 
@@ -91,7 +83,6 @@ async function createContext(browser: Browser): Promise<BrowserContext> {
         timezoneId: 'America/New_York',
         permissions: [],
         colorScheme: 'light',
-        // Add extra HTTP headers to appear more legitimate
         extraHTTPHeaders: {
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -99,24 +90,22 @@ async function createContext(browser: Browser): Promise<BrowserContext> {
         },
     });
 
-    // Block ads and trackers
+    // Block ads and trackers for faster loading
     await context.route('**/*', (route, request) => {
         const url = request.url();
         const resourceType = request.resourceType();
 
-        // Block by resource type
         if (BLOCKED_RESOURCE_TYPES.includes(resourceType)) {
             return route.abort();
         }
 
-        // Block by domain
         try {
             const hostname = new URL(url).hostname;
             if (BLOCKED_DOMAINS.some(domain => hostname.includes(domain))) {
                 return route.abort();
             }
         } catch {
-            // Invalid URL, continue
+            // Invalid URL
         }
 
         return route.continue();
@@ -142,26 +131,14 @@ export async function fetchWithBrowser(
         const timeout = options.timeout ?? 30000;
         const waitAfterLoad = options.waitAfterLoad ?? 1000;
 
-        // Navigate to the page
         const response = await page.goto(url, {
             waitUntil: 'domcontentloaded',
             timeout,
         });
 
-        // Wait for additional time if specified
         if (waitAfterLoad > 0) {
             await page.waitForTimeout(waitAfterLoad);
         }
-
-        // Try to wait for content to stabilize
-        try {
-            await page.waitForLoadState('networkidle', { timeout: 5000 });
-        } catch {
-            // Timeout is acceptable, page might have persistent connections
-        }
-
-        // Scroll to trigger lazy loading (with human-like behavior)
-        await humanLikeScroll(page);
 
         const html = await page.content();
         const statusCode = response?.status() ?? 200;
@@ -184,45 +161,5 @@ export async function fetchWithBrowser(
             await page.close();
         }
         await context.close();
-    }
-}
-
-/**
- * Human-like scrolling behavior
- */
-async function humanLikeScroll(page: Page): Promise<void> {
-    try {
-        await page.evaluate(async () => {
-            await new Promise<void>((resolve) => {
-                let totalHeight = 0;
-                const maxScrolls = 8;
-                let scrolls = 0;
-
-                const timer = setInterval(() => {
-                    const scrollHeight = document.body.scrollHeight;
-                    // Random scroll distance between 200-400px
-                    const distance = Math.floor(Math.random() * 200) + 200;
-
-                    window.scrollBy({
-                        top: distance,
-                        behavior: 'smooth'
-                    });
-
-                    totalHeight += distance;
-                    scrolls++;
-
-                    if (totalHeight >= scrollHeight || scrolls >= maxScrolls) {
-                        clearInterval(timer);
-                        // Wait a bit before scrolling back
-                        setTimeout(() => {
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                            resolve();
-                        }, 300);
-                    }
-                }, Math.floor(Math.random() * 200) + 150); // Random interval 150-350ms
-            });
-        });
-    } catch {
-        // Ignore scroll errors
     }
 }

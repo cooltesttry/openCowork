@@ -258,33 +258,32 @@ def build_agent_options(
     # Set MCP servers
     mcp_servers = build_mcp_servers(settings.mcp_servers)
     
-    # Configure Search Tool via Stdio MCP Server
-    if settings.search.enabled and settings.search.provider in ["serper", "tavily", "brave"] and settings.search.api_key:
-        server_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_search_server.py")
+    # Configure Web Tools (search + fetch) via TypeScript simple-crawler MCP Server
+    if settings.search.enabled and settings.search.api_key:
+        # Path: backend/core/agent_client.py -> ../../simple-crawler/dist/mcp-server.js
+        simple_crawler_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "..", "simple-crawler", "dist", "mcp-server.js"
+        )
         
         # Add Stdio MCP Server configuration
-        mcp_servers["search-tools"] = {
-            "command": sys.executable,
-            "args": [server_script],
-            "env": {
-                **os.environ,
-                "PYTHONUNBUFFERED": "1" # Ensure output is flushed
-            }
+        mcp_servers["web"] = {
+            "command": "node",
+            "args": [simple_crawler_path],
         }
         
-        # Add tool to allowed_tools to prevent permission errors
+        # Add tools to allowed_tools to prevent permission errors
         # SDK namespaces MCP tools as mcp__{server_name}__{tool_name}
-        # BUT: In Ask mode (permission_mode='default'), don't auto-allow - let callback handle it
-        tool_simple_name = f"{settings.search.provider}_search"
-        full_tool_name = f"mcp__search-tools__{tool_simple_name}"
-        
+        # Tools: search, fetch
         if permission_mode != 'default':
             # Only add to allowed_tools if not in Ask mode
+            web_tools = ["mcp__web__search", "mcp__web__fetch"]
             if options.allowed_tools:
-                if full_tool_name not in options.allowed_tools:
-                    options.allowed_tools.append(full_tool_name)
+                allowed_set = set(options.allowed_tools)
+                allowed_set.update(web_tools)
+                options.allowed_tools = list(allowed_set)
             else:
-                options.allowed_tools = [full_tool_name]
+                options.allowed_tools = web_tools
 
     if mcp_servers:
         options.mcp_servers = mcp_servers

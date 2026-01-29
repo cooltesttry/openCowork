@@ -3,7 +3,7 @@
  * Run with: pnpm demo
  */
 
-import { scrape, cleanup } from './index.js';
+import { scrape, cleanup } from './index';
 
 async function main() {
     const urls = [

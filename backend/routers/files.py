@@ -64,7 +64,8 @@ def get_safe_path(base_dir: str, relative_path: str) -> Path:
 
 
 # Forbidden directories for security (system-sensitive paths)
-FORBIDDEN_DIRS = ['/etc', '/var', '/usr', '/System', '/Library', '/private', '/bin', '/sbin']
+# Note: /private/tmp is allowed because macOS /tmp symlinks to /private/tmp
+FORBIDDEN_DIRS = ['/etc', '/var', '/usr', '/System', '/Library', '/private/etc', '/private/var', '/bin', '/sbin']
 
 def resolve_file_path(workdir: str, path: str) -> Path:
     """
@@ -83,6 +84,39 @@ def resolve_file_path(workdir: str, path: str) -> Path:
         if not workdir:
             raise HTTPException(status_code=500, detail="Default working directory not configured.")
         return get_safe_path(workdir, path)
+
+
+class ResolvePathRequest(BaseModel):
+    path: str
+
+
+@router.post("/resolve-path")
+async def resolve_path_to_absolute(request: Request, body: ResolvePathRequest):
+    """
+    Resolve a relative path to an absolute path.
+    Used by frontend when referencing files via @ mentions.
+    """
+    settings = request.app.state.settings
+    workdir = settings.default_workdir
+    if not workdir:
+        raise HTTPException(status_code=500, detail="Default working directory not configured.")
+    
+    # Clean the path (remove trailing slashes for files)
+    clean_path = body.path.rstrip('/')
+    
+    # Resolve to absolute path
+    target_path = get_safe_path(workdir, clean_path)
+    
+    if not target_path.exists():
+        raise HTTPException(status_code=404, detail=f"Path not found: {body.path}")
+    
+    return {
+        "status": "success",
+        "absolute_path": str(target_path),
+        "relative_path": clean_path,
+        "is_directory": target_path.is_dir()
+    }
+
 
 @router.get("/list")
 async def list_files(request: Request, path: str = "", recursive: bool = True):
@@ -525,6 +559,62 @@ async def upload_file(
         return {
             "status": "success", 
             "path": str(target_file.relative_to(Path(workdir).resolve())),
+            "size": len(content)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+from datetime import datetime
+
+@router.post("/upload-attachment")
+async def upload_attachment(
+    request: Request,
+    file: UploadFile = File(...)
+):
+    """
+    Upload a file to the _attachments folder with timestamped unique name.
+    Returns the absolute path for SDK usage.
+    
+    Naming convention: {YYYYMMDD_HHMMSS}_{original_filename}
+    This ensures uniqueness while preserving the original filename for readability.
+    """
+    settings = request.app.state.settings
+    workdir = settings.default_workdir
+    if not workdir:
+        raise HTTPException(status_code=500, detail="Configuration error.")
+
+    # Create _attachments directory if it doesn't exist
+    attachments_dir = Path(workdir).resolve() / "_attachments"
+    attachments_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate timestamped unique filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    original_name = file.filename or "unnamed"
+    unique_filename = f"{timestamp}_{original_name}"
+    
+    target_file = attachments_dir / unique_filename
+    
+    # Handle edge case: if file with same timestamp exists (within same second), add suffix
+    counter = 1
+    base_name = target_file.stem
+    suffix = target_file.suffix
+    while target_file.exists():
+        unique_filename = f"{base_name}_{counter}{suffix}"
+        target_file = attachments_dir / unique_filename
+        counter += 1
+    
+    try:
+        # Save uploaded file
+        with open(target_file, "wb") as f:
+            content = await file.read()
+            f.write(content)
+        
+        return {
+            "status": "success",
+            "absolute_path": str(target_file),
+            "relative_path": str(target_file.relative_to(Path(workdir).resolve())),
+            "original_name": original_name,
             "size": len(content)
         }
     except Exception as e:

@@ -2,7 +2,7 @@
  * Test PDF Support with reliable URLs
  */
 
-import { scrape, cleanup, isPdfUrl } from './index.js';
+import { scrape, cleanup, isPdfUrl } from './index';
 
 async function main() {
     console.log('📄 PDF Support Test\n');

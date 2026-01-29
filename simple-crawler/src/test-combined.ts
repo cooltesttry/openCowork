@@ -2,7 +2,7 @@
  * Combined Test: Normal Web Pages + PDF
  */
 
-import { scrape, cleanup } from './index.js';
+import { scrape, cleanup } from './index';
 
 async function main() {
     console.log('🔥 Combined Scrape Test\n');

@@ -3,10 +3,8 @@
  * Extracts text content from PDF files using pdf-parse v1.x
  */
 
-import { createRequire } from 'module';
-import type { EngineResult } from '../types.js';
+import type { EngineResult } from '../types';
 
-const require = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pdfParse = require('pdf-parse');
 

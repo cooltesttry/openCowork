@@ -951,7 +951,7 @@ export function ChatPanel() {
                                     }
                                 }}
                             >
-                                <McpSidebarPanel onMentionFile={(path) => inputAreaRef.current?.insertText(path)} />
+                                <McpSidebarPanel onMentionFile={(path) => inputAreaRef.current?.addFileReference(path)} />
                             </Panel>
                         </>
                     )}

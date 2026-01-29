@@ -3,13 +3,13 @@
  * A lightweight single-page web crawler with HTTP fetch and browser rendering fallback
  */
 
-import type { ScrapeOptions, ScrapeResult, EngineResult } from './types.js';
-import { fetchWithHttp, shouldFallbackToBrowser, fetchWithBrowser, closeBrowser, isPdfUrl, fetchPdf } from './engines/index.js';
-import { cleanHtml, htmlToMarkdown, extractLinks, extractMetadata } from './processors/index.js';
+import type { ScrapeOptions, ScrapeResult, EngineResult } from './types';
+import { fetchWithHttp, shouldFallbackToBrowser, fetchWithBrowser, closeBrowser, isPdfUrl, fetchPdf } from './engines/index';
+import { cleanHtml, htmlToMarkdown, extractLinks, extractMetadata } from './processors/index';
 
-export * from './types.js';
-export * from './engines/index.js';
-export * from './processors/index.js';
+export * from './types';
+export * from './engines/index';
+export * from './processors/index';
 
 /**
  * Scrape a single URL and extract content

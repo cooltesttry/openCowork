@@ -43,6 +43,7 @@ export function SuperAgentPanel() {
     // Input State
     const [taskObjective, setTaskObjective] = useState("");
     const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
+    const [selectedCheckerId, setSelectedCheckerId] = useState<string | null>(null);
     const [maxCycles, setMaxCycles] = useState(3);
 
     // Workers list
@@ -67,6 +68,13 @@ export function SuperAgentPanel() {
                 setWorkers(data.workers || []);
                 if (data.workers?.length > 0 && !selectedWorkerId) {
                     setSelectedWorkerId(data.workers[0].id);
+                }
+                // Auto-select checker: prefer agent with id/name containing 'checker'
+                const defaultChecker = data.workers?.find(w => w.id === 'checker' || w.name.toLowerCase().includes('checker'));
+                if (defaultChecker && !selectedCheckerId) {
+                    setSelectedCheckerId(defaultChecker.id);
+                } else if (data.workers?.length > 0 && !selectedCheckerId) {
+                    setSelectedCheckerId(data.workers[0].id);
                 }
             } catch {
                 toast.error("Failed to load workers");
@@ -112,6 +120,10 @@ export function SuperAgentPanel() {
             toast.error("Please select a worker");
             return;
         }
+        if (!selectedCheckerId) {
+            toast.error("Please select a checker");
+            return;
+        }
 
         setError(null);
         setStatus("running");
@@ -121,6 +133,7 @@ export function SuperAgentPanel() {
             const result = await startSuperAgentRun({
                 task_objective: taskObjective.trim(),
                 worker_id: selectedWorkerId,
+                checker_id: selectedCheckerId,
                 max_cycles: maxCycles,
             });
             setSessionId(result.session_id);
@@ -131,7 +144,7 @@ export function SuperAgentPanel() {
             setStatus("failed");
             toast.error(message);
         }
-    }, [taskObjective, selectedWorkerId, maxCycles]);
+    }, [taskObjective, selectedWorkerId, selectedCheckerId, maxCycles]);
 
     const handleStop = useCallback(async () => {
         if (!sessionId) return;
@@ -210,6 +223,26 @@ export function SuperAgentPanel() {
                             >
                                 <SelectTrigger>
                                     <SelectValue placeholder="Select a worker..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {workers.map((w) => (
+                                        <SelectItem key={w.id} value={w.id}>
+                                            {w.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="flex-1 space-y-2">
+                            <Label>Checker</Label>
+                            <Select
+                                value={selectedCheckerId || ""}
+                                onValueChange={setSelectedCheckerId}
+                                disabled={isLoadingWorkers}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select a checker..." />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {workers.map((w) => (

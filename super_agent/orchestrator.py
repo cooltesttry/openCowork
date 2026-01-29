@@ -373,8 +373,33 @@ Please verify the Worker's claims using available tools and render your verdict 
                 "error": llm_result.error,
             })
             
-            # 2. INGEST & ARCHIVE
-            if output_file.exists():
+            # 2. INGEST & VALIDATE OUTPUT
+            # Pre-validation: skip Checker if output is missing or malformed
+            skip_checker = False
+            checker_result = None
+            
+            if not output_file.exists():
+                # Case 1: No output file - skip Checker, provide feedback
+                logger.warning(f"[Orchestrator] Session {session.session_id} - __output.json not found, skipping Checker")
+                skip_checker = True
+                checker_result = CheckerResult(
+                    passed=False,
+                    reason="missing_output",
+                    next_input={
+                        "error_feedback": (
+                            "The Worker did not generate the required __output.json file. "
+                            "Please ensure your output is saved to __output.json in the workspace directory. "
+                            "The file must contain valid JSON with at minimum a 'summary' field."
+                        )
+                    }
+                )
+                await self._emit(EventType.CHECKER_COMPLETE, {
+                    "cycle_index": cycle_index,
+                    "passed": False,
+                    "reason": "missing_output",
+                    "skipped": True,
+                })
+            else:
                 logger.info(f"[Orchestrator] Session {session.session_id} - Found __output.json, ingesting...")
                 try:
                     content = output_file.read_text(encoding="utf-8")
@@ -383,7 +408,6 @@ Please verify the Worker's claims using available tools and render your verdict 
                         data = json.loads(content)
                     except json.JSONDecodeError as parse_err:
                         # Fallback: use json-repair to fix malformed JSON
-                        # (e.g., unescaped quotes in LLM-generated content)
                         logger.warning(f"[Orchestrator] Session {session.session_id} - JSON parse failed, attempting repair: {parse_err}")
                         try:
                             from json_repair import repair_json
@@ -391,33 +415,71 @@ Please verify the Worker's claims using available tools and render your verdict 
                             data = json.loads(repaired)
                             logger.info(f"[Orchestrator] Session {session.session_id} - JSON repair successful")
                         except Exception as repair_err:
+                            # Case 2: JSON parsing failed even after repair - skip Checker
                             logger.error(f"[Orchestrator] Session {session.session_id} - JSON repair also failed: {repair_err}")
-                            raise parse_err  # Re-raise original error
-                    logger.debug(f"[Orchestrator] __output.json keys: {list(data.keys())}")
+                            skip_checker = True
+                            checker_result = CheckerResult(
+                                passed=False,
+                                reason="json_parse_error",
+                                next_input={
+                                    "error_feedback": (
+                                        f"The __output.json file contains invalid JSON that could not be parsed. "
+                                        f"Error: {str(parse_err)}. "
+                                        "Please ensure the output is valid JSON format. "
+                                        "Common issues: unescaped quotes, trailing commas, missing brackets."
+                                    )
+                                }
+                            )
+                            await self._emit(EventType.CHECKER_COMPLETE, {
+                                "cycle_index": cycle_index,
+                                "passed": False,
+                                "reason": "json_parse_error",
+                                "skipped": True,
+                            })
+                            data = None  # Mark as failed
                     
-                    # Override LLMResult text with structured output from __output.json
-                    llm_result.text = json.dumps(data)
-                    
-                    # If 'files' are present, register them as artifacts
-                    # so they show up in UI or logs
-                    files_list = data.get("files")
-                    if isinstance(files_list, list) and files_list:
-                        for f in files_list:
-                             if isinstance(f, str):
-                                artifacts.append(f)
+                    if data is not None:
+                        logger.debug(f"[Orchestrator] __output.json keys: {list(data.keys())}")
+                        
+                        # Override LLMResult text with structured output from __output.json
+                        llm_result.text = json.dumps(data)
+                        
+                        # If 'files' are present, register them as artifacts
+                        # Filter out __output.json to avoid duplication
+                        files_list = data.get("files")
+                        if isinstance(files_list, list) and files_list:
+                            for f in files_list:
+                                if isinstance(f, str):
+                                    # Skip __output.json entries to avoid duplication
+                                    if f == "__output.json" or f.endswith("/__output.json"):
+                                        continue
+                                    artifacts.append(f)
 
-                    summary += " [Output from __output.json]"
-                    
-                    # Archive
-                    archive_name = f"__output_cycle_{cycle_index:04d}.json"
-                    archive_path = workspace / archive_name
-                    shutil.copy(output_file, archive_path)
-                    artifacts.append(archive_name)
+                        summary += " [Output from __output.json]"
+                        
+                        # Archive
+                        archive_name = f"__output_cycle_{cycle_index:04d}.json"
+                        archive_path = workspace / archive_name
+                        shutil.copy(output_file, archive_path)
+                        artifacts.append(archive_name)
                     
                 except Exception as e:
-                    # If we can't read/parse, we just log it but don't crash
+                    # Other exceptions during file reading
                     logger.error(f"[Orchestrator] Session {session.session_id} - Failed to process __output.json: {e}")
-                    llm_result.error = f"Failed to process __output.json: {str(e)}"
+                    skip_checker = True
+                    checker_result = CheckerResult(
+                        passed=False,
+                        reason="output_read_error",
+                        next_input={
+                            "error_feedback": f"Failed to read __output.json: {str(e)}. Please try again."
+                        }
+                    )
+                    await self._emit(EventType.CHECKER_COMPLETE, {
+                        "cycle_index": cycle_index,
+                        "passed": False,
+                        "reason": "output_read_error",
+                        "skipped": True,
+                    })
             
         except Exception as exc:
             ended_at = utc_now()
@@ -453,41 +515,45 @@ Please verify the Worker's claims using available tools and render your verdict 
             return session
         ended_at = utc_now()
 
-        logger.info(f"[Orchestrator] Session {session.session_id} - Calling Checker Worker...")
-        
-        # Build checker prompt using new method
-        checker_prompt = self._build_checker_prompt(session.task, llm_result)
-        
-        # Get checker worker config (uses 'checker' worker ID)
-        checker_config = self.checker_config or session.worker_config
-        
-        # Emit checker start event with full config
-        await self._emit(EventType.CHECKER_START, {
-            "cycle_index": cycle_index,
-            "model": checker_config.model if checker_config else None,
-            "max_turns": checker_config.max_turns if checker_config else None,
-            "prompt_length": len(checker_prompt) if checker_prompt else 0,
-            "prompt_preview": checker_prompt[:2000] if checker_prompt else None,
-        })
-        
-        # Call Worker as Checker (no resume - always new session for Checker)
-        checker_llm_result = await self.worker.run_async(
-            checker_config, checker_prompt,
-            workspace=self.store.layout.session_dir(session.session_id),
-            event_callback=self._emit if self.event_manager else None,
-            resume_sdk_session_id=None,  # Checker always new session
-        )
-        
-        # Parse Worker output to CheckerResult
-        checker_result = self._parse_checker_verdict(checker_llm_result)
-        
-        # Emit checker complete event with feedback
-        await self._emit(EventType.CHECKER_COMPLETE, {
-            "cycle_index": cycle_index,
-            "passed": checker_result.passed,
-            "reason": checker_result.reason,
-            "next_input": checker_result.next_input,
-        })
+        # Only call Checker if pre-validation passed
+        if not skip_checker:
+            logger.info(f"[Orchestrator] Session {session.session_id} - Calling Checker Worker...")
+            
+            # Build checker prompt using new method
+            checker_prompt = self._build_checker_prompt(session.task, llm_result)
+            
+            # Get checker worker config (uses 'checker' worker ID)
+            checker_config = self.checker_config or session.worker_config
+            
+            # Emit checker start event with full config
+            await self._emit(EventType.CHECKER_START, {
+                "cycle_index": cycle_index,
+                "model": checker_config.model if checker_config else None,
+                "max_turns": checker_config.max_turns if checker_config else None,
+                "prompt_length": len(checker_prompt) if checker_prompt else 0,
+                "prompt_preview": checker_prompt[:2000] if checker_prompt else None,
+            })
+            
+            # Call Worker as Checker (no resume - always new session for Checker)
+            checker_llm_result = await self.worker.run_async(
+                checker_config, checker_prompt,
+                workspace=self.store.layout.session_dir(session.session_id),
+                event_callback=self._emit if self.event_manager else None,
+                resume_sdk_session_id=None,  # Checker always new session
+            )
+            
+            # Parse Worker output to CheckerResult
+            checker_result = self._parse_checker_verdict(checker_llm_result)
+            
+            # Emit checker complete event with feedback
+            await self._emit(EventType.CHECKER_COMPLETE, {
+                "cycle_index": cycle_index,
+                "passed": checker_result.passed,
+                "reason": checker_result.reason,
+                "next_input": checker_result.next_input,
+            })
+        else:
+            logger.info(f"[Orchestrator] Session {session.session_id} - Skipping Checker due to pre-validation failure: {checker_result.reason}")
         
         logger.info(f"[Orchestrator] Session {session.session_id} - Checker result: passed={checker_result.passed}, reason={checker_result.reason}")
         record = self._build_cycle_record(

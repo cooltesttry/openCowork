@@ -2,7 +2,7 @@
  * Check TechCrunch result
  */
 
-import { scrape, cleanup } from './index.js';
+import { scrape, cleanup } from './index';
 
 async function main() {
     const result = await scrape('https://techcrunch.com', {

@@ -12,7 +12,8 @@ interface ThinkingBlockProps {
 }
 
 export function ThinkingBlock({ block, autoCollapseDelay = 500 }: ThinkingBlockProps) {
-    const [isOpen, setIsOpen] = useState(true);
+    // Start collapsed if status is already success (for history items)
+    const [isOpen, setIsOpen] = useState(block.status !== 'success');
     const hasAutoCollapsed = useRef(false);
     const prevStatus = useRef(block.status);
 

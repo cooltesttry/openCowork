@@ -138,7 +138,7 @@ export function SessionEventsLog({
             case "session_start":
                 return `Session: ${data.model || "Unknown"}`;
             case "session_complete":
-                return "Session completed";
+                return data.summary ? `✅ ${(data.summary as string).slice(0, 40)}...` : "Session completed";
             case "session_error":
                 return `Error: ${(data.error as string)?.slice(0, 30) || "Unknown"}`;
             case "cycle_start":
@@ -256,6 +256,60 @@ export function EventDetails({ event }: EventDetailsProps) {
         return (
             <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                 Click an event to view details
+            </div>
+        );
+    }
+
+    // Special rendering for session_complete with output data
+    if (event.type === "session_complete" && (event.data.text_content || event.data.files)) {
+        const files = event.data.files as string[] || [];
+        return (
+            <div className="flex flex-col h-full overflow-hidden">
+                <div className="px-4 py-3 border-b bg-green-50 dark:bg-green-900/20">
+                    <h3 className="font-semibold text-green-700 dark:text-green-300">
+                        ✅ 任务完成
+                    </h3>
+                    {event.data.summary && (
+                        <p className="text-sm text-green-600 dark:text-green-400 mt-1">
+                            {String(event.data.summary)}
+                        </p>
+                    )}
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {/* Text Output */}
+                    {event.data.text_content && (
+                        <div>
+                            <h4 className="text-sm font-medium mb-2">📝 输出结果</h4>
+                            <pre className="whitespace-pre-wrap text-sm bg-muted p-3 rounded">
+                                {String(event.data.text_content)}
+                            </pre>
+                        </div>
+                    )}
+
+                    {/* File List */}
+                    {files.length > 0 && (
+                        <div>
+                            <h4 className="text-sm font-medium mb-2">📁 生成的文件 ({files.length})</h4>
+                            <ul className="space-y-1 bg-muted p-3 rounded">
+                                {files.map((file, i) => (
+                                    <li key={i} className="text-sm text-blue-600 dark:text-blue-400 font-mono">
+                                        📄 {typeof file === 'string' ? file.split('/').pop() : file}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* User Instructions */}
+                    {event.data.instruction_to_user && (
+                        <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded border border-blue-200 dark:border-blue-800">
+                            <h4 className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                                💡 下一步
+                            </h4>
+                            <p className="text-sm mt-1">{String(event.data.instruction_to_user)}</p>
+                        </div>
+                    )}
+                </div>
             </div>
         );
     }

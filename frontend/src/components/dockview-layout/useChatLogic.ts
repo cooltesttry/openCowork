@@ -307,6 +307,10 @@ export function useChatLogic() {
 
     // Rebuild messages from cached events - MUST be defined before recoverAllSessions
     const rebuildMessagesFromEvents = useCallback((events: unknown[], sessionId: string) => {
+        // Only update UI if this is the current session
+        if (sessionId !== currentSessionIdRef.current) {
+            return;
+        }
         if (!events || events.length === 0) return;
 
         const assistantMessageId = `replayed-${sessionId}-${Date.now()}`;
@@ -448,6 +452,12 @@ export function useChatLogic() {
     // Append current turn events to existing messages (for running sessions)
     // This is called AFTER loadSessionMessages, so history is already loaded
     const appendCurrentTurnFromEvents = useCallback((events: unknown[], sessionId: string) => {
+        // Only update UI if this is the current session - prevents background sessions
+        // from affecting the displayed messages and causing scroll/lag issues
+        if (sessionId !== currentSessionIdRef.current) {
+            // console.log(`[appendCurrentTurnFromEvents] Skipping UI update for background session ${sessionId}`);
+            return;
+        }
         console.log(`[appendCurrentTurnFromEvents] CALLED! sessionId=${sessionId}, events=${events?.length}`);
         // console.trace('[appendCurrentTurnFromEvents] Call stack');
         if (!events || events.length === 0) return;

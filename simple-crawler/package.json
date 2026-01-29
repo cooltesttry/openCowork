@@ -2,7 +2,7 @@
     "name": "simple-crawler",
     "version": "1.0.0",
     "description": "A simple single-page web crawler with HTTP fetch and browser rendering fallback",
-    "type": "module",
+    "type": "commonjs",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "scripts": {
