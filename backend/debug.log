@@ -41448,3 +41448,23 @@ Not specified - use your judgment based on the objective.
 2026-01-29 14:28:19 - routers.files - INFO - [FileWatch WS] Client cleanup complete
 2026-01-29 14:28:19 - routers.terminal - INFO - WebSocket disconnected
 2026-01-29 14:28:19 - routers.terminal - INFO - Closing terminal session 19977
+2026-01-29 14:30:12 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-01-29 14:30:12 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-01-29 14:30:12 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-01-29 14:30:12 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-01-29 14:30:12 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-01-29 14:30:12 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-01-29 14:30:13 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-01-29 14:30:13 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-01-29 14:30:15 - routers.files - INFO - [FileWatch WS] Client connected
+2026-01-29 14:30:15 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-01-29 14:30:46 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-01-29 14:30:46 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-01-29 14:30:46 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-01-29 14:30:46 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-01-29 14:30:46 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-01-29 14:30:46 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-01-29 14:30:47 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-01-29 14:30:47 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-01-29 14:30:49 - routers.files - INFO - [FileWatch WS] Client connected
+2026-01-29 14:30:49 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
