@@ -285,6 +285,51 @@ def build_agent_options(
             else:
                 options.allowed_tools = web_tools
 
+    # Configure Image Generation MCP Server (built-in, like Web MCP)
+    imagegen_enabled = any(
+        cfg.name == "imagegen" and cfg.enabled 
+        for cfg in settings.mcp_servers
+    )
+    if imagegen_enabled and settings.image_gen.selected_endpoint and settings.image_gen.model_name:
+        # Path: backend/core/agent_client.py -> ../mcp/imagegen_mcp.py
+        imagegen_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "mcp", "imagegen_mcp.py"
+        )
+        
+        # Get endpoint config from model.endpoints
+        endpoint = next(
+            (ep for ep in settings.model.endpoints 
+             if ep.name == settings.image_gen.selected_endpoint), 
+            None
+        )
+        if endpoint:
+            # Build API endpoint URL
+            api_url = endpoint.endpoint or "http://localhost:8317/v1/chat/completions"
+            if not api_url.endswith("/chat/completions") and not api_url.endswith("/images/generations"):
+                api_url = api_url.rstrip("/") + "/v1/chat/completions"
+            
+            mcp_servers["imagegen"] = {
+                "command": sys.executable,
+                "args": [imagegen_path],
+                "env": {
+                    "IMAGEGEN_ENDPOINT": api_url,
+                    "IMAGEGEN_MODEL": settings.image_gen.model_name,
+                    "IMAGEGEN_API_KEY": endpoint.api_key or "",
+                    "IMAGEGEN_WORKDIR": settings.default_workdir or "/tmp",
+                }
+            }
+            
+            # Add to allowed_tools if not in Ask mode
+            if permission_mode != 'default':
+                imagegen_tools = ["mcp__imagegen__generate_image"]
+                if options.allowed_tools:
+                    allowed_set = set(options.allowed_tools)
+                    allowed_set.update(imagegen_tools)
+                    options.allowed_tools = list(allowed_set)
+                else:
+                    options.allowed_tools = imagegen_tools
+
     if mcp_servers:
         options.mcp_servers = mcp_servers
     

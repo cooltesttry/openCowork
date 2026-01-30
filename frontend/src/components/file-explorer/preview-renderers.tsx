@@ -92,7 +92,16 @@ export const CustomMarkdownRenderer: DocRenderer = ({ mainState: { currentDocume
 
     return (
         <div className="h-full w-full overflow-auto bg-zinc-50 dark:bg-zinc-900 p-8">
-            <article className="prose dark:prose-invert max-w-none prose-pre:bg-zinc-200 dark:prose-pre:bg-zinc-800">
+            <article className="
+                prose dark:prose-invert max-w-none 
+                prose-pre:bg-zinc-200 dark:prose-pre:bg-zinc-800 
+                prose-pre:text-zinc-800 dark:prose-pre:text-zinc-200
+                prose-pre:whitespace-pre-wrap prose-pre:break-words prose-pre:overflow-x-auto
+                prose-code:bg-zinc-200 dark:prose-code:bg-zinc-700 
+                prose-code:text-zinc-800 dark:prose-code:text-zinc-200
+                prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-normal
+                prose-code:before:content-none prose-code:after:content-none
+            ">
                 <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     rehypePlugins={[rehypeHighlight]}

@@ -7,6 +7,7 @@ import { PlanBlock } from "./plan-block";
 import { PermissionCard } from "./permission-card";
 import { TextBlock } from "./text-block";
 import { AskUserBlock } from "./ask-user-block";
+import { ImageGenBlock } from "./imagegen-block";
 import { AlertCircle } from "lucide-react";
 
 interface BlockRendererProps {
@@ -73,6 +74,10 @@ export function BlockRenderer({ block, onPermissionResponse, onAskUserSubmit, on
                         onSkip={onAskUserSkip}
                     />
                 );
+            }
+            // Render mcp__imagegen__generate_image tool as ImageGenBlock
+            if (block.content?.name === 'mcp__imagegen__generate_image') {
+                return <ImageGenBlock block={block} />;
             }
             return <ToolBlock block={block} />;
 

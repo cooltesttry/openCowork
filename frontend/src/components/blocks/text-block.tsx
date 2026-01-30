@@ -204,6 +204,14 @@ export function TextBlock({ block, onPreviewHTML }: TextBlockProps) {
                                     </table>
                                 </div>
                             );
+                        },
+                        // Custom img handler to prevent empty src warnings
+                        img({ src, alt, ...props }: any) {
+                            // Don't render if src is empty or undefined
+                            if (!src) {
+                                return null;
+                            }
+                            return <img src={src} alt={alt || ''} {...props} />;
                         }
                     }}
                 >

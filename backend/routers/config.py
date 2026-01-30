@@ -182,6 +182,24 @@ async def toggle_search(request: Request):
     return {"status": "success", "enabled": settings.search.enabled}
 
 
+# ============== Image Generation Config ==============
+
+from models.settings import ImageGenConfig
+
+@router.get("/image_gen", response_model=ImageGenConfig)
+async def get_image_gen_config(request: Request):
+    """Get image generation configuration."""
+    return request.app.state.settings.image_gen
+
+
+@router.put("/image_gen")
+async def update_image_gen_config(request: Request, config: ImageGenConfig):
+    """Update image generation configuration."""
+    request.app.state.settings.image_gen = config
+    save_settings(request.app.state.settings)
+    return {"status": "success"}
+
+
 # ============== Agent Behavior ==============
 
 class AgentBehaviorConfig(BaseModel):

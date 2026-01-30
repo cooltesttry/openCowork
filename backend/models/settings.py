@@ -58,11 +58,18 @@ class SearchConfig(BaseModel):
     enabled: bool = True  # Controls whether search MCP is active
 
 
+class ImageGenConfig(BaseModel):
+    """Configuration for image generation model."""
+    selected_endpoint: str = ""   # endpoint name (from model.endpoints)
+    model_name: str = ""          # model name
+
+
 class AppSettings(BaseModel):
     """Application-wide settings."""
     model: ModelAPIConfig = Field(default_factory=ModelAPIConfig)
     mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
     search: SearchConfig = Field(default_factory=SearchConfig)
+    image_gen: ImageGenConfig = Field(default_factory=ImageGenConfig)
     
     # Agent behavior
     allowed_tools: list[str] = Field(default_factory=lambda: ["Read", "Write", "Edit", "Bash", "Glob"])

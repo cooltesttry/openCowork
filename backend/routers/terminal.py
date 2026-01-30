@@ -87,12 +87,12 @@ terminal_sessions: dict[str, TerminalSession] = {}
 @router.websocket("/terminal/{session_id}")
 async def terminal_websocket(websocket: WebSocket, session_id: str):
     await websocket.accept()
-    
-    # Create or reuse terminal session? For now, create new one per connection/session_id
-    # To support persistence, we might need to look up existing session.
-    # For now, let's just create a new one.
-    
-    terminal = TerminalSession(working_dir=os.getcwd()) # Use project root as cwd
+
+    # Get working directory from settings
+    settings = websocket.app.state.settings
+    workdir = settings.default_workdir or os.getcwd()
+
+    terminal = TerminalSession(working_dir=workdir)
     try:
         terminal.start()
         terminal_sessions[session_id] = terminal

@@ -169,40 +169,75 @@ class ImageReferenceDetector:
         return refs
 
     def remove_refs_from_text(self, text: str, refs: list[DetectedImageRef]) -> str:
-        """Remove detected references from text, preserving non-image files"""
+        """
+        Remove detected image references from text, preserving non-image files.
+        
+        Output format:
+        1. Non-image attached files (if any)
+        2. Embedded image paths section (so model knows the file paths for tool calls)
+        """
         result = text
         
         # Build set of resolved paths to remove
         paths_to_remove = {ref.raw for ref in refs}
         paths_to_remove.update(ref.resolved for ref in refs)
         
-        # Handle "Attached files:" section - only remove image paths
+        # Collect embedded image paths in order (use resolved paths)
+        embedded_image_paths = [ref.resolved for ref in refs]
+        
+        # Handle "Attached files:" section - separate images from non-images
         attached_match = re.search(r'(\n*)Attached files:\s*\n((?:.+\n?)+)', result, re.IGNORECASE)
         if attached_match:
             prefix_newlines = attached_match.group(1)
             lines = attached_match.group(2).strip().split('\n')
-            remaining_lines = []
+            non_image_lines = []
             
             for line in lines:
                 line_stripped = line.strip()
                 # Keep non-image files
                 if line_stripped and line_stripped not in paths_to_remove:
-                    remaining_lines.append(line_stripped)
+                    non_image_lines.append(line_stripped)
             
-            if remaining_lines:
-                # Reconstruct with remaining files
-                new_section = f"{prefix_newlines}Attached files:\n" + "\n".join(remaining_lines)
-                result = result[:attached_match.start()] + new_section + result[attached_match.end():]
+            # Build new section: non-images first, then embedded image paths
+            new_sections = []
+            
+            if non_image_lines:
+                new_sections.append("Attached files:\n" + "\n".join(non_image_lines))
+            
+            if embedded_image_paths:
+                new_sections.append(
+                    "Embedded image paths (already injected as base64, use these paths for image tools):\n" + 
+                    "\n".join(embedded_image_paths)
+                )
+            
+            if new_sections:
+                new_content = f"{prefix_newlines}" + "\n\n".join(new_sections)
+                result = result[:attached_match.start()] + new_content + result[attached_match.end():]
             else:
-                # Remove entire section
                 result = result[:attached_match.start()] + result[attached_match.end():]
+        else:
+            # No "Attached files:" section, but we have image refs to note
+            if embedded_image_paths:
+                embedded_section = (
+                    "\n\nEmbedded image paths (already injected as base64, use these paths for image tools):\n" + 
+                    "\n".join(embedded_image_paths)
+                )
+                result = result + embedded_section
         
         # Remove [media attached: ...] blocks
         result = self.media_attached_pattern.sub("", result)
         
-        # Remove individual inline paths
+        # Remove individual inline paths (but keep the embedded section we just added)
+        # Only remove refs that appear OUTSIDE the embedded section
         for ref in refs:
-            result = result.replace(ref.raw, "")
+            # Don't remove from embedded section - use negative lookahead approach
+            # Simple approach: only replace occurrences before the embedded section marker
+            parts = result.split("Embedded image paths")
+            if len(parts) == 2:
+                parts[0] = parts[0].replace(ref.raw, "")
+                result = "Embedded image paths".join(parts)
+            else:
+                result = result.replace(ref.raw, "")
         
         # Clean up whitespace
         result = re.sub(r"\n\s*\n\s*\n", "\n\n", result)

@@ -4,6 +4,8 @@ import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 import DocViewer, { DocViewerRenderers } from "@cyntler/react-doc-viewer";
 import { CustomVideoRenderer, CustomImageRenderer, CustomMarkdownRenderer, CustomRTFRenderer } from "./preview-renderers";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface FilePreviewPopupProps {
     entry: FileEntry;
@@ -17,18 +19,23 @@ export function FilePreviewPopup({ entry, position, anchor = 'right', onClose }:
     const [content, setContent] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // For Office files extracted via MarkItDown
+    const [markdownContent, setMarkdownContent] = useState<string | null>(null);
+    const [isExtractingOffice, setIsExtractingOffice] = useState(false);
 
     // Determine file categories
     const isImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(entry.name);
     const isVideo = /\.(mp4|mov|webm|mkv)$/i.test(entry.name);
     const isHtml = /\.(html|htm)$/i.test(entry.name);
+    // Office files that need MarkItDown extraction
+    const isOfficeFile = /\.(docx|pptx|xlsx|xls)$/i.test(entry.name);
     // Files that MUST use DocViewer - exclude html/htm as they cause atob() errors
     const isPdf = /\.pdf$/i.test(entry.name);
-    const isDocViewerType = /\.(pdf|docx|pptx|xlsx|csv|rtf|md|markdown)$/i.test(entry.name);
+    const isDocViewerType = /\.(pdf|csv|rtf|md|markdown)$/i.test(entry.name);
 
     // For text files that are NOT in the above categories, we try to fetch content
     // HTML files are rendered in an iframe, so they don't need content fetching
-    const shouldFetchContent = !isImage && !isVideo && !isDocViewerType && !isHtml;
+    const shouldFetchContent = !isImage && !isVideo && !isDocViewerType && !isHtml && !isOfficeFile;
 
     // Fetch content for text files
     useEffect(() => {
@@ -62,6 +69,39 @@ export function FilePreviewPopup({ entry, position, anchor = 'right', onClose }:
 
         fetchContent();
     }, [entry.path, shouldFetchContent]);
+
+    // Extract Office files using MarkItDown API
+    useEffect(() => {
+        if (!isOfficeFile) return;
+
+        const extractOfficeContent = async () => {
+            setIsExtractingOffice(true);
+            setMarkdownContent(null);
+            setError(null);
+            try {
+                const res = await fetch('http://localhost:8000/api/files/extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: entry.path }),
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || "Failed to extract document");
+                }
+
+                const data = await res.json();
+                setMarkdownContent(data.content);
+            } catch (err: unknown) {
+                const errorMessage = err instanceof Error ? err.message : String(err);
+                setError(errorMessage);
+            } finally {
+                setIsExtractingOffice(false);
+            }
+        };
+
+        extractOfficeContent();
+    }, [entry.path, isOfficeFile]);
 
     // Close on click outside
     useEffect(() => {
@@ -108,7 +148,7 @@ export function FilePreviewPopup({ entry, position, anchor = 'right', onClose }:
         if (top < 20) top = 20;
 
         setAdjustedStyle({ top, left, visibility: 'visible' });
-    }, [position, content, isLoading, isPdf, anchor]);
+    }, [position, content, isLoading, isPdf, isOfficeFile, markdownContent, anchor]);
 
     const rawUrl = `http://localhost:8000/api/files/raw?path=${encodeURIComponent(entry.path)}`;
 
@@ -118,15 +158,15 @@ export function FilePreviewPopup({ entry, position, anchor = 'right', onClose }:
             className="fixed z-[9999] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl rounded-lg flex flex-col overflow-hidden"
             style={{
                 ...adjustedStyle,
-                // Default sizes
-                minWidth: isPdf ? '400px' : (isImage || isVideo) ? '350px' : '300px',
-                minHeight: isPdf ? '500px' : '200px',
+                // Default sizes - Office files get similar treatment to PDF
+                minWidth: (isPdf || isOfficeFile) ? '400px' : (isImage || isVideo) ? '350px' : '300px',
+                minHeight: (isPdf || isOfficeFile) ? '500px' : '200px',
                 // Maximum constraints
-                maxWidth: isPdf ? '80vw' : '500px',
-                maxHeight: isPdf ? '85vh' : '500px',
+                maxWidth: (isPdf || isOfficeFile) ? '80vw' : '500px',
+                maxHeight: (isPdf || isOfficeFile) ? '85vh' : '500px',
                 // Preferred size - use fixed widths for consistent anchor calculation
-                width: isPdf ? '550px' : (isImage || isVideo) ? '450px' : '400px',
-                height: isPdf ? '680px' : 'auto',
+                width: (isPdf || isOfficeFile) ? '550px' : (isImage || isVideo) ? '450px' : '400px',
+                height: (isPdf || isOfficeFile) ? '680px' : 'auto',
             }}
         >
             {/* Header */}
@@ -184,7 +224,39 @@ export function FilePreviewPopup({ entry, position, anchor = 'right', onClose }:
                             />
                         </div>
                     );
-                })() : isDocViewerType ? (
+                })() : isOfficeFile ? (
+                    // Office files (docx, pptx, xlsx, xls) - extracted via MarkItDown
+                    <div className="h-full overflow-auto p-4">
+                        {isExtractingOffice ? (
+                            <div className="flex items-center justify-center h-full text-zinc-400">
+                                <div className="flex flex-col items-center gap-2">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-400"></div>
+                                    <span>正在解析文档...</span>
+                                </div>
+                            </div>
+                        ) : error ? (
+                            <div className="flex flex-col items-center justify-center h-full text-zinc-500 text-sm text-center">
+                                <div className="bg-zinc-100 dark:bg-zinc-800 p-4 rounded-full mb-3">
+                                    <span className="text-2xl">📄</span>
+                                </div>
+                                <p className="text-red-400">{error}</p>
+                            </div>
+                        ) : markdownContent ? (
+                            <article className="
+                                prose prose-sm dark:prose-invert max-w-none
+                                prose-headings:text-zinc-800 dark:prose-headings:text-zinc-200
+                                prose-p:text-zinc-700 dark:prose-p:text-zinc-300
+                                prose-table:border-collapse prose-table:text-sm
+                                prose-th:border prose-th:border-zinc-300 dark:prose-th:border-zinc-600 prose-th:p-1.5 prose-th:bg-zinc-100 dark:prose-th:bg-zinc-800
+                                prose-td:border prose-td:border-zinc-300 dark:prose-td:border-zinc-600 prose-td:p-1.5
+                            ">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {markdownContent}
+                                </ReactMarkdown>
+                            </article>
+                        ) : null}
+                    </div>
+                ) : isDocViewerType ? (
                     <div className="h-full overflow-hidden">
                         <DocViewer
                             documents={[{

@@ -434,7 +434,8 @@ async def open_file_with_default_app(request: Request, body: OpenFileRequest):
     if not workdir:
         raise HTTPException(status_code=500, detail="Configuration error.")
 
-    target_path = get_safe_path(workdir, body.path)
+    # Use resolve_file_path to support both relative and absolute paths
+    target_path = resolve_file_path(workdir, body.path)
     
     if not target_path.exists():
         raise HTTPException(status_code=404, detail="File not found.")
@@ -566,6 +567,65 @@ async def upload_file(
 
 
 from datetime import datetime
+
+
+# ============ MarkItDown 文档提取 ============
+
+class ExtractRequest(BaseModel):
+    path: str
+
+class ExtractResponse(BaseModel):
+    content: str
+    format: str = "markdown"
+
+# 支持的文件扩展名
+MARKITDOWN_EXTENSIONS = {'.pdf', '.docx', '.pptx', '.xlsx', '.xls', '.html', '.htm'}
+
+def get_markitdown_instance():
+    """延迟导入并创建 MarkItDown 实例"""
+    try:
+        from markitdown import MarkItDown
+        return MarkItDown()
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="MarkItDown not installed. Run: pip install 'markitdown[pdf,docx,pptx,xlsx,xls]'"
+        )
+
+@router.post("/extract", response_model=ExtractResponse)
+async def extract_document(request: Request, body: ExtractRequest):
+    """
+    使用 MarkItDown 将文档转换为 Markdown 格式。
+
+    支持格式: PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx, .xls), HTML
+    """
+    settings = request.app.state.settings
+    workdir = settings.default_workdir
+
+    # 解析路径
+    target_path = resolve_file_path(workdir, body.path)
+
+    if not target_path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {body.path}")
+
+    if not target_path.is_file():
+        raise HTTPException(status_code=400, detail="Path is not a file")
+
+    # 检查文件扩展名
+    ext = target_path.suffix.lower()
+    if ext not in MARKITDOWN_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {ext}. Supported: {', '.join(MARKITDOWN_EXTENSIONS)}"
+        )
+
+    try:
+        md = get_markitdown_instance()
+        result = md.convert(str(target_path))
+        return ExtractResponse(content=result.text_content, format="markdown")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
+
 
 @router.post("/upload-attachment")
 async def upload_attachment(

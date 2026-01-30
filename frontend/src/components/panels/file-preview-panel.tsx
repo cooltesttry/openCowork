@@ -17,6 +17,8 @@ import { CustomVideoRenderer, CustomImageRenderer, CustomMarkdownRenderer, Custo
 
 import { Pencil, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface FilePreviewPanelProps extends IDockviewPanelProps {
     params: {
@@ -37,11 +39,11 @@ const formatBytes = (bytes: number) => {
 const Container = styled.div`
     height: 100%;
     width: 100%;
-    
+
     .react-doc-viewer {
         height: 100% !important;
     }
-    
+
     /* Override some default styles to match dark mode better if needed */
     #header-bar {
         background-color: transparent !important;
@@ -54,6 +56,9 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
     const [content, setContent] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // For Office files extracted via MarkItDown
+    const [markdownContent, setMarkdownContent] = useState<string | null>(null);
+    const [isExtractingOffice, setIsExtractingOffice] = useState(false);
 
     // Default demo docs if none provided
     const docs = params?.docs || [
@@ -71,12 +76,14 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
     const isImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
     const isVideo = /\.(mp4|mov|webm|mkv)$/i.test(fileName);
     const isHtml = /\.(html|htm)$/i.test(fileName);
-    // Exclude html/htm from DocViewer - they cause atob() decode errors
-    const isDocViewerType = /\.(pdf|docx|pptx|xlsx|csv|rtf|md|markdown)$/i.test(fileName);
+    // Office files that need MarkItDown extraction (local files only)
+    const isOfficeFile = /\.(docx|pptx|xlsx|xls)$/i.test(fileName);
+    // PDF, CSV, RTF, MD can still use DocViewer
+    const isDocViewerType = /\.(pdf|csv|rtf|md|markdown)$/i.test(fileName);
 
     // For text files that are NOT in the above categories, try to fetch content
     // HTML files are rendered in an iframe, so they don't need content fetching
-    const shouldFetchContent = !isImage && !isVideo && !isDocViewerType && !isHtml;
+    const shouldFetchContent = !isImage && !isVideo && !isDocViewerType && !isHtml && !isOfficeFile;
 
     // Check if file is editable (text-based files that can be edited in Monaco)
     const isEditable = /\.(txt|js|jsx|ts|tsx|py|json|html|htm|css|scss|less|md|markdown|xml|yaml|yml|toml|ini|cfg|conf|sh|bash|zsh|sql|go|rs|java|c|cpp|h|hpp|rb|php|swift|kt|scala|lua|r|vue|svelte|astro)$/i.test(fileName);
@@ -148,6 +155,45 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
         fetchTextContent();
     }, [currentDoc?.uri, shouldFetchContent, currentDoc]);
 
+    // Extract Office files using MarkItDown API
+    useEffect(() => {
+        if (!isOfficeFile || !currentDoc) return;
+
+        const extractOfficeContent = async () => {
+            setIsExtractingOffice(true);
+            setMarkdownContent(null);
+            setError(null);
+            try {
+                const urlParams = new URLSearchParams(currentDoc.uri.split('?')[1] || '');
+                const path = urlParams.get('path');
+                if (!path) {
+                    throw new Error("No path in URI");
+                }
+
+                const res = await fetch('http://localhost:8000/api/files/extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path }),
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || "Failed to extract document");
+                }
+
+                const data = await res.json();
+                setMarkdownContent(data.content);
+            } catch (err: unknown) {
+                const errorMessage = err instanceof Error ? err.message : String(err);
+                setError(errorMessage);
+            } finally {
+                setIsExtractingOffice(false);
+            }
+        };
+
+        extractOfficeContent();
+    }, [currentDoc?.uri, isOfficeFile, currentDoc]);
+
     // No document
     if (!currentDoc) {
         return (
@@ -208,19 +254,27 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
             <div className="flex-1 overflow-auto bg-zinc-50 dark:bg-zinc-900 relative">
                 {isImage ? (
                     <div className="flex items-center justify-center p-4 h-full">
-                        <img
-                            src={currentDoc.uri}
-                            alt={fileName}
-                            className="max-w-full max-h-full object-contain"
-                        />
+                        {currentDoc.uri ? (
+                            <img
+                                src={currentDoc.uri}
+                                alt={fileName}
+                                className="max-w-full max-h-full object-contain"
+                            />
+                        ) : (
+                            <div className="text-zinc-400">No image source</div>
+                        )}
                     </div>
                 ) : isVideo ? (
                     <div className="flex items-center justify-center bg-black h-full">
-                        <video
-                            src={currentDoc.uri}
-                            controls
-                            className="max-w-full max-h-full object-contain"
-                        />
+                        {currentDoc.uri ? (
+                            <video
+                                src={currentDoc.uri}
+                                controls
+                                className="max-w-full max-h-full object-contain"
+                            />
+                        ) : (
+                            <div className="text-zinc-400">No video source</div>
+                        )}
                     </div>
                 ) : isHtml ? (() => {
                     // If inline htmlContent is provided, use srcdoc for direct rendering
@@ -265,7 +319,52 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
                             />
                         </div>
                     );
-                })() : isDocViewerType ? (
+                })() : isOfficeFile ? (
+                    // Office files (docx, pptx, xlsx, xls) - extracted via MarkItDown
+                    <>
+                        {isExtractingOffice ? (
+                            <div className="flex items-center justify-center h-full text-zinc-400">
+                                <div className="flex flex-col items-center gap-2">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-400"></div>
+                                    <span>正在解析文档...</span>
+                                </div>
+                            </div>
+                        ) : error ? (
+                            <div className="flex flex-col items-center justify-center h-full text-zinc-500 text-sm text-center">
+                                <div className="p-6 rounded-2xl bg-zinc-200 dark:bg-zinc-800 shadow-sm mb-4">
+                                    <span className="text-4xl font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                                        {ext || 'FILE'}
+                                    </span>
+                                </div>
+                                <h3 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-1 break-all">
+                                    {fileName}
+                                </h3>
+                                <p className="text-sm text-red-400 mt-2">{error}</p>
+                            </div>
+                        ) : markdownContent ? (
+                            <article className="
+                                p-6
+                                prose dark:prose-invert max-w-none
+                                prose-headings:text-zinc-800 dark:prose-headings:text-zinc-200
+                                prose-p:text-zinc-700 dark:prose-p:text-zinc-300
+                                prose-strong:text-zinc-800 dark:prose-strong:text-zinc-200
+                                prose-pre:bg-zinc-200 dark:prose-pre:bg-zinc-800
+                                prose-pre:text-zinc-800 dark:prose-pre:text-zinc-200
+                                prose-code:bg-zinc-200 dark:prose-code:bg-zinc-700
+                                prose-code:text-zinc-800 dark:prose-code:text-zinc-200
+                                prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-normal
+                                prose-code:before:content-none prose-code:after:content-none
+                                prose-table:border-collapse
+                                prose-th:border prose-th:border-zinc-300 dark:prose-th:border-zinc-600 prose-th:p-2 prose-th:bg-zinc-100 dark:prose-th:bg-zinc-800
+                                prose-td:border prose-td:border-zinc-300 dark:prose-td:border-zinc-600 prose-td:p-2
+                            ">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {markdownContent}
+                                </ReactMarkdown>
+                            </article>
+                        ) : null}
+                    </>
+                ) : isDocViewerType ? (
                     <div className="h-full overflow-auto">
                         <DocViewer
                             documents={docs}

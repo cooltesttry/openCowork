@@ -269,22 +269,22 @@ export function EventDetails({ event }: EventDetailsProps) {
                     <h3 className="font-semibold text-green-700 dark:text-green-300">
                         ✅ 任务完成
                     </h3>
-                    {event.data.summary && (
+                    {typeof event.data.summary === 'string' && event.data.summary.length > 0 ? (
                         <p className="text-sm text-green-600 dark:text-green-400 mt-1">
-                            {String(event.data.summary)}
+                            {event.data.summary}
                         </p>
-                    )}
+                    ) : null}
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     {/* Text Output */}
-                    {event.data.text_content && (
+                    {typeof event.data.text_content === 'string' && event.data.text_content.length > 0 ? (
                         <div>
                             <h4 className="text-sm font-medium mb-2">📝 输出结果</h4>
                             <pre className="whitespace-pre-wrap text-sm bg-muted p-3 rounded">
-                                {String(event.data.text_content)}
+                                {event.data.text_content}
                             </pre>
                         </div>
-                    )}
+                    ) : null}
 
                     {/* File List */}
                     {files.length > 0 && (
@@ -293,7 +293,7 @@ export function EventDetails({ event }: EventDetailsProps) {
                             <ul className="space-y-1 bg-muted p-3 rounded">
                                 {files.map((file, i) => (
                                     <li key={i} className="text-sm text-blue-600 dark:text-blue-400 font-mono">
-                                        📄 {typeof file === 'string' ? file.split('/').pop() : file}
+                                        📄 {typeof file === 'string' ? file.split('/').pop() : String(file)}
                                     </li>
                                 ))}
                             </ul>
@@ -301,14 +301,14 @@ export function EventDetails({ event }: EventDetailsProps) {
                     )}
 
                     {/* User Instructions */}
-                    {event.data.instruction_to_user && (
+                    {typeof event.data.instruction_to_user === 'string' && event.data.instruction_to_user.length > 0 ? (
                         <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded border border-blue-200 dark:border-blue-800">
                             <h4 className="text-sm font-medium text-blue-700 dark:text-blue-300">
                                 💡 下一步
                             </h4>
-                            <p className="text-sm mt-1">{String(event.data.instruction_to_user)}</p>
+                            <p className="text-sm mt-1">{event.data.instruction_to_user}</p>
                         </div>
-                    )}
+                    ) : null}
                 </div>
             </div>
         );

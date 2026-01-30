@@ -37,6 +37,12 @@ export function ChatPanel() {
     // Ref for focusing input
     const inputAreaRef = useRef<InputAreaRef>(null);
 
+    // Ref to track current session ID (for use in callbacks to get latest value)
+    const currentSessionIdRef = useRef<string | null>(currentSessionId);
+    useEffect(() => {
+        currentSessionIdRef.current = currentSessionId;
+    }, [currentSessionId]);
+
     // Ask User Question state
     const [askUserRequest, setAskUserRequest] = useState<AskUserContent | null>(null);
 
@@ -413,12 +419,29 @@ export function ChatPanel() {
                 model_name: activeModel || undefined,
                 security_mode: securityMode,
             }, (event) => {
+                // Capture the streaming session ID (use event's session_id or the one we sent)
+                const streamingSessionId = event.metadata?.session_id || currentSessionId;
+
                 // Update currentSessionId if returned from server (for new sessions)
                 if (event.metadata?.session_id && !currentSessionId) {
                     setCurrentSessionId(event.metadata.session_id);
+                    // Also update the ref immediately so subsequent checks work
+                    currentSessionIdRef.current = event.metadata.session_id;
                     // Reload sessions to include the new one
                     loadSessions();
                 }
+
+                // CRITICAL: Skip UI updates if user has switched to a different session
+                // The streaming continues in the background, but we don't update the current view
+                const viewingSessionId = currentSessionIdRef.current;
+                if (streamingSessionId && viewingSessionId && streamingSessionId !== viewingSessionId) {
+                    // User is viewing a different session - skip UI updates
+                    // (but still process system events like init)
+                    if ((event.type as string) !== 'system') {
+                        return;
+                    }
+                }
+
                 const step: AgentStep = {
                     id: crypto.randomUUID(),
                     type: event.type as any,
@@ -613,14 +636,30 @@ export function ChatPanel() {
 
                         if (blockId) {
                             const isError = event.content?.is_error === true;
-                            updateBlock(assistantMessageId, blockId, {
-                                status: isError ? 'error' : 'success',
-                                content: {
-                                    name: event.content?.name,
-                                    input: event.content?.input,
-                                    result: event.content?.result,
-                                },
-                            });
+                            // Merge result into existing content instead of overwriting
+                            // This preserves original name and input from tool_use event
+                            setMessages((prev) =>
+                                prev.map((msg) => {
+                                    if (msg.id === assistantMessageId && msg.blocks) {
+                                        const blocks = msg.blocks.map((block) => {
+                                            if (block.id === blockId) {
+                                                return {
+                                                    ...block,
+                                                    status: isError ? 'error' : 'success',
+                                                    content: {
+                                                        ...block.content,  // Preserve existing name, input
+                                                        result: event.content?.result,
+                                                        is_error: isError,
+                                                    },
+                                                } as MessageBlock;
+                                            }
+                                            return block;
+                                        });
+                                        return { ...msg, blocks };
+                                    }
+                                    return msg;
+                                })
+                            );
                             if (toolUseId) {
                                 activeToolCalls.delete(toolUseId);
                             }

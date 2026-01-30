@@ -25,6 +25,11 @@ interface SearchConfig {
     enabled: boolean;
 }
 
+interface ImageGenConfig {
+    selected_endpoint: string;
+    model_name: string;
+}
+
 interface McpSidebarPanelProps {
     onMentionFile?: (path: string) => void;
     onOpenFile?: (path: string) => void;
@@ -35,6 +40,7 @@ interface McpSidebarPanelProps {
 export function McpSidebarPanel({ onMentionFile, onOpenFile, onSelectFile, isPreviewPanelActive }: McpSidebarPanelProps) {
     const [servers, setServers] = useState<MCPServer[]>([]);
     const [searchConfig, setSearchConfig] = useState<SearchConfig | null>(null);
+    const [imageGenConfig, setImageGenConfig] = useState<ImageGenConfig | null>(null);
     const [loading, setLoading] = useState(true);
     const [toggling, setToggling] = useState<string | null>(null);
 
@@ -48,12 +54,14 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onSelectFile, isPre
     const loadData = async () => {
         try {
             setLoading(true);
-            const [mcpData, searchData] = await Promise.all([
+            const [mcpData, searchData, imageGenData] = await Promise.all([
                 fetchConfig<MCPServer[]>("/mcp"),
                 fetchConfig<SearchConfig>("/search"),
+                fetchConfig<ImageGenConfig>("/image_gen").catch(() => null),
             ]);
             setServers(mcpData);
             setSearchConfig(searchData);
+            setImageGenConfig(imageGenData);
         } catch (err) {
             console.error("Failed to load data:", err);
         } finally {
@@ -302,8 +310,19 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onSelectFile, isPre
                                         <Switch
                                             checked={server.enabled}
                                             onCheckedChange={() => handleToggleMcp(server.name)}
-                                            disabled={toggling === server.name}
+                                            disabled={
+                                                toggling === server.name ||
+                                                // Disable imagegen if image model not configured
+                                                (server.name === "imagegen" &&
+                                                    (!imageGenConfig?.selected_endpoint || !imageGenConfig?.model_name))
+                                            }
                                             className="shrink-0"
+                                            title={
+                                                server.name === "imagegen" &&
+                                                    (!imageGenConfig?.selected_endpoint || !imageGenConfig?.model_name)
+                                                    ? "请先在 Settings 中配置 Image Model"
+                                                    : undefined
+                                            }
                                         />
                                     </div>
                                 ))}

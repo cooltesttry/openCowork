@@ -6,7 +6,7 @@ import { TextBlock } from "@/components/blocks/text-block";
 import { useMemo } from "react";
 
 interface FileOperation {
-    type: 'Write' | 'Edit';
+    type: 'Write' | 'Edit' | 'ImageGen';
     path: string;
 }
 
@@ -101,7 +101,8 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
     const showLegacyContent = hasTextContent && !hasTextBlocks;
 
     // Extract file operations from blocks (simple approach)
-    const fileOperations: FileOperation[] = message.blocks
+    // 1. Write/Edit operations
+    const writeEditOperations: FileOperation[] = message.blocks
         ?.filter(b =>
             b.type === 'tool_use' &&
             (b.content?.name === 'Write' || b.content?.name === 'Edit') &&
@@ -112,6 +113,50 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
             type: b.content.name as 'Write' | 'Edit',
             path: b.content.input.file_path as string
         })) || [];
+
+    // 2. Image generation operations (mcp__imagegen__generate_image)
+    const imageGenOperations = (message.blocks
+        ?.filter(b =>
+            b.type === 'tool_use' &&
+            b.content?.name === 'mcp__imagegen__generate_image' &&
+            b.status === 'success' &&
+            b.content?.result
+        )
+        .map(b => {
+            try {
+                // MCP result structure: array of {type: "text", text: "..."}
+                // or could be a string directly
+                let jsonStr: string | null = null;
+                const resultData = b.content.result;
+
+                if (typeof resultData === 'string') {
+                    jsonStr = resultData;
+                } else if (Array.isArray(resultData) && resultData.length > 0) {
+                    // Extract text from first content block
+                    const firstBlock = resultData[0];
+                    if (firstBlock?.type === 'text' && typeof firstBlock.text === 'string') {
+                        jsonStr = firstBlock.text;
+                    }
+                }
+
+                if (jsonStr) {
+                    const parsed = JSON.parse(jsonStr);
+                    if (parsed?.file_path) {
+                        return {
+                            type: 'ImageGen' as const,
+                            path: parsed.file_path as string
+                        };
+                    }
+                }
+            } catch {
+                // Ignore parse errors
+            }
+            return null;
+        })
+        .filter(Boolean) as FileOperation[]) || [];
+
+    // Combine all file operations
+    const fileOperations: FileOperation[] = [...writeEditOperations, ...imageGenOperations];
 
     // Extract filename from path
     const getFileName = (path: string) => {
@@ -268,12 +313,16 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                                                 "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer",
                                                 op.type === 'Write'
                                                     ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50"
-                                                    : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50"
+                                                    : op.type === 'ImageGen'
+                                                        ? "bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-900/50"
+                                                        : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50"
                                             )}
                                             title={`Click to preview: ${op.path}`}
                                         >
                                             {op.type === 'Write' ? (
                                                 <FilePlus className="h-3 w-3" />
+                                            ) : op.type === 'ImageGen' ? (
+                                                <ImageIcon className="h-3 w-3" />
                                             ) : (
                                                 <FileEdit className="h-3 w-3" />
                                             )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { fetchConfig, updateConfig, fetchModels } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,28 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
-import { List, Check, Plus, Trash2 } from "lucide-react";
-import {
-    Command,
-    CommandEmpty,
-    CommandGroup,
-    CommandInput,
-    CommandItem,
-    CommandList,
-} from "@/components/ui/command";
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
+import { Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface ModelEndpoint {
-    name: string;
-    provider: string;
-    api_key?: string;
-    endpoint?: string;
-}
+import { ModelSelectorPopover, ModelEndpoint } from "@/components/ui/model-selector-popover";
 
 interface ModelConfig {
     endpoints: ModelEndpoint[];
@@ -41,6 +23,11 @@ interface ModelConfig {
     model_name: string;
     max_tokens: number;
     max_thinking_tokens: number;
+}
+
+interface ImageGenConfig {
+    selected_endpoint: string;
+    model_name: string;
 }
 
 const PROVIDERS = [
@@ -64,10 +51,39 @@ export function ModelConfig() {
         endpoint: "",
     });
 
-    // Model Selection State
-    const [modelSelectOpen, setModelSelectOpen] = useState(false);
-    const [availableModels, setAvailableModels] = useState<string[]>([]);
-    const [fetchingModels, setFetchingModels] = useState(false);
+    // Image Model State
+    const [imageGenConfig, setImageGenConfig] = useState<ImageGenConfig>({
+        selected_endpoint: "",
+        model_name: ""
+    });
+
+    // Callbacks for shared ModelSelectorPopover
+    const handleFetchModels = useCallback(async (endpoint: ModelEndpoint) => {
+        const models = await fetchModels({
+            provider: endpoint.provider,
+            api_key: endpoint.api_key,
+            endpoint: endpoint.endpoint,
+        });
+        return models;
+    }, []);
+
+    const handleActiveEndpointChange = useCallback((endpointName: string) => {
+        if (!config) return;
+        setConfig({ ...config, selected_endpoint: endpointName, model_name: "" });
+    }, [config]);
+
+    const handleActiveModelSelect = useCallback((model: string) => {
+        if (!config) return;
+        setConfig({ ...config, model_name: model });
+    }, [config]);
+
+    const handleImageEndpointChange = useCallback((endpointName: string) => {
+        setImageGenConfig({ ...imageGenConfig, selected_endpoint: endpointName, model_name: "" });
+    }, [imageGenConfig]);
+
+    const handleImageModelSelect = useCallback((model: string) => {
+        setImageGenConfig({ ...imageGenConfig, model_name: model });
+    }, [imageGenConfig]);
 
     useEffect(() => {
         loadConfig();
@@ -84,7 +100,15 @@ export function ModelConfig() {
                 data.selected_endpoint = "";
             }
             setConfig(data);
-        } catch (err) {
+
+            // Load image_gen config separately
+            try {
+                const imageData = await fetchConfig("/image_gen") as ImageGenConfig;
+                setImageGenConfig(imageData);
+            } catch {
+                // image_gen may not exist yet, use defaults
+            }
+        } catch {
             toast.error("Error", { description: "Failed to load model config" });
         } finally {
             setLoading(false);
@@ -95,11 +119,14 @@ export function ModelConfig() {
         if (!config) return;
         try {
             await updateConfig("/model", config);
+            await updateConfig("/image_gen", imageGenConfig);
             toast.success("Success", { description: "Model configuration saved" });
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to save config" });
         }
     };
+
+
 
     // Generate unique name based on provider
     const generateUniqueName = (baseName: string): string => {
@@ -178,39 +205,7 @@ export function ModelConfig() {
         toast.info("Endpoint removed", { description: name });
     };
 
-    const handleFetchModels = async () => {
-        if (!config) return;
 
-        setFetchingModels(true);
-        try {
-            // Build config for fetch based on selected endpoint or legacy
-            let fetchConfig = { ...config };
-            if (config.selected_endpoint) {
-                const selectedEp = config.endpoints.find(ep => ep.name === config.selected_endpoint);
-                if (selectedEp) {
-                    fetchConfig = {
-                        ...config,
-                        provider: selectedEp.provider,
-                        api_key: selectedEp.api_key || "",
-                        endpoint: selectedEp.endpoint || "",
-                    };
-                }
-            }
-
-            const models = await fetchModels(fetchConfig);
-            setAvailableModels(models);
-            if (models.length > 0) {
-                setModelSelectOpen(true);
-                toast.success(`Found ${models.length} models`);
-            } else {
-                toast.info("No models found via API");
-            }
-        } catch (err: any) {
-            toast.error("Failed to fetch models", { description: err.message });
-        } finally {
-            setFetchingModels(false);
-        }
-    };
 
     const getProviderLabel = (provider: string) => {
         return PROVIDERS.find(p => p.value === provider)?.label || provider;
@@ -330,92 +325,41 @@ export function ModelConfig() {
                 )}
 
                 {/* Active Model Selection */}
-                <div className="border rounded-lg p-4 space-y-4">
-                    <h3 className="font-medium text-sm">Active Model Selection</h3>
-
-                    <div className="grid grid-cols-4 gap-3">
-                        {/* Endpoint Selector */}
-                        <div className="space-y-1">
-                            <Label className="text-xs">Endpoint</Label>
-                            <Select
-                                value={config.selected_endpoint || "_none"}
-                                onValueChange={(val) => setConfig({
-                                    ...config,
-                                    selected_endpoint: val === "_none" ? "" : val
-                                })}
-                            >
-                                <SelectTrigger className="h-9 w-full">
-                                    <SelectValue placeholder="Select" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {config.endpoints.length === 0 && (
-                                        <SelectItem value="_none" disabled>
-                                            (No endpoints)
-                                        </SelectItem>
-                                    )}
-                                    {config.endpoints.map(ep => (
-                                        <SelectItem key={ep.name} value={ep.name}>
-                                            {ep.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                <div className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                            <h3 className="font-medium text-sm">Active Model</h3>
+                            <p className="text-xs text-muted-foreground">Model used for chat conversations</p>
                         </div>
+                        <ModelSelectorPopover
+                            endpoints={config.endpoints}
+                            selectedEndpoint={config.selected_endpoint}
+                            selectedModel={config.model_name}
+                            onEndpointChange={handleActiveEndpointChange}
+                            onModelSelect={handleActiveModelSelect}
+                            fetchModelsForEndpoint={handleFetchModels}
+                            icon="sparkles"
+                        />
+                    </div>
+                </div>
 
-                        {/* Model Name */}
-                        <div className="space-y-1 col-span-3">
-                            <Label className="text-xs">Model Name</Label>
-                            <div className="flex gap-2">
-                                <Input
-                                    className="flex-1 h-9"
-                                    value={config.model_name}
-                                    onChange={(e) => setConfig({ ...config, model_name: e.target.value })}
-                                    placeholder="claude-3-5-sonnet-20241022"
-                                />
-                                <Popover open={modelSelectOpen} onOpenChange={setModelSelectOpen}>
-                                    <PopoverTrigger asChild>
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            className="h-9 w-9"
-                                            onClick={handleFetchModels}
-                                            disabled={fetchingModels || !config.selected_endpoint}
-                                            title="Fetch Available Models"
-                                        >
-                                            <List className={cn("h-4 w-4", fetchingModels && "animate-pulse")} />
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="p-0" align="end">
-                                        <Command>
-                                            <CommandInput placeholder="Search model..." />
-                                            <CommandList>
-                                                <CommandEmpty>No models found.</CommandEmpty>
-                                                <CommandGroup>
-                                                    {availableModels.map((model) => (
-                                                        <CommandItem
-                                                            key={model}
-                                                            value={model}
-                                                            onSelect={(currentValue) => {
-                                                                setConfig({ ...config, model_name: currentValue });
-                                                                setModelSelectOpen(false);
-                                                            }}
-                                                        >
-                                                            <Check
-                                                                className={cn(
-                                                                    "mr-2 h-4 w-4",
-                                                                    config.model_name === model ? "opacity-100" : "opacity-0"
-                                                                )}
-                                                            />
-                                                            {model}
-                                                        </CommandItem>
-                                                    ))}
-                                                </CommandGroup>
-                                            </CommandList>
-                                        </Command>
-                                    </PopoverContent>
-                                </Popover>
-                            </div>
+
+                {/* Image Model Selection */}
+                <div className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                            <h3 className="font-medium text-sm">Image Model</h3>
+                            <p className="text-xs text-muted-foreground">Model used for image generation</p>
                         </div>
+                        <ModelSelectorPopover
+                            endpoints={config.endpoints}
+                            selectedEndpoint={imageGenConfig.selected_endpoint}
+                            selectedModel={imageGenConfig.model_name}
+                            onEndpointChange={handleImageEndpointChange}
+                            onModelSelect={handleImageModelSelect}
+                            fetchModelsForEndpoint={handleFetchModels}
+                            icon="image"
+                        />
                     </div>
                 </div>
 

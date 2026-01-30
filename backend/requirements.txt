@@ -13,3 +13,6 @@ watchdog>=6.0.0
 # Image processing
 pillow>=10.0.0
 pillow-heif>=0.13.0
+
+# Document extraction (MarkItDown)
+markitdown[pdf,docx,pptx,xlsx,xls]>=0.1.0
