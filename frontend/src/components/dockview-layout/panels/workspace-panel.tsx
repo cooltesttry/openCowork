@@ -1,0 +1,106 @@
+'use client';
+
+import { useEffect } from 'react';
+import { WorkspaceSidebar } from '@/components/workspace/workspace-sidebar';
+import { useWorkspace } from '@/lib/workspace-store';
+import { useChat } from '@/lib/store';
+import { setWorkspaceMode } from '@/lib/sessions-api';
+
+interface WorkspacePanelContentProps {
+    params?: {
+        onNewSession?: () => void;
+        onSelectSession?: (id: string) => void;
+        onDeleteSession?: (id: string) => void;
+        onToggle?: () => void;
+    };
+}
+
+export function WorkspacePanelContent({ params }: WorkspacePanelContentProps) {
+    const {
+        workspaces,
+        currentWorkspace,
+        isLoading: isWorkspacesLoading,
+        sessions,
+        currentSessionId,
+        isSessionsLoading,
+        switchWorkspace,
+        removeWorkspace,
+        openWorkspace,
+        createSession,
+        switchSession,
+        deleteSession,
+    } = useWorkspace();
+
+    const { getSessionStatus } = useChat();
+
+    // Sync workspace mode to sessions API
+    // When workspace changes, update the API layer to use workspace-based endpoints
+    useEffect(() => {
+        setWorkspaceMode(currentWorkspace?.id || null);
+    }, [currentWorkspace?.id]);
+
+    const handleOpenFolder = async () => {
+        const path = prompt("Enter folder path:");
+        if (path) {
+            try {
+                await openWorkspace(path);
+            } catch (error) {
+                console.error("Failed to open workspace:", error);
+                alert("Failed to open workspace: " + (error as Error).message);
+            }
+        }
+    };
+
+    const handleNewSession = async () => {
+        // Use workspace's createSession if available, otherwise fallback to params
+        if (currentWorkspace) {
+            await createSession();
+        } else if (params?.onNewSession) {
+            params.onNewSession();
+        }
+    };
+
+    const handleSelectSession = (id: string) => {
+        // Only use workspace's switchSession - the callback in useChatLogic will handle loading
+        // Do NOT call params.onSelectSession here to avoid double loading
+        switchSession(id);
+    };
+
+    const handleDeleteSession = async (id: string) => {
+        // Use workspace's deleteSession if available, otherwise fallback to params
+        if (currentWorkspace) {
+            await deleteSession(id);
+        } else if (params?.onDeleteSession) {
+            params.onDeleteSession(id);
+        }
+    };
+
+    // Convert WorkspaceSession to Session-compatible format for status lookup
+    const sessionsWithStatus = sessions.map(s => ({
+        id: s.id,
+        title: s.title,
+        created_at: s.created_at,
+        updated_at: s.updated_at,
+        message_count: s.message_count,
+    }));
+
+    return (
+        <WorkspaceSidebar
+            workspaces={workspaces}
+            currentWorkspace={currentWorkspace}
+            isWorkspacesLoading={isWorkspacesLoading}
+            onSwitchWorkspace={switchWorkspace}
+            onRemoveWorkspace={removeWorkspace}
+            onOpenFolder={handleOpenFolder}
+            sessions={sessionsWithStatus}
+            currentSessionId={currentSessionId}
+            isSessionsLoading={isSessionsLoading}
+            onNewSession={handleNewSession}
+            onSelectSession={handleSelectSession}
+            onDeleteSession={handleDeleteSession}
+            isOpen={true}
+            onToggle={params?.onToggle || (() => {})}
+            getSessionStatus={getSessionStatus}
+        />
+    );
+}

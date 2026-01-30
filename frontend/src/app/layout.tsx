@@ -13,6 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 import { ChatProvider } from "@/lib/store";
+import { WorkspaceProvider } from "@/lib/workspace-store";
 import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
@@ -37,9 +38,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <ChatProvider>
-            {children}
-          </ChatProvider>
+          <WorkspaceProvider>
+            <ChatProvider>
+              {children}
+            </ChatProvider>
+          </WorkspaceProvider>
         </ThemeProvider>
       </body>
     </html>

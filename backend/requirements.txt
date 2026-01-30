@@ -9,6 +9,9 @@ httpx>=0.28.0
 claude-agent-sdk>=0.1.0
 aiofiles>=24.1.0
 watchdog>=6.0.0
+llama-cpp-python>=0.2.88
+sqlite-vec>=0.1.6
+requests>=2.32.0
 
 # Image processing
 pillow>=10.0.0

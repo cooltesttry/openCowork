@@ -14,6 +14,7 @@ from core.session_manager import session_manager
 from core.task_runner import task_runner
 from core.user_input_handler import user_input_handler
 from core import session_storage
+from core.workspace_storage import WorkspaceStorage
 from models.settings import AppSettings
 from models.session import SessionMessage
 
@@ -29,6 +30,7 @@ class ChatMessage(BaseModel):
     content: str
     cwd: Optional[str] = None
     session_id: Optional[str] = None  # Session ID for multi-turn context
+    workspace_id: Optional[str] = None  # Workspace ID for workspace-based sessions
     endpoint_name: Optional[str] = None  # Override endpoint for this query
     model_name: Optional[str] = None  # Override model for this query
     security_mode: Optional[str] = "bypassPermissions"  # Permission mode: default, plan, acceptEdits, bypassPermissions
@@ -675,16 +677,42 @@ async def websocket_multiplexed(websocket: WebSocket):
     
     async def start_task_for_session(session_id: str, message: ChatMessage):
         """Start a background task for a session."""
+        # Determine which storage to use (workspace or global)
+        workspace_storage_obj = None
+        if message.workspace_id:
+            # Try to get workspace storage
+            workspace_manager = websocket.app.state.workspace_manager
+            workspace_storage_obj = workspace_manager.get_storage_by_id(message.workspace_id)
+            if workspace_storage_obj:
+                logger.info(f"[Multiplexed] Using workspace storage for session {session_id}")
+
         # Get or create storage session
-        storage_session = session_storage.get_session(session_id)
-        if not storage_session:
-            storage_session = session_storage.create_session()
-            session_id = storage_session.id
-        
+        storage_session = None
+        if workspace_storage_obj:
+            # Use workspace storage
+            storage_session = workspace_storage_obj.get_session(session_id)
+            if not storage_session:
+                logger.warning(f"[Multiplexed] Session {session_id} not found in workspace, creating new")
+                storage_session = workspace_storage_obj.create_session()
+                session_id = storage_session.id
+        else:
+            # Use global storage (fallback)
+            storage_session = session_storage.get_session(session_id)
+            if not storage_session:
+                storage_session = session_storage.create_session()
+                session_id = storage_session.id
+
+        # Function to save session (uses appropriate storage)
+        def save_session_func(session):
+            if workspace_storage_obj:
+                workspace_storage_obj.save_session(session)
+            else:
+                session_storage.save_session(session)
+
         # Save user message
         user_msg = SessionMessage.create(role="user", content=message.content)
         storage_session.add_message(user_msg)
-        session_storage.save_session(storage_session)
+        save_session_func(storage_session)
         
         # Determine effective settings
         effective_endpoint = message.endpoint_name or settings.model.selected_endpoint
@@ -728,7 +756,7 @@ async def websocket_multiplexed(websocket: WebSocket):
                         content = event_dict.get("content", {})
                         if isinstance(content, dict) and "sdk_session_id" in content:
                             storage_session.sdk_session_id = content["sdk_session_id"]
-                            session_storage.save_session(storage_session)
+                            save_session_func(storage_session)
                     
                     # Accumulate text
                     if event_type == "text":
@@ -838,7 +866,7 @@ async def websocket_multiplexed(websocket: WebSocket):
                     storage_session.add_message(assistant_msg)
                     storage_session.last_model_name = effective_model
                     storage_session.last_endpoint_name = effective_endpoint or "(legacy)"
-                    session_storage.save_session(storage_session)
+                    save_session_func(storage_session)
                 
                 logger.info(f"[Multiplexed] Task completed for session {session_id}")
                 

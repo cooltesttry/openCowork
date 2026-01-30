@@ -8,8 +8,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/backend"
 FRONTEND_DIR="$SCRIPT_DIR/frontend"
+LLAMA_DIR="$SCRIPT_DIR/third_party/llama.cpp"
+LLAMA_BIN="$LLAMA_DIR/build/bin/llama-server"
+EMBED_MODEL="$SCRIPT_DIR/storage/models/embeddinggemma-q8_0.gguf"
 BACKEND_PORT=8000
 FRONTEND_PORT=3000
+EMBED_PORT=39289
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -34,9 +38,11 @@ stop_services() {
     echo -e "${BLUE}Stopping services...${NC}"
     kill_port $BACKEND_PORT
     kill_port $FRONTEND_PORT
+    kill_port $EMBED_PORT
     # Also kill by process name
     pkill -f "uvicorn main:app" 2>/dev/null || true
     pkill -f "next dev" 2>/dev/null || true
+    pkill -f "llama-server" 2>/dev/null || true
     echo -e "${GREEN}✓ Services stopped${NC}"
 }
 
@@ -47,6 +53,19 @@ start_services() {
     # Ensure ports are free
     kill_port $BACKEND_PORT
     kill_port $FRONTEND_PORT
+    kill_port $EMBED_PORT
+
+    # Start embedding server (llama.cpp) if available
+    if [ -x "$LLAMA_BIN" ] && [ -f "$EMBED_MODEL" ]; then
+        echo -e "${GREEN}Starting Embedding Server (llama-server on port $EMBED_PORT)...${NC}"
+        DYLD_LIBRARY_PATH="$LLAMA_DIR/build/bin" "$LLAMA_BIN" -m "$EMBED_MODEL" --embd-gemma-default --port "$EMBED_PORT" > /tmp/stockagent_embedding.log 2>&1 &
+        EMBED_PID=$!
+        sleep 1
+    else
+        echo -e "${YELLOW}Embedding server not started (missing llama.cpp build or model).${NC}"
+        echo -e "  Expected: $LLAMA_BIN"
+        echo -e "  Model:    $EMBED_MODEL"
+    fi
     
     # Start backend
     echo -e "${GREEN}Starting Backend (FastAPI on port $BACKEND_PORT)...${NC}"
@@ -66,8 +85,9 @@ start_services() {
     echo -e "\n${GREEN}✓ Both servers are running!${NC}"
     echo -e "  Backend:  http://localhost:$BACKEND_PORT"
     echo -e "  Frontend: http://localhost:$FRONTEND_PORT"
+    echo -e "  Embedding: http://localhost:$EMBED_PORT"
     echo -e "  API Docs: http://localhost:$BACKEND_PORT/docs"
-    echo -e "  Logs:     /tmp/stockagent_backend.log, /tmp/stockagent_frontend.log"
+    echo -e "  Logs:     /tmp/stockagent_backend.log, /tmp/stockagent_frontend.log, /tmp/stockagent_embedding.log"
 }
 
 # Function to cleanup on exit (for foreground mode)

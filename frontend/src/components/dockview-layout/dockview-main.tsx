@@ -5,7 +5,7 @@ import 'dockview/dist/styles/dockview.css';
 import { useRef, useEffect, useCallback } from 'react';
 import { useChat } from '@/lib/store';
 import { GlobalToolbar } from './toolbar/global-toolbar';
-import { SessionPanelContent } from './panels/session-panel';
+import { WorkspacePanelContent } from './panels/workspace-panel';
 import { ChatPanelContent } from './panels/chat-panel';
 import { ToolsPanelContent } from './panels/tools-panel';
 import { EditorPanel } from '../panels/editor-panel';
@@ -19,7 +19,7 @@ import { Toaster, toast } from 'sonner';
 import type { SecurityMode } from '@/components/chat/input-area';
 
 const components = {
-    sessions: SessionPanelContent,
+    workspaces: WorkspacePanelContent,
     chat: ChatPanelContent,
     tools: ToolsPanelContent,
     editor: EditorPanel,
@@ -405,12 +405,12 @@ export function DockviewMain() {
             editorPanel.api.setActive();
         }
 
-        // Panel 3: Sessions (Left)
+        // Panel 3: Workspaces (Left)
         if (isSessionSidebarOpen) {
-            const sessionsPanel = api.addPanel({
-                id: 'sessions-panel',
-                component: 'sessions',
-                title: 'Sessions',
+            const workspacesPanel = api.addPanel({
+                id: 'workspaces-panel',
+                component: 'workspaces',
+                title: 'Workspaces',
                 position: { referencePanel: 'chat-panel', direction: 'left' },
                 initialWidth: SESSION_PANEL_WIDTH,
                 minimumWidth: SESSION_PANEL_WIDTH,
@@ -422,8 +422,8 @@ export function DockviewMain() {
                     onToggle: () => setIsSessionSidebarOpen(false),
                 }
             });
-            if (sessionsPanel?.group?.header) {
-                sessionsPanel.group.header.hidden = true;
+            if (workspacesPanel?.group?.header) {
+                workspacesPanel.group.header.hidden = true;
             }
         }
 
@@ -506,17 +506,17 @@ export function DockviewMain() {
         }
     }, [isSidebarOpen, handleMentionFile, handleOpenFile, handleFileSelect, isPreviewPanelActive]);
 
-    // Handle toggle of sessions panel
+    // Handle toggle of workspaces panel
     useEffect(() => {
         if (!apiRef.current) return;
 
-        const sessionsPanel = apiRef.current.getPanel('sessions-panel');
+        const workspacesPanel = apiRef.current.getPanel('workspaces-panel');
 
-        if (isSessionSidebarOpen && !sessionsPanel) {
-            const newSessionsPanel = apiRef.current.addPanel({
-                id: 'sessions-panel',
-                component: 'sessions',
-                title: 'Sessions',
+        if (isSessionSidebarOpen && !workspacesPanel) {
+            const newWorkspacesPanel = apiRef.current.addPanel({
+                id: 'workspaces-panel',
+                component: 'workspaces',
+                title: 'Workspaces',
                 position: { referencePanel: 'chat-panel', direction: 'left' },
                 initialWidth: SESSION_PANEL_WIDTH,
                 minimumWidth: SESSION_PANEL_WIDTH,
@@ -528,11 +528,11 @@ export function DockviewMain() {
                     onToggle: () => setIsSessionSidebarOpen(false),
                 }
             });
-            if (newSessionsPanel?.group?.header) {
-                newSessionsPanel.group.header.hidden = true;
+            if (newWorkspacesPanel?.group?.header) {
+                newWorkspacesPanel.group.header.hidden = true;
             }
-        } else if (!isSessionSidebarOpen && sessionsPanel) {
-            sessionsPanel.api.close();
+        } else if (!isSessionSidebarOpen && workspacesPanel) {
+            workspacesPanel.api.close();
         }
     }, [isSessionSidebarOpen, handleNewSession, handleSelectSession, handleDeleteSession, setIsSessionSidebarOpen]);
 

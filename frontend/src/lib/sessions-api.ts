@@ -1,16 +1,50 @@
 /**
  * Sessions API client for session management.
+ * Supports both legacy global sessions and workspace-based sessions.
  */
 
 import { Session, SessionDetail } from './types';
 
 const API_BASE = 'http://localhost:8000/api';
+const WORKSPACE_API_BASE = 'http://localhost:8000/api/workspace';
+
+// ==================== Workspace Mode ====================
+// When set, all session operations use the workspace API
+
+let currentWorkspaceId: string | null = null;
+
+/**
+ * Set workspace mode. When workspaceId is set, all session operations
+ * will use the workspace-based API. Set to null to use legacy global API.
+ */
+export function setWorkspaceMode(workspaceId: string | null) {
+    currentWorkspaceId = workspaceId;
+}
+
+/**
+ * Get the current workspace ID (for checking if in workspace mode).
+ */
+export function getWorkspaceMode(): string | null {
+    return currentWorkspaceId;
+}
+
+// ==================== Sessions API ====================
 
 export const sessionsApi = {
     /**
      * List all sessions (metadata only, without messages).
+     * Uses workspace API if in workspace mode.
      */
     async list(): Promise<Session[]> {
+        if (currentWorkspaceId) {
+            const response = await fetch(`${WORKSPACE_API_BASE}/${currentWorkspaceId}/sessions`);
+            if (!response.ok) {
+                throw new Error(`Failed to list sessions: ${response.statusText}`);
+            }
+            const data = await response.json();
+            return data.sessions || [];
+        }
+
         const response = await fetch(`${API_BASE}/sessions`);
         if (!response.ok) {
             throw new Error(`Failed to list sessions: ${response.statusText}`);
@@ -21,8 +55,30 @@ export const sessionsApi = {
 
     /**
      * Get a session by ID with full message history.
+     * Uses workspace API if in workspace mode, with fallback to global API.
      */
     async get(id: string): Promise<SessionDetail> {
+        if (currentWorkspaceId) {
+            const response = await fetch(`${WORKSPACE_API_BASE}/${currentWorkspaceId}/sessions/${id}`);
+            if (response.ok) {
+                return response.json();
+            }
+            // If workspace API returns 404, fallback to global API
+            // This handles sessions created before workspace mode was enabled
+            if (response.status === 404) {
+                console.log(`[sessionsApi.get] Session ${id} not found in workspace, trying global API...`);
+                const globalResponse = await fetch(`${API_BASE}/sessions/${id}`);
+                if (!globalResponse.ok) {
+                    if (globalResponse.status === 404) {
+                        throw new Error('Session not found');
+                    }
+                    throw new Error(`Failed to get session: ${globalResponse.statusText}`);
+                }
+                return globalResponse.json();
+            }
+            throw new Error(`Failed to get session: ${response.statusText}`);
+        }
+
         const response = await fetch(`${API_BASE}/sessions/${id}`);
         if (!response.ok) {
             if (response.status === 404) {
@@ -34,9 +90,36 @@ export const sessionsApi = {
     },
 
     /**
+     * Get a session from a specific workspace with full message history.
+     * Explicit workspace ID override (ignores workspace mode).
+     */
+    async getFromWorkspace(workspaceId: string, sessionId: string): Promise<SessionDetail> {
+        const response = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/sessions/${sessionId}`);
+        if (!response.ok) {
+            if (response.status === 404) {
+                throw new Error('Session not found');
+            }
+            throw new Error(`Failed to get session: ${response.statusText}`);
+        }
+        return response.json();
+    },
+
+    /**
      * Create a new session.
+     * Uses workspace API if in workspace mode.
      */
     async create(title?: string): Promise<Session> {
+        if (currentWorkspaceId) {
+            const response = await fetch(
+                `${WORKSPACE_API_BASE}/${currentWorkspaceId}/sessions?title=${encodeURIComponent(title || 'New Chat')}`,
+                { method: 'POST' }
+            );
+            if (!response.ok) {
+                throw new Error(`Failed to create session: ${response.statusText}`);
+            }
+            return response.json();
+        }
+
         const response = await fetch(`${API_BASE}/sessions`, {
             method: 'POST',
             headers: {
@@ -54,6 +137,7 @@ export const sessionsApi = {
      * Update a session's title.
      */
     async update(id: string, title: string): Promise<Session> {
+        // TODO: Add workspace API support when backend implements it
         const response = await fetch(`${API_BASE}/sessions/${id}`, {
             method: 'PATCH',
             headers: {
@@ -69,8 +153,23 @@ export const sessionsApi = {
 
     /**
      * Delete a session by ID.
+     * Uses workspace API if in workspace mode.
      */
     async delete(id: string): Promise<void> {
+        if (currentWorkspaceId) {
+            const response = await fetch(
+                `${WORKSPACE_API_BASE}/${currentWorkspaceId}/sessions/${id}`,
+                { method: 'DELETE' }
+            );
+            if (!response.ok) {
+                if (response.status === 404) {
+                    throw new Error('Session not found');
+                }
+                throw new Error(`Failed to delete session: ${response.statusText}`);
+            }
+            return;
+        }
+
         const response = await fetch(`${API_BASE}/sessions/${id}`, {
             method: 'DELETE',
         });

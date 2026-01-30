@@ -104,8 +104,25 @@ function CodeBlockWrapper({
     );
 }
 
+// Filter out broken local file path images from markdown before rendering
+// Only removes complete patterns to avoid breaking streaming content
+function filterLocalImages(markdown: string): string {
+    // Pattern 1: Standard markdown image with local absolute path (not http/https)
+    // e.g., ![alt text](/Users/xxx/image.jpg) or ![alt](/home/user/file.png)
+    let result = markdown.replace(/!\[[^\]]*\]\(\/(?!\/)[^)]+\)/g, '');
+
+    // Pattern 2: Malformed markdown with path embedded in alt text
+    // e.g., ![Image: source: /Users/huawang/xxx.jpg]
+    result = result.replace(/!\[[^\]]*\/Users\/[^\]]+\]/g, '');
+
+    return result;
+}
+
 export function TextBlock({ block, onPreviewHTML }: TextBlockProps) {
-    const content = typeof block.content === 'string' ? block.content : '';
+    const rawContent = typeof block.content === 'string' ? block.content : '';
+
+    // Filter out broken local file path images before rendering
+    const content = filterLocalImages(rawContent);
     const isStreaming = block.status === 'streaming';
 
     // Get preview callback from store (priority) or from props
@@ -181,7 +198,7 @@ export function TextBlock({ block, onPreviewHTML }: TextBlockProps) {
                             if (isInline) {
                                 return (
                                     <code
-                                        className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-sm font-mono border border-primary/20"
+                                        className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-sm font-mono border border-primary/20 break-all"
                                         {...props}
                                     >
                                         {children}

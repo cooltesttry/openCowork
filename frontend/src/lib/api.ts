@@ -107,7 +107,7 @@ export async function fetchWorkingDirectoryFiles(subdir: string = ""): Promise<F
 }
 
 
-const API_ROOT = "http://localhost:8000/api";
+export const API_ROOT = "http://localhost:8000/api";
 
 export async function saveFile(path: string, content: string): Promise<any> {
     const res = await fetch(`${API_ROOT}/files/save`, {
@@ -416,4 +416,3 @@ export async function listSuperAgentSessions(): Promise<{ sessions: SuperAgentSe
     if (!res.ok) throw new Error("Failed to list Super Agent sessions");
     return res.json();
 }
-

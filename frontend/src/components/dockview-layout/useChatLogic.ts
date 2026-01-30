@@ -5,6 +5,7 @@ import { Message, MessageBlock, AgentStep } from '@/lib/types';
 import { sessionClient, AskUserContent, StreamEvent } from '@/lib/websocket';
 import { sessionsApi } from '@/lib/sessions-api';
 import { useChat } from '@/lib/store';
+import { useWorkspace } from '@/lib/workspace-store';
 import { toast } from 'sonner';
 import type { InputAreaRef, SecurityMode } from '@/components/chat/input-area';
 import { useEventProcessor } from './useEventProcessor';
@@ -27,6 +28,9 @@ export function useChatLogic() {
         getSessionStatus,
         currentSessionIdRef,  // Use shared ref from Context
     } = useChat();
+
+    // Workspace context for session change notifications
+    const { registerSessionChangeCallback, currentWorkspace, refreshSessions: refreshWorkspaceSessions } = useWorkspace();
 
     // Compute if CURRENT session is processing (for per-session input blocking)
     const isCurrentSessionProcessing = currentSessionId
@@ -123,6 +127,7 @@ export function useChatLogic() {
 
     // Load messages for a specific session
     const loadSessionMessages = useCallback(async (sessionId: string) => {
+        console.log(`[loadSessionMessages] Loading: ${sessionId}`);
         try {
             const session = await sessionsApi.get(sessionId);
 
@@ -172,6 +177,7 @@ export function useChatLogic() {
                     blocks,
                 };
             });
+            console.log(`[loadSessionMessages] Loaded ${msgs.length} messages for: ${sessionId}`);
             setMessages(msgs);
 
             if (session.last_endpoint_name && session.last_model_name) {
@@ -244,7 +250,7 @@ export function useChatLogic() {
             loadSessions();
             return;
         } else if (event.type === 'error') {
-            // console.log(`[handleGlobalEvent] Error event for ${sessionId}`);
+            console.log(`[handleGlobalEvent] Error event for ${sessionId}: ${event.content?.message}`);
             // Clear resume state on error
             if (isResumedSession) {
                 resumeSessionStateRef.current = null;
@@ -455,11 +461,8 @@ export function useChatLogic() {
         // Only update UI if this is the current session - prevents background sessions
         // from affecting the displayed messages and causing scroll/lag issues
         if (sessionId !== currentSessionIdRef.current) {
-            // console.log(`[appendCurrentTurnFromEvents] Skipping UI update for background session ${sessionId}`);
             return;
         }
-        console.log(`[appendCurrentTurnFromEvents] CALLED! sessionId=${sessionId}, events=${events?.length}`);
-        // console.trace('[appendCurrentTurnFromEvents] Call stack');
         if (!events || events.length === 0) return;
 
         // Use stable ID without timestamp - this is crucial for avoiding duplicate keys
@@ -620,7 +623,7 @@ export function useChatLogic() {
                 }
                 case 'tool_result': {
                     // Update existing tool_use block instead of creating new block
-                    const resultContent = event.content as { tool_use_id?: string; result?: unknown; is_error?: boolean };
+                    const resultContent = event.content as { tool_use_id?: string; result?: unknown; content?: unknown; is_error?: boolean };
                     const toolUseId = resultContent?.tool_use_id;
 
                     let blockIndex = toolUseId ? toolCallToBlockIndex.get(toolUseId) : undefined;
@@ -636,11 +639,13 @@ export function useChatLogic() {
 
                     if (blockIndex !== undefined && blocks[blockIndex]) {
                         const isError = resultContent?.is_error === true;
+                        // The result can be in resultContent.result OR resultContent.content
+                        const resultValue = resultContent?.result ?? resultContent?.content;
                         // Update the tool_use block with result (same as streaming does)
                         blocks[blockIndex].status = isError ? 'error' : 'success';
                         blocks[blockIndex].content = {
                             ...(blocks[blockIndex].content as object),
-                            result: resultContent?.result,
+                            result: resultValue,
                         };
                     }
                     break;
@@ -840,8 +845,11 @@ export function useChatLogic() {
         // This ensures status icons update even when user is viewing a different session
         sessionClient.setGlobalHandler(handleGlobalEvent);
 
-        // Load sessions
-        loadSessions();
+        // Load sessions only if NOT in workspace mode
+        // When in workspace mode, the workspace store handles session management
+        if (!currentWorkspace) {
+            loadSessions();
+        }
 
         // Recover running sessions
         recoverAllSessions();
@@ -856,12 +864,18 @@ export function useChatLogic() {
             sessionClient.setOnReconnect(null);
             sessionClient.setGlobalHandler(() => { }); // Clear global handler
         };
-    }, [loadSessions, recoverAllSessions, handleGlobalEvent]);
+    }, [loadSessions, recoverAllSessions, handleGlobalEvent, currentWorkspace]);
 
     // Load session messages when currentSessionId changes
     // NOTE: For running sessions, handleSelectSession already handles loading with proper sequencing.
     // This useEffect is for: initial page load, or switching to idle sessions.
+    // When in workspace mode, this is triggered by the workspace callback through handleSelectSession.
     useEffect(() => {
+        // Skip if in workspace mode - workspace callback handles session loading via handleSelectSession
+        if (currentWorkspace) {
+            return;
+        }
+
         if (currentSessionId) {
             const status = getSessionStatus(currentSessionId);
             // Skip if running session - handleSelectSession handles these
@@ -871,7 +885,7 @@ export function useChatLogic() {
             }
             loadSessionMessages(currentSessionId);
         }
-    }, [currentSessionId, loadSessionMessages, getSessionStatus]);
+    }, [currentSessionId, currentWorkspace, loadSessionMessages, getSessionStatus]);
 
     // Create a new session
     const handleNewSession = useCallback(async () => {
@@ -894,7 +908,7 @@ export function useChatLogic() {
     // and avoid re-render cascades when currentSessionId state changes
     const handleSelectSession = useCallback(async (id: string) => {
         const currentId = currentSessionIdRef.current;
-        // console.log(`[handleSelectSession] Called with id: ${id}, currentSessionIdRef.current: ${currentId}`);
+        console.log(`[handleSelectSession] id=${id}, currentId=${currentId}`);
 
         if (id !== currentId) {
             // console.log(`[handleSelectSession] Switching from ${currentId} to ${id}`);
@@ -913,9 +927,9 @@ export function useChatLogic() {
                 }
             }
 
-            // console.log(`[handleSelectSession] Setting currentSessionIdRef.current = ${id}`);
+            console.log(`[handleSelectSession] Setting currentSessionIdRef.current = ${id}`);
             currentSessionIdRef.current = id;
-            // console.log(`[handleSelectSession] Calling setCurrentSessionId(${id})`);
+            console.log(`[handleSelectSession] Ref updated, calling setCurrentSessionId(${id})`);
             setCurrentSessionId(id);
             setSteps([]);
 
@@ -997,6 +1011,41 @@ export function useChatLogic() {
             toast.error('Error', { description: 'Failed to delete session' });
         }
     }, [currentSessionId, sessions, setCurrentSessionId, setMessages, setSessions]);
+
+    // ==================== Workspace Session Change Listener ====================
+    // When a session is selected in the workspace sidebar, sync to chat state
+    // This bridges the workspace store with the chat logic
+    useEffect(() => {
+        const unsubscribe = registerSessionChangeCallback((sessionId: string, workspaceId: string) => {
+            // Only handle if session actually changed
+            const currentId = currentSessionIdRef.current;
+            console.log(`[WorkspaceCallback] sessionId=${sessionId}, currentId=${currentId}`);
+            if (sessionId !== currentId) {
+                // When switching sessions during streaming, we should:
+                // 1. Update the session ID ref immediately
+                // 2. Load the new session's messages
+                // The streaming callback will detect the ID change and skip UI updates
+
+                // Check if the OLD session (currentId) is running
+                // We still want to allow switching away from it
+                if (currentId && isProcessingRef.current) {
+                    const currentStatus = getSessionStatus(currentId);
+                    // Mark the old session as having unread updates since user is leaving
+                    if (currentStatus.status === 'running') {
+                        setSessionStatus(currentId, {
+                            ...currentStatus,
+                            hasUnread: true,
+                        });
+                    }
+                }
+
+                // Use handleSelectSession to properly load the new session
+                handleSelectSession(sessionId);
+            }
+        });
+
+        return unsubscribe;
+    }, [registerSessionChangeCallback, handleSelectSession, getSessionStatus, setCurrentSessionId]);
 
     // Helper functions for message blocks
     const addBlock = useCallback((messageId: string, block: MessageBlock) => {
@@ -1193,6 +1242,7 @@ export function useChatLogic() {
         setMessages((prev) => [...prev, userMessage]);
         setSteps([]);
         setIsProcessing(true);
+        isProcessingRef.current = true;
 
         // Update session status to running
         if (currentSessionIdRef.current) {
@@ -1249,6 +1299,7 @@ export function useChatLogic() {
             await sessionClient.sendMessage({
                 content,
                 session_id: currentSessionIdRef.current || undefined,
+                workspace_id: currentWorkspace?.id || undefined,  // Pass workspace context for session lookup
                 endpoint_name: activeEndpoint || undefined,
                 model_name: activeModel || undefined,
                 security_mode: securityMode,
@@ -1257,6 +1308,21 @@ export function useChatLogic() {
                 // Capture the original session ID at send time - only sync if we started with none
                 const eventSessionId = event.metadata?.session_id;
 
+                // CRITICAL: Skip UI updates if user has switched to a different session
+                // This allows background streaming to continue without affecting the current view
+                const isCurrentSession = eventSessionId === currentSessionIdRef.current ||
+                    (!eventSessionId && originalSessionId === currentSessionIdRef.current);
+
+                // Debug: Log every 50th event or key events to see the flow
+                if (event.type === 'start' || event.type === 'done' || event.type === 'error') {
+                    console.log(`[handleSend] Event: ${event.type}, eventSession=${eventSessionId}, currentRef=${currentSessionIdRef.current}, isCurrentSession=${isCurrentSession}`);
+                }
+
+                // Debug log to track session switching during streaming
+                if (!isCurrentSession && (event.type === 'text_delta' || event.type === 'done')) {
+                    console.log(`[handleSend] Skipping UI update: eventSession=${eventSessionId}, currentSession=${currentSessionIdRef.current}`);
+                }
+
                 // CRITICAL FIX: Only sync session ID if:
                 // 1. We have an event with a session ID
                 // 2. The ORIGINAL session ID at send time was null (new session)
@@ -1264,11 +1330,44 @@ export function useChatLogic() {
                 // This prevents pulling user back to a background session
                 if (eventSessionId && !originalSessionId && currentSessionIdRef.current !== eventSessionId) {
                     // This is a newly created session - sync the ID
-                    // console.log(`[handleSend] New session created: ${eventSessionId}`);
                     currentSessionIdRef.current = eventSessionId;
                     setCurrentSessionId(eventSessionId);
+                    // Also set the new session's status to 'running' so the callback protection works
+                    setSessionStatus(eventSessionId, {
+                        status: 'running',
+                        hasUnread: false,
+                    });
                     // Refresh the session list in background to show the new item
                     loadSessions();
+                }
+
+                // Skip UI updates (messages, steps) if user has switched away from this session
+                if (!isCurrentSession) {
+                    // Still handle done/error events for status tracking
+                    if (event.type === 'done' || event.type === 'error') {
+                        console.log(`[handleSend] Background session ${event.type}: eventSession=${eventSessionId}, error=${event.content?.message}`);
+                        // Update session status in background
+                        if (eventSessionId) {
+                            if (event.type === 'done') {
+                                setSessionStatus(eventSessionId, { status: 'idle', hasUnread: true });
+                            } else {
+                                setSessionStatus(eventSessionId, {
+                                    status: 'error',
+                                    hasUnread: true,
+                                    error: event.content?.message || 'An error occurred'
+                                });
+                            }
+                        }
+                        // Refresh sessions immediately for status update
+                        loadSessions();
+                        refreshWorkspaceSessions();
+                        // Also refresh after a delay to catch title updates from backend
+                        setTimeout(() => {
+                            loadSessions();
+                            refreshWorkspaceSessions();
+                        }, 500);
+                    }
+                    return;  // Skip UI updates
                 }
 
                 // IMPORTANT: Do NOT call loadSessions() here for every event, that causes flickering!
@@ -1404,6 +1503,7 @@ export function useChatLogic() {
 
                         // Check if a streaming block already exists for this tool (from tool_input_start)
                         const existingBlockId = toolCallId ? activeToolCalls.get(toolCallId) : null;
+                        console.log(`[tool_use] toolName=${toolName}, toolCallId=${toolCallId}, existingBlockId=${existingBlockId}`);
 
                         if (existingBlockId) {
                             // Update existing streaming block with complete input and change status
@@ -1449,26 +1549,35 @@ export function useChatLogic() {
                     case 'tool_result': {
                         const toolUseId = event.content?.tool_use_id;
                         let blockId = toolUseId ? activeToolCalls.get(toolUseId) : null;
+                        console.log(`[tool_result] toolUseId=${toolUseId}, blockId=${blockId}, activeToolCalls size=${activeToolCalls.size}`);
 
                         if (!blockId && toolBlocksInOrder.length > 0) {
                             blockId = toolBlocksInOrder[0];
                             toolBlocksInOrder.shift();
+                            console.log(`[tool_result] Using fallback blockId=${blockId}`);
                         }
 
                         if (blockId) {
                             const isError = event.content?.is_error === true;
+                            // The result can be in event.content.result OR event.content.content
+                            const resultValue = event.content?.result ?? event.content?.content;
+                            console.log(`[tool_result] Updating block ${blockId} to status=${isError ? 'error' : 'success'}, hasResult=${resultValue !== undefined}`);
                             // Use functional update to preserve existing content.name and content.input
-                            setMessages((prev) =>
-                                prev.map((msg) => {
+                            setMessages((prev) => {
+                                console.log(`[tool_result] setMessages called, looking for msg.id=${assistantMessageId}, blockId=${blockId}`);
+                                console.log(`[tool_result] Messages count: ${prev.length}, last msg id: ${prev[prev.length - 1]?.id}`);
+                                return prev.map((msg) => {
                                     if (msg.id === assistantMessageId && msg.blocks) {
+                                        console.log(`[tool_result] Found message, blocks count: ${msg.blocks.length}`);
                                         const blocks = msg.blocks.map((block) => {
                                             if (block.id === blockId) {
+                                                console.log(`[tool_result] Found block, updating status and result`);
                                                 return {
                                                     ...block,
                                                     status: isError ? 'error' : 'success',
                                                     content: {
                                                         ...block.content,  // Preserve existing name, input, etc.
-                                                        result: event.content?.result,
+                                                        result: resultValue,
                                                     },
                                                 } as MessageBlock;
                                             }
@@ -1477,11 +1586,13 @@ export function useChatLogic() {
                                         return { ...msg, blocks };
                                     }
                                     return msg;
-                                })
-                            );
+                                });
+                            });
                             if (toolUseId) {
                                 activeToolCalls.delete(toolUseId);
                             }
+                        } else {
+                            console.log(`[tool_result] No blockId found, skipping update`);
                         }
                         break;
                     }
@@ -1495,6 +1606,7 @@ export function useChatLogic() {
                         }
 
                         const toolName = event.content?.name || 'Tool';
+                        console.log(`[tool_input_start] toolName=${toolName}, event.id=${event.id}`);
 
                         // Skip creating tool_use block for AskUserQuestion
                         // The ask_user event will handle it with complete question data
@@ -1525,6 +1637,7 @@ export function useChatLogic() {
                         // Track this streaming tool block
                         if (event.id) {
                             activeToolCalls.set(event.id, toolBlockId);
+                            console.log(`[tool_input_start] Added to activeToolCalls: ${event.id} -> ${toolBlockId}`);
                         }
                         toolBlocksInOrder.push(toolBlockId);
                         break;
@@ -1682,6 +1795,7 @@ export function useChatLogic() {
 
                     case 'done': {
                         setIsProcessing(false);
+                        isProcessingRef.current = false;
                         // Update session status to idle (task completed)
                         // Use event's session_id for multiplexed mode
                         const doneSessionId = event.metadata?.session_id || currentSessionIdRef.current;
@@ -1691,15 +1805,26 @@ export function useChatLogic() {
                                 hasUnread: false,
                             });
                         }
+                        // Refresh sessions immediately for status update
                         loadSessions();
-                        setMessages((prev) =>
-                            prev.map((msg) => {
+                        refreshWorkspaceSessions();
+                        // Also refresh after a delay to catch title updates from backend
+                        setTimeout(() => {
+                            loadSessions();
+                            refreshWorkspaceSessions();
+                        }, 500);
+                        setMessages((prev) => {
+                            console.log(`[done] setMessages called, looking for msg.id=${assistantMessageId}`);
+                            return prev.map((msg) => {
                                 if (msg.id === assistantMessageId && msg.blocks) {
-                                    const blocks = msg.blocks.map((block) =>
-                                        block.status === 'executing' || block.status === 'streaming'
-                                            ? { ...block, status: 'success' as const }
-                                            : block
-                                    );
+                                    console.log(`[done] Found message with ${msg.blocks.length} blocks`);
+                                    const blocks = msg.blocks.map((block) => {
+                                        console.log(`[done] Block ${block.id}: status=${block.status}, hasResult=${!!block.content?.result}`);
+                                        if (block.status === 'executing' || block.status === 'streaming') {
+                                            return { ...block, status: 'success' as const };
+                                        }
+                                        return block;
+                                    });
                                     return {
                                         ...msg,
                                         blocks,
@@ -1711,8 +1836,8 @@ export function useChatLogic() {
                                     return { ...msg, usage: event.usage, isStreaming: false };
                                 }
                                 return msg;
-                            })
-                        );
+                            });
+                        });
                         setTimeout(() => inputAreaRef.current?.focus(), 100);
                         break;
                     }
@@ -1785,7 +1910,9 @@ export function useChatLogic() {
                     }
 
                     case 'error': {
+                        console.log(`[handleSend] ERROR event received! sessionId=${event.metadata?.session_id}, message=${event.content?.message}`);
                         setIsProcessing(false);
+                        isProcessingRef.current = false;
                         // Update session status to error
                         // Use event's session_id for multiplexed mode
                         const errorSessionId = event.metadata?.session_id || currentSessionIdRef.current;
@@ -1816,6 +1943,7 @@ export function useChatLogic() {
         } catch (error: any) {
             console.error('Failed to send message:', error);
             setIsProcessing(false);
+            isProcessingRef.current = false;
             toast.error('Error', { description: error.message || 'Failed to send message' });
         }
     };

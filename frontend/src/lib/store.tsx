@@ -150,10 +150,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             }
 
             // Load current session ID
-            const savedSessionId = localStorage.getItem(CURRENT_SESSION_KEY);
-            if (savedSessionId) {
-                setCurrentSessionId(savedSessionId);
-            }
+            // NOTE: Disabled when using workspace mode - workspace store handles session selection
+            // const savedSessionId = localStorage.getItem(CURRENT_SESSION_KEY);
+            // if (savedSessionId) {
+            //     setCurrentSessionId(savedSessionId);
+            // }
         } catch (e) {
             console.warn("Failed to load state from localStorage", e);
         }

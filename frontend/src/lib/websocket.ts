@@ -55,6 +55,7 @@ export interface ChatMessage {
     content: string;
     cwd?: string;
     session_id?: string;  // Session ID for multi-turn context
+    workspace_id?: string;  // Workspace ID for workspace-based sessions
     endpoint_name?: string;  // Override endpoint for this query
     model_name?: string;  // Override model for this query
     security_mode?: 'default' | 'acceptEdits' | 'bypassPermissions';  // Permission mode
