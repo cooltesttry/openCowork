@@ -207,12 +207,6 @@ export function FilePreviewPopup({ entry, position, anchor = 'right', onClose }:
                     const encodedPath = entry.path.split('/').map(segment => encodeURIComponent(segment)).join('/');
                     const webserverUri = `http://localhost:8000/api/files/webserver/${encodedPath}`;
 
-                    console.log('[FilePreviewPopup] HTML Preview Debug:', {
-                        path: entry.path,
-                        encodedPath: encodedPath,
-                        webserverUri: webserverUri
-                    });
-
                     return (
                         <div className="h-full min-h-[300px]">
                             <iframe

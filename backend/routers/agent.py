@@ -577,10 +577,16 @@ async def websocket_session(websocket: WebSocket):
                     # Add session_id to metadata and send to client
                     event_dict["metadata"]["session_id"] = storage_session.id
                     await websocket.send_json(event_dict)
-                
+
                 # Use the ordered blocks list directly (already in event sequence)
                 assistant_blocks = all_blocks
-                
+
+                # Normalize block statuses before saving (streaming/executing -> success)
+                # This ensures blocks are in final state when loaded from storage
+                for block in assistant_blocks:
+                    if block.get("status") in ("streaming", "executing"):
+                        block["status"] = "success"
+
                 # Save assistant response to storage
                 if assistant_content or assistant_blocks:
                     assistant_msg = SessionMessage.create(
@@ -860,9 +866,15 @@ async def websocket_multiplexed(websocket: WebSocket):
                             "status": "success",
                             "metadata": {"requestId": content.get("request_id", "")},
                         })
-                    
+
                     yield event_dict
-                
+
+                # Normalize block statuses before saving (streaming/executing -> success)
+                # This ensures blocks are in final state when loaded from storage
+                for block in all_blocks:
+                    if block.get("status") in ("streaming", "executing"):
+                        block["status"] = "success"
+
                 # Save assistant response after completion
                 if assistant_content or all_blocks:
                     assistant_msg = SessionMessage.create(

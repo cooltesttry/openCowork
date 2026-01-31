@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -48,6 +49,26 @@ async def query_workspace(request: Request, body: SearchRequest):
         path_prefix = body.path_prefix
         if path_prefix and not Path(path_prefix).is_absolute():
             path_prefix = str((workdir / path_prefix).resolve())
+
+        # Convert relative include/exclude paths to absolute
+        include_paths = None
+        if body.include_paths:
+            include_paths = []
+            for p in body.include_paths:
+                if not Path(p).is_absolute():
+                    include_paths.append(str((workdir / p).resolve()))
+                else:
+                    include_paths.append(p)
+
+        exclude_paths = None
+        if body.exclude_paths:
+            exclude_paths = []
+            for p in body.exclude_paths:
+                if not Path(p).is_absolute():
+                    exclude_paths.append(str((workdir / p).resolve()))
+                else:
+                    exclude_paths.append(p)
+
         if body.mode == "files":
             results = indexer.search_files(
                 body.query,
@@ -56,10 +77,22 @@ async def query_workspace(request: Request, body: SearchRequest):
                 use_vector=body.use_vector,
                 use_fts=body.use_fts,
                 path_prefix=path_prefix,
+                include_paths=include_paths,
+                exclude_paths=exclude_paths,
                 filename_query=body.filename_query,
                 rerank=body.rerank,
                 alpha=body.alpha,
             )
+            # Add file metadata (size, modified_at)
+            for result in results:
+                try:
+                    file_path = Path(result["path"])
+                    if file_path.exists():
+                        stat = file_path.stat()
+                        result["size"] = stat.st_size
+                        result["modified_at"] = stat.st_mtime
+                except Exception:
+                    pass
             return FileSearchResponse(results=results)
 
         results = indexer.search(
@@ -69,6 +102,8 @@ async def query_workspace(request: Request, body: SearchRequest):
             use_vector=body.use_vector,
             use_fts=body.use_fts,
             path_prefix=path_prefix,
+            include_paths=include_paths,
+            exclude_paths=exclude_paths,
             rerank=body.rerank,
             alpha=body.alpha,
         )

@@ -48,20 +48,17 @@ export function SessionEventsLog({
         }
 
         const wsUrl = `ws://localhost:8000/api/super-agent/ws/${sessionId}`;
-        console.log("[SessionEvents] Connecting to:", wsUrl);
 
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
-            console.log("[SessionEvents] Connected");
             setConnected(true);
         };
 
         ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data) as SessionEvent;
-                console.log("[SessionEvents] Received:", data);
                 setEvents((prev) => [...prev, data]);
             } catch (e) {
                 console.error("[SessionEvents] Parse error:", e);
@@ -73,7 +70,6 @@ export function SessionEventsLog({
         };
 
         ws.onclose = () => {
-            console.log("[SessionEvents] Disconnected");
             setConnected(false);
         };
 

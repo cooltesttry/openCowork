@@ -35,6 +35,7 @@ class WorkspaceStorage:
         self.data_dir = self.workspace_path / OPENCOWORK_DIR
         self.sessions_dir = self.data_dir / "sessions"
         self.memory_dir = self.data_dir / "memory"
+        self.search_dir = self.data_dir / "search"
         # Claude Agent SDK directories
         self.claude_dir = self.workspace_path / ".claude"
         self.skills_dir = self.claude_dir / "skills"
@@ -75,6 +76,7 @@ class WorkspaceStorage:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.sessions_dir.mkdir(exist_ok=True)
         self.memory_dir.mkdir(exist_ok=True)
+        self.search_dir.mkdir(exist_ok=True)
 
         # Create Claude Agent SDK directories
         self._ensure_claude_directories()
@@ -288,6 +290,30 @@ class WorkspaceStorage:
             logger.error(f"Failed to save context: {e}")
             return False
 
+    # ==================== Search ====================
+
+    def ensure_search_index(self) -> bool:
+        """Ensure search index exists, create if not."""
+        from core.search.indexer import SearchIndex
+
+        search_db = self.search_dir / "search.sqlite"
+        if search_db.exists():
+            return True
+
+        try:
+            self.search_dir.mkdir(exist_ok=True)
+            indexer = SearchIndex(self.workspace_path)
+            # Initialize database schema only, no full indexing
+            conn = indexer._connect()
+            vec_enabled = indexer._load_vec_extension(conn)
+            indexer._init_schema(conn, vec_enabled)
+            conn.close()
+            logger.info(f"Initialized search index at {search_db}")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to initialize search index: {e}")
+            return False
+
     # ==================== Utilities ====================
 
     def _update_gitignore(self) -> None:
@@ -410,6 +436,9 @@ class WorkspaceManager:
             storage.update_workspace(workspace)
         else:
             workspace = storage.initialize(name)
+
+        # Ensure search index exists
+        storage.ensure_search_index()
 
         # Update recent workspaces
         self._add_to_recent(workspace)

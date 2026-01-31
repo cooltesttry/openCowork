@@ -24,6 +24,8 @@ class SearchRequest(BaseModel):
     use_vector: bool = True
     use_fts: bool = True
     path_prefix: Optional[str] = None
+    include_paths: Optional[list[str]] = None  # Only search in these paths
+    exclude_paths: Optional[list[str]] = None  # Exclude these paths from search
     filename_query: Optional[str] = None
     rerank: str = Field(default="rrf", pattern="^(rrf|bm25|alpha)$")
     alpha: float = Field(default=0.75, ge=0.0, le=1.0)
@@ -54,6 +56,8 @@ class FileSearchResult(BaseModel):
     score: float
     bm25: Optional[float] = None
     distance: Optional[float] = None
+    size: Optional[int] = None  # File size in bytes
+    modified_at: Optional[float] = None  # Unix timestamp
 
 
 class FileSearchResponse(BaseModel):

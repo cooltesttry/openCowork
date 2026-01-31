@@ -244,8 +244,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 const currentId = currentSessionIdRef.current;
                 const currentExists = currentId && sessionList.some(s => s.id === currentId);
 
-                console.log(`[workspace-store] loadSessions: currentId=${currentId}, exists=${currentExists}, sessions=${sessionList.length}`);
-
                 if (currentExists) {
                     // Session exists in this workspace, notify listeners
                     sessionChangeCallbacksRef.current.forEach(callback => {
@@ -258,7 +256,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 } else if (sessionList.length > 0) {
                     // Session doesn't exist in this workspace or none selected, auto-select first
                     const firstSessionId = sessionList[0].id;
-                    console.log(`[workspace-store] Auto-selecting first session: ${firstSessionId}`);
                     // Update ref BEFORE triggering callbacks
                     currentSessionIdRef.current = firstSessionId;
                     setCurrentSessionId(firstSessionId);
@@ -272,7 +269,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     });
                 } else {
                     // No sessions in this workspace, clear selection
-                    console.log(`[workspace-store] No sessions in workspace, clearing selection`);
                     currentSessionIdRef.current = null;
                     setCurrentSessionId(null);
                 }
@@ -324,6 +320,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const openWorkspace = useCallback(async (path: string, name?: string) => {
         const workspace = await openWorkspaceAPI(path, name);
         setCurrentWorkspace(workspace);
+        currentSessionIdRef.current = null; // Reset session selection for new workspace
+        setCurrentSessionId(null);
+        setSessions([]); // Clear old sessions immediately
         await refreshWorkspaces();
     }, [refreshWorkspaces]);
 
@@ -332,6 +331,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setCurrentWorkspace(workspace);
         currentSessionIdRef.current = null; // Reset session selection
         setCurrentSessionId(null); // Reset session selection
+        setSessions([]); // Clear old sessions immediately
         await refreshWorkspaces();
     }, [refreshWorkspaces]);
 
@@ -377,7 +377,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }, [currentWorkspace?.id, refreshSessions]);
 
     const switchSession = useCallback(async (sessionId: string) => {
-        console.log(`[workspace-store] switchSession called: ${sessionId}, callbacks count: ${sessionChangeCallbacksRef.current.size}`);
         // CRITICAL: Update ref IMMEDIATELY before triggering callbacks
         // This ensures registerSessionChangeCallback's immediate trigger uses the correct value
         currentSessionIdRef.current = sessionId;
@@ -387,7 +386,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (workspaceId) {
             sessionChangeCallbacksRef.current.forEach(callback => {
                 try {
-                    console.log(`[workspace-store] Calling callback for session: ${sessionId}`);
                     callback(sessionId, workspaceId);
                 } catch (e) {
                     console.error('Session change callback error:', e);

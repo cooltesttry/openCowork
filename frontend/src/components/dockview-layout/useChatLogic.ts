@@ -8,7 +8,11 @@ import { useChat } from '@/lib/store';
 import { useWorkspace } from '@/lib/workspace-store';
 import { toast } from 'sonner';
 import type { InputAreaRef, SecurityMode } from '@/components/chat/input-area';
-import { useEventProcessor } from './useEventProcessor';
+import {
+    processEvents,
+    buildMessageFromState,
+    ProcessableEvent,
+} from '@/lib/event-processor';
 
 /**
  * Shared hook containing all the business logic from ChatPanel
@@ -46,23 +50,6 @@ export function useChatLogic() {
     useEffect(() => {
         isProcessingRef.current = isProcessing;
     }, [isProcessing]);
-
-    // ============= UNIFIED EVENT PROCESSING STATE =============
-    // This state is shared between handleSend and session resume to ensure identical behavior
-    interface CurrentTurnState {
-        sessionId: string;
-        assistantMessageId: string;
-        activeToolCalls: Map<string, string>;    // toolCallId -> blockId
-        toolBlocksInOrder: string[];             // For result matching fallback
-        currentTextBlockId: string | null;
-        currentThinkingBlockId: string | null;
-        hasReceivedStreamingText: boolean;
-        hasReceivedStreamingThinking: boolean;
-        hasRemovedThinkingPlaceholder: boolean;
-        thinkingPlaceholderId: string;
-    }
-    const currentTurnStateRef = useRef<CurrentTurnState | null>(null);
-    // ============= END UNIFIED EVENT PROCESSING STATE =============
 
     const [askUserRequest, setAskUserRequest] = useState<AskUserContent | null>(null);
     const [securityMode, setSecurityMode] = useState<SecurityMode>('bypassPermissions');
@@ -127,7 +114,7 @@ export function useChatLogic() {
 
     // Load messages for a specific session
     const loadSessionMessages = useCallback(async (sessionId: string) => {
-        console.log(`[loadSessionMessages] Loading: ${sessionId}`);
+        // console.log(`[loadSessionMessages] Loading: ${sessionId}`);
         try {
             const session = await sessionsApi.get(sessionId);
 
@@ -177,7 +164,7 @@ export function useChatLogic() {
                     blocks,
                 };
             });
-            console.log(`[loadSessionMessages] Loaded ${msgs.length} messages for: ${sessionId}`);
+            // console.log(`[loadSessionMessages] Loaded ${msgs.length} messages for: ${sessionId}`);
             setMessages(msgs);
 
             if (session.last_endpoint_name && session.last_model_name) {
@@ -236,27 +223,16 @@ export function useChatLogic() {
             });
             if (isCurrentSession) {
                 setIsProcessing(false);
-                // Mark current turn message as not streaming and update block statuses
-                setMessages(prev => prev.map(msg => {
-                    if (msg.id.startsWith(`current-turn-${sessionId}`)) {
-                        // Update all executing/streaming blocks to success
-                        const updatedBlocks = msg.blocks?.map(block => {
-                            if (block.status === 'executing' || block.status === 'streaming') {
-                                return { ...block, status: 'success' as const };
-                            }
-                            return block;
-                        });
-                        return {
-                            ...msg,
-                            blocks: updatedBlocks,
-                            isStreaming: false
-                        };
-                    }
-                    return msg;
-                }));
+
+                // Simple fix: reload messages from backend to ensure complete content
+                // This avoids race conditions with async getEvents() requests
+                loadSessionMessages(sessionId);
+
                 sessionsApi.markRead(sessionId).catch(err =>
                     console.warn(`Failed to mark session ${sessionId} as read:`, err)
                 );
+                // Focus input after completion
+                setTimeout(() => inputAreaRef.current?.focus(), 100);
             }
             // Refresh session list to update title (backend may have auto-generated title)
             loadSessions();
@@ -268,26 +244,49 @@ export function useChatLogic() {
             }, 500);
             return;
         } else if (event.type === 'error') {
-            console.log(`[handleGlobalEvent] Error event for ${sessionId}: ${event.content?.message}`);
+            // console.log(`[handleGlobalEvent] Error event for ${sessionId}: ${event.content?.message}`);
             // Clear resume state on error
             if (isResumedSession) {
                 resumeSessionStateRef.current = null;
             }
+            const errorMessage = event.content?.message || 'An error occurred';
             setSessionStatus(sessionId, {
                 status: 'error',
-                hasUnread: true,
-                error: event.content?.message || 'An error occurred',
+                hasUnread: !isCurrentSession,
+                error: errorMessage,
             });
             if (isCurrentSession) {
                 setIsProcessing(false);
+                // Show toast for current session errors
+                toast.error('Error', { description: errorMessage });
+                // Add error block to the message
+                const errorBlockId = `error-${crypto.randomUUID()}`;
+                setMessages(prev => prev.map(msg => {
+                    if (msg.id.startsWith(`current-turn-${sessionId}`) || msg.id.startsWith(`temp-`)) {
+                        const errorBlock: MessageBlock = {
+                            id: errorBlockId,
+                            type: 'text',
+                            content: `Error: ${errorMessage}`,
+                            status: 'error',
+                        };
+                        // Also remove thinking placeholder if still present
+                        const filteredBlocks = (msg.blocks || []).filter(b => !b.metadata?.isPlaceholder);
+                        return {
+                            ...msg,
+                            blocks: [...filteredBlocks, errorBlock],
+                            isStreaming: false,
+                        };
+                    }
+                    return msg;
+                }));
             }
             return;
         }
 
-        // For resumed sessions, process only NEW events (beyond what we've already processed)
-        // This prevents duplication from rebuilding on every event
+        // For sessions with resumeState, process content events by fetching from cache
+        // This is the UNIFIED path for both new messages and resumed sessions
         if (isResumedSession && isCurrentSession && resumeSessionStateRef.current) {
-            // console.log(`[handleGlobalEvent] Content event for resumed session: ${sessionId}, fetching new events...`);
+            // console.log(`[handleGlobalEvent] Content event for session: ${sessionId}, fetching events...`);
             sessionsApi.getEvents(sessionId).then(eventsData => {
                 // IMPORTANT: Re-check if this session is still the current one after async fetch
                 // User may have switched sessions while fetch was in progress
@@ -324,7 +323,7 @@ export function useChatLogic() {
                 }
             });
         }
-    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, refreshWorkspaceSessions]);
+    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, refreshWorkspaceSessions, loadSessionMessages]);
 
     // Stable wrapper that always calls the latest handler
     const handleGlobalEvent = useCallback((event: StreamEvent) => {
@@ -332,6 +331,7 @@ export function useChatLogic() {
     }, []);
 
     // Rebuild messages from cached events - MUST be defined before recoverAllSessions
+    // Uses the unified event processor for consistent behavior
     const rebuildMessagesFromEvents = useCallback((events: unknown[], sessionId: string) => {
         // Only update UI if this is the current session
         if (sessionId !== currentSessionIdRef.current) {
@@ -340,128 +340,8 @@ export function useChatLogic() {
         if (!events || events.length === 0) return;
 
         const assistantMessageId = `replayed-${sessionId}-${Date.now()}`;
-        // Track text content accumulation for inline text block creation
-        let textContent = '';
-        let textBlockIndex = -1;  // Index of current text block in blocks array
-        const blocks: MessageBlock[] = [];
-
-        for (const event of events as Array<{ type: string; content?: unknown; id?: string; metadata?: Record<string, unknown> }>) {
-            switch (event.type) {
-                case 'text':
-                case 'text_delta': {
-                    const delta = (event.content as string) || '';
-                    textContent += delta;
-                    // Update or create text block at current position
-                    if (textBlockIndex >= 0 && blocks[textBlockIndex]) {
-                        blocks[textBlockIndex].content = textContent;
-                    } else {
-                        textBlockIndex = blocks.length;
-                        blocks.push({
-                            id: `text-${assistantMessageId}-${blocks.length}`,
-                            type: 'text',
-                            content: textContent,
-                            status: 'streaming',
-                        });
-                    }
-                    break;
-                }
-                case 'thinking': {
-                    // Complete thinking event - only use if no existing block (fallback)
-                    // Skip if thinking block already exists (was created by thinking_start/delta)
-                    if (!blocks.find(b => b.type === 'thinking')) {
-                        blocks.push({
-                            id: `thinking-${assistantMessageId}`,
-                            type: 'thinking',
-                            content: (event.content as string) || '',
-                            status: 'success',
-                        });
-                    }
-                    break;
-                }
-                case 'thinking_delta': {
-                    // Incremental thinking - find or create and append
-                    const thinkingBlock = blocks.find(b => b.type === 'thinking');
-                    if (thinkingBlock) {
-                        thinkingBlock.content = ((thinkingBlock.content as string) || '') + ((event.content as string) || '');
-                    } else {
-                        // Insert thinking at current position (before any text that follows)
-                        blocks.push({
-                            id: `thinking-${assistantMessageId}`,
-                            type: 'thinking',
-                            content: (event.content as string) || '',
-                            status: 'streaming',
-                        });
-                    }
-                    break;
-                }
-                case 'thinking_start': {
-                    if (!blocks.find(b => b.type === 'thinking')) {
-                        blocks.push({
-                            id: `thinking-${assistantMessageId}`,
-                            type: 'thinking',
-                            content: '',
-                            status: 'streaming',
-                        });
-                    }
-                    break;
-                }
-                case 'thinking_end': {
-                    const thinkingBlock = blocks.find(b => b.type === 'thinking');
-                    if (thinkingBlock) {
-                        thinkingBlock.status = 'success';
-                    }
-                    break;
-                }
-                case 'tool_use':
-                    // Reset text block tracking since tool interrupts text flow
-                    textBlockIndex = -1;
-                    blocks.push({
-                        id: event.id || `tool-${blocks.length}`,
-                        type: 'tool_use',
-                        content: event.content,
-                        status: 'executing',
-                        metadata: (event.metadata as Record<string, string>) || {},
-                    });
-                    break;
-                case 'tool_result':
-                    blocks.push({
-                        id: event.id || `result-${blocks.length}`,
-                        type: 'tool_result',
-                        content: event.content,
-                        status: 'success',
-                        metadata: (event.metadata as Record<string, string>) || {},
-                    });
-                    break;
-                case 'todos': {
-                    const todos = (event.content as { todos?: Array<{ content?: string; task?: string; text?: string; status?: string }> })?.todos || [];
-                    if (todos.length > 0) {
-                        blocks.push({
-                            id: `plan-${assistantMessageId}`,
-                            type: 'plan',
-                            content: event.content,
-                            status: 'success',
-                            metadata: {
-                                todos: todos.map((todo, index) => ({
-                                    id: `todo-${index}`,
-                                    content: todo.content || todo.task || todo.text || String(todo),
-                                    status: (todo.status || 'pending') as 'pending' | 'in_progress' | 'completed',
-                                })),
-                            },
-                        });
-                    }
-                    break;
-                }
-            }
-        }
-
-        const assistantMessage: Message = {
-            id: assistantMessageId,
-            role: 'assistant',
-            content: textContent,
-            timestamp: Date.now(),
-            blocks: blocks.length > 0 ? blocks : undefined,
-            isStreaming: true,
-        };
+        const state = processEvents(events as ProcessableEvent[], assistantMessageId);
+        const assistantMessage = buildMessageFromState(state, assistantMessageId, true);
 
         setMessages(prev => {
             // Check if we already have a replayed message for this session
@@ -477,6 +357,7 @@ export function useChatLogic() {
 
     // Append current turn events to existing messages (for running sessions)
     // This is called AFTER loadSessionMessages, so history is already loaded
+    // Uses the unified event processor for consistent behavior
     const appendCurrentTurnFromEvents = useCallback((events: unknown[], sessionId: string) => {
         // Only update UI if this is the current session - prevents background sessions
         // from affecting the displayed messages and causing scroll/lag issues
@@ -486,323 +367,18 @@ export function useChatLogic() {
         // Also check if resume state is still valid - if it's null, session has ended
         // and we shouldn't update the message (this prevents overwriting isStreaming: false)
         if (!resumeSessionStateRef.current || resumeSessionStateRef.current.sessionId !== sessionId) {
-            console.log(`[appendCurrentTurnFromEvents] Skipping - resume state invalid for session ${sessionId}`);
             return;
         }
         if (!events || events.length === 0) return;
 
-        // Use stable ID without timestamp - this is crucial for avoiding duplicate keys
-        // when the same events are processed multiple times (e.g., during resume streaming)
+        // Use stable ID without timestamp - crucial for avoiding duplicate keys
         const assistantMessageId = `current-turn-${sessionId}`;
-        // Track text content accumulation for inline text block creation
-        let textContent = '';
-        let textBlockIndex = -1;  // Index of current text block in blocks array
-        const blocks: MessageBlock[] = [];
-
-        // Track toolCallId -> blockIndex mapping for updating tool_use blocks with results
-        const toolCallToBlockIndex = new Map<string, number>();
-        // Track tool blocks in order for result matching when toolCallId is not available
-        const toolBlocksInOrder: number[] = [];
-
-        for (const event of events as Array<{ type: string; content?: unknown; id?: string; metadata?: Record<string, unknown> }>) {
-            switch (event.type) {
-                case 'text': {
-                    // Complete text event - REPLACE accumulated content (not accumulate)
-                    // This avoids double content when both text and text_delta are in cache
-                    const newContent = (event.content as string) || '';
-                    textContent = newContent;  // Replace, not accumulate
-                    // Update or create text block
-                    if (textBlockIndex >= 0 && blocks[textBlockIndex]) {
-                        blocks[textBlockIndex].content = textContent;
-                    } else {
-                        textBlockIndex = blocks.length;
-                        blocks.push({
-                            id: `text-${assistantMessageId}-${blocks.length}`,
-                            type: 'text',
-                            content: textContent,
-                            status: 'success',  // Complete text, not streaming
-                        });
-                    }
-                    break;
-                }
-                case 'text_delta': {
-                    // Incremental text delta - accumulate content
-                    const delta = (event.content as string) || '';
-                    textContent += delta;
-                    // Update or create text block at current position
-                    if (textBlockIndex >= 0 && blocks[textBlockIndex]) {
-                        blocks[textBlockIndex].content = textContent;
-                    } else {
-                        textBlockIndex = blocks.length;
-                        blocks.push({
-                            id: `text-${assistantMessageId}-${blocks.length}`,
-                            type: 'text',
-                            content: textContent,
-                            status: 'streaming',
-                        });
-                    }
-                    break;
-                }
-                case 'thinking': {
-                    // Complete thinking event - only use if no existing block (fallback)
-                    // Skip if thinking block already exists (was created by thinking_start/delta)
-                    if (!blocks.find(b => b.type === 'thinking')) {
-                        blocks.push({
-                            id: `thinking-${assistantMessageId}`,
-                            type: 'thinking',
-                            content: (event.content as string) || '',
-                            status: 'success',
-                        });
-                    }
-                    break;
-                }
-                case 'thinking_delta': {
-                    // Incremental thinking - find or create and append
-                    const thinkingBlock = blocks.find(b => b.type === 'thinking');
-                    if (thinkingBlock) {
-                        thinkingBlock.content = ((thinkingBlock.content as string) || '') + ((event.content as string) || '');
-                    } else {
-                        blocks.push({
-                            id: `thinking-${assistantMessageId}`,
-                            type: 'thinking',
-                            content: (event.content as string) || '',
-                            status: 'streaming',
-                        });
-                    }
-                    break;
-                }
-                case 'thinking_start': {
-                    if (!blocks.find(b => b.type === 'thinking')) {
-                        blocks.push({
-                            id: `thinking-${assistantMessageId}`,
-                            type: 'thinking',
-                            content: '',
-                            status: 'streaming',
-                        });
-                    }
-                    break;
-                }
-                case 'thinking_end': {
-                    const thinkingBlock = blocks.find(b => b.type === 'thinking');
-                    if (thinkingBlock) {
-                        thinkingBlock.status = 'success';
-                    }
-                    break;
-                }
-                case 'tool_use': {
-                    // Reset text block tracking since tool interrupts text flow
-                    textBlockIndex = -1;
-                    const toolContent = event.content as { name?: string; input?: { todos?: Array<{ content?: string; task?: string; status?: string }> }; id?: string };
-                    const toolName = toolContent?.name;
-                    const toolCallId = toolContent?.id;
-
-                    // Skip AskUserQuestion - will be handled by ask_user event
-                    if (toolName === 'AskUserQuestion') {
-                        break;
-                    }
-
-                    // Special handling for TodoWrite - convert to plan block
-                    if (toolName === 'TodoWrite') {
-                        const todos = toolContent?.input?.todos || [];
-                        if (todos.length > 0) {
-                            const planBlockId = `plan-${toolCallId || assistantMessageId}`;
-                            blocks.push({
-                                id: planBlockId,
-                                type: 'plan',
-                                content: toolContent.input,
-                                status: 'success',
-                                metadata: {
-                                    toolName: 'TodoWrite',
-                                    toolCallId: toolCallId,
-                                    todos: todos.map((todo, index) => ({
-                                        id: `todo-${index}`,
-                                        content: todo.content || todo.task || String(todo),
-                                        status: (todo.status || 'pending') as 'pending' | 'in_progress' | 'completed',
-                                    })),
-                                },
-                            });
-                        }
-                        break;
-                    }
-
-                    // Create tool_use block with toolCallId-based ID for proper result matching
-                    const toolBlockId = toolCallId ? `tool-${toolCallId}` : `tool-${blocks.length}`;
-                    const blockIndex = blocks.length;
-                    blocks.push({
-                        id: toolBlockId,
-                        type: 'tool_use',
-                        content: event.content,
-                        status: 'executing',
-                        metadata: {
-                            toolName: toolName,
-                            toolCallId: toolCallId,
-                            ...(event.metadata as Record<string, unknown> || {}),
-                        },
-                    });
-
-                    // Track for result matching
-                    if (toolCallId) {
-                        toolCallToBlockIndex.set(toolCallId, blockIndex);
-                    }
-                    toolBlocksInOrder.push(blockIndex);
-                    break;
-                }
-                case 'tool_result': {
-                    // Update existing tool_use block instead of creating new block
-                    const resultContent = event.content as { tool_use_id?: string; result?: unknown; content?: unknown; is_error?: boolean };
-                    const toolUseId = resultContent?.tool_use_id;
-
-                    let blockIndex = toolUseId ? toolCallToBlockIndex.get(toolUseId) : undefined;
-                    if (blockIndex === undefined && toolBlocksInOrder.length > 0) {
-                        // Fallback: use first unprocessed tool block
-                        blockIndex = toolBlocksInOrder.shift();
-                    } else if (blockIndex !== undefined && toolUseId) {
-                        toolCallToBlockIndex.delete(toolUseId);
-                        // Remove from order tracking
-                        const orderIdx = toolBlocksInOrder.indexOf(blockIndex);
-                        if (orderIdx >= 0) toolBlocksInOrder.splice(orderIdx, 1);
-                    }
-
-                    if (blockIndex !== undefined && blocks[blockIndex]) {
-                        const isError = resultContent?.is_error === true;
-                        // The result can be in resultContent.result OR resultContent.content
-                        const resultValue = resultContent?.result ?? resultContent?.content;
-                        // Update the tool_use block with result (same as streaming does)
-                        blocks[blockIndex].status = isError ? 'error' : 'success';
-                        blocks[blockIndex].content = {
-                            ...(blocks[blockIndex].content as object),
-                            result: resultValue,
-                        };
-                    }
-                    break;
-                }
-                case 'todos': {
-                    const todos = (event.content as { todos?: Array<{ content?: string; task?: string; text?: string; status?: string }> })?.todos || [];
-                    if (todos.length > 0) {
-                        blocks.push({
-                            id: `plan-${assistantMessageId}`,
-                            type: 'plan',
-                            content: event.content,
-                            status: 'success',
-                            metadata: {
-                                todos: todos.map((todo, index) => ({
-                                    id: `todo-${index}`,
-                                    content: todo.content || todo.task || todo.text || String(todo),
-                                    status: (todo.status || 'pending') as 'pending' | 'in_progress' | 'completed',
-                                })),
-                            },
-                        });
-                    }
-                    break;
-                }
-                case 'ask_user': {
-                    // Handle ask_user events - initially pending, will be updated by ask_user_result
-                    const askContent = event.content as { request_id?: string; questions?: unknown[]; timeout?: number };
-                    const requestId = askContent?.request_id || event.id || `ask-user-${blocks.length}`;
-                    blocks.push({
-                        id: `ask-user-${requestId}`,
-                        type: 'ask_user',
-                        content: {
-                            input: {
-                                questions: askContent?.questions || [],
-                                timeout: askContent?.timeout || 60,
-                            },
-                        },
-                        status: 'pending',  // Will be updated by ask_user_result
-                        metadata: {
-                            requestId: requestId,
-                        },
-                    });
-                    break;
-                }
-                case 'ask_user_result': {
-                    // Handle ask_user_result - update the corresponding ask_user block status
-                    const resultContent = event.content as { request_id?: string; status?: string; answers?: Record<string, unknown> };
-                    const requestId = resultContent?.request_id;
-                    if (requestId) {
-                        const askBlockIndex = blocks.findIndex(b => b.id === `ask-user-${requestId}`);
-                        if (askBlockIndex >= 0) {
-                            const status = resultContent?.status;
-                            // Update block status based on result
-                            if (status === 'answered') {
-                                blocks[askBlockIndex].status = 'success';
-                                // Store answers in metadata for display
-                                blocks[askBlockIndex].metadata = {
-                                    ...blocks[askBlockIndex].metadata,
-                                    answers: resultContent?.answers as Record<string, string> | undefined,
-                                };
-                            } else if (status === 'timeout') {
-                                blocks[askBlockIndex].status = 'error';
-                            } else if (status === 'skipped') {
-                                blocks[askBlockIndex].status = 'success';
-                            }
-                        }
-                    }
-                    break;
-                }
-                case 'permission_request': {
-                    // Handle permission_request events from backend cache
-                    const permContent = event.content as { request_id?: string; tool_name?: string; input?: unknown };
-                    const requestId = permContent?.request_id || event.id || `perm-${blocks.length}`;
-                    blocks.push({
-                        id: `permission-${requestId}`,
-                        type: 'tool_use',
-                        content: {
-                            name: permContent?.tool_name || 'Unknown Tool',
-                            input: permContent?.input,
-                            description: `Tool "${permContent?.tool_name}" is requesting permission to execute`,
-                        },
-                        status: 'pending',  // Will be updated by permission_response
-                        metadata: {
-                            requestId: requestId,
-                            toolName: permContent?.tool_name,
-                            requiresPermission: true,
-                        },
-                    });
-                    break;
-                }
-                case 'permission_response': {
-                    // Handle permission_response - update corresponding permission_request block
-                    const respContent = event.content as { request_id?: string; allowed?: boolean };
-                    const requestId = respContent?.request_id;
-                    if (requestId) {
-                        const permBlockIndex = blocks.findIndex(b => b.id === `permission-${requestId}`);
-                        if (permBlockIndex >= 0) {
-                            const allowed = respContent?.allowed;
-                            blocks[permBlockIndex].status = allowed ? 'success' : 'error';
-                            // Update metadata to reflect response
-                            blocks[permBlockIndex].metadata = {
-                                ...blocks[permBlockIndex].metadata,
-                                allowed: allowed,
-                                requiresPermission: false,  // No longer pending
-                            };
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-
-        const assistantMessage: Message = {
-            id: assistantMessageId,
-            role: 'assistant',
-            content: textContent,
-            timestamp: Date.now(),
-            blocks: blocks.length > 0 ? blocks : undefined,
-            isStreaming: true,
-        };
+        const state = processEvents(events as ProcessableEvent[], assistantMessageId);
+        const assistantMessage = buildMessageFromState(state, assistantMessageId, true);
 
         // Append to existing messages (history already loaded)
         setMessages(prev => {
-            // Check if we already have a current-turn message for this session
             const existingIndex = prev.findIndex(m => m.id.startsWith(`current-turn-${sessionId}`));
-
-            // Debug: log what blocks are being created
-            const askUserBlocks = blocks.filter(b => b.type === 'ask_user');
-            if (askUserBlocks.length > 0) {
-                console.log(`[appendCurrentTurnFromEvents] Creating ${askUserBlocks.length} ask_user blocks:`, askUserBlocks.map(b => ({ id: b.id, status: b.status })));
-            }
-
             if (existingIndex >= 0) {
                 const newPrev = [...prev];
                 newPrev[existingIndex] = assistantMessage;
@@ -837,7 +413,7 @@ export function useChatLogic() {
                 // Subscribe to running sessions
                 if (status.status === 'running') {
                     // console.log(`[useChatLogic] Subscribing to running session: ${sessionId}`);
-                    sessionClient.subscribe(sessionId, handleGlobalEvent);
+                    sessionClient.subscribe(sessionId);
                 }
             }
 
@@ -858,7 +434,7 @@ export function useChatLogic() {
         } catch (err) {
             console.error('[useChatLogic] Recovery failed:', err);
         }
-    }, [setSessionStatus, handleGlobalEvent, rebuildMessagesFromEvents]);
+    }, [setSessionStatus, rebuildMessagesFromEvents]);
 
     // Initialize connection, load sessions, and setup recovery
     useEffect(() => {
@@ -908,7 +484,7 @@ export function useChatLogic() {
 
         // Handle workspace change (skip on initial mount when prevWorkspaceId is undefined)
         if (prevWorkspaceId !== undefined && prevWorkspaceId !== currentWorkspaceId) {
-            console.log(`[useChatLogic] Workspace changed: ${prevWorkspaceId} -> ${currentWorkspaceId}`);
+            // console.log(`[useChatLogic] Workspace changed: ${prevWorkspaceId} -> ${currentWorkspaceId}`);
 
             // IMPORTANT: Clear messages immediately when workspace changes
             // This prevents old workspace messages from being shown in the new workspace
@@ -917,8 +493,7 @@ export function useChatLogic() {
             setSteps([]);
             setIsProcessing(false);
 
-            // Clear current turn state (belongs to old session)
-            currentTurnStateRef.current = null;
+            // Clear resume state (belongs to old session)
             resumeSessionStateRef.current = null;
 
             // Reset the current session ID ref since we're in a new workspace
@@ -970,7 +545,7 @@ export function useChatLogic() {
     // and avoid re-render cascades when currentSessionId state changes
     const handleSelectSession = useCallback(async (id: string) => {
         const currentId = currentSessionIdRef.current;
-        console.log(`[handleSelectSession] id=${id}, currentId=${currentId}`);
+        // console.log(`[handleSelectSession] id=${id}, currentId=${currentId}`);
 
         if (id !== currentId) {
             // console.log(`[handleSelectSession] Switching from ${currentId} to ${id}`);
@@ -989,9 +564,9 @@ export function useChatLogic() {
                 }
             }
 
-            console.log(`[handleSelectSession] Setting currentSessionIdRef.current = ${id}`);
+            // console.log(`[handleSelectSession] Setting currentSessionIdRef.current = ${id}`);
             currentSessionIdRef.current = id;
-            console.log(`[handleSelectSession] Ref updated, calling setCurrentSessionId(${id})`);
+            // console.log(`[handleSelectSession] Ref updated, calling setCurrentSessionId(${id})`);
             setCurrentSessionId(id);
             setSteps([]);
 
@@ -1056,8 +631,8 @@ export function useChatLogic() {
                         appendCurrentTurnFromEvents(eventsData.events, id);
                     }
 
-                    // Subscribe for live updates using global handler
-                    sessionClient.subscribe(id, handleGlobalEvent);
+                    // Subscribe for live updates (uses global handler via fallback)
+                    sessionClient.subscribe(id);
                     // console.log(`[handleSelectSession] Subscribed for live updates: ${id}`);
                 } catch (err) {
                     console.error(`[handleSelectSession] Failed to load events for session ${id}:`, err);
@@ -1068,7 +643,7 @@ export function useChatLogic() {
         } else {
             // console.log(`[handleSelectSession] Same session, skipping`);
         }
-    }, [setCurrentSessionId, setSteps, getSessionStatus, setSessionStatus, loadSessionMessages, appendCurrentTurnFromEvents, handleGlobalEvent, currentSessionIdRef]);
+    }, [setCurrentSessionId, setSteps, getSessionStatus, setSessionStatus, loadSessionMessages, appendCurrentTurnFromEvents, currentSessionIdRef]);
 
     // Delete a session
     const handleDeleteSession = useCallback(async (id: string) => {
@@ -1104,7 +679,7 @@ export function useChatLogic() {
             setWorkspaceMode(workspaceId || null);
 
             const currentId = currentSessionIdRef.current;
-            console.log(`[WorkspaceCallback] sessionId=${sessionId}, workspaceId=${workspaceId}, currentId=${currentId}`);
+            // console.log(`[WorkspaceCallback] sessionId=${sessionId}, workspaceId=${workspaceId}, currentId=${currentId}`);
 
             // Only process if session actually changed to avoid infinite loops
             if (sessionId !== currentId) {
@@ -1128,51 +703,6 @@ export function useChatLogic() {
 
         return unsubscribe;
     }, [registerSessionChangeCallback, handleSelectSession, getSessionStatus, setCurrentSessionId]);
-
-    // Helper functions for message blocks
-    const addBlock = useCallback((messageId: string, block: MessageBlock) => {
-        setMessages((prev) =>
-            prev.map((msg) => {
-                if (msg.id === messageId) {
-                    const blocks = msg.blocks || [];
-                    return { ...msg, blocks: [...blocks, block] };
-                }
-                return msg;
-            })
-        );
-    }, [setMessages]);
-
-    const updateBlock = useCallback((messageId: string, blockId: string, updates: Partial<MessageBlock>) => {
-        setMessages((prev) =>
-            prev.map((msg) => {
-                if (msg.id === messageId && msg.blocks) {
-                    const blocks = msg.blocks.map((block) =>
-                        block.id === blockId ? { ...block, ...updates } : block
-                    );
-                    return { ...msg, blocks };
-                }
-                return msg;
-            })
-        );
-    }, [setMessages]);
-
-    const appendToTextBlock = useCallback((messageId: string, blockId: string, additionalContent: string) => {
-        setMessages((prev) =>
-            prev.map((msg) => {
-                if (msg.id === messageId && msg.blocks) {
-                    const blocks = msg.blocks.map((block) => {
-                        if (block.id === blockId && (block.type === 'text' || block.type === 'thinking')) {
-                            const currentContent = typeof block.content === 'string' ? block.content : '';
-                            return { ...block, content: currentContent + additionalContent };
-                        }
-                        return block;
-                    });
-                    return { ...msg, blocks };
-                }
-                return msg;
-            })
-        );
-    }, [setMessages]);
 
     // Permission response handler
     const handlePermissionResponse = useCallback((blockId: string, approved: boolean) => {
@@ -1302,7 +832,9 @@ export function useChatLogic() {
         }
     }, [getSessionStatus, setSessionStatus, setIsProcessing, setMessages]);
 
-    // Main send handler with FULL WebSocket event handling
+    // Main send handler - UNIFIED streaming path
+    // After getting session_id, all events go through handleGlobalEvent → appendCurrentTurnFromEvents
+    // This ensures identical behavior between new messages and resumed sessions
     const handleSend = async (content: string) => {
         // Use per-session processing check to allow concurrent sessions
         if (isCurrentSessionProcessing) {
@@ -1327,18 +859,21 @@ export function useChatLogic() {
         isProcessingRef.current = true;
 
         // Update session status to running
-        if (currentSessionIdRef.current) {
-            setSessionStatus(currentSessionIdRef.current, {
+        if (originalSessionId) {
+            setSessionStatus(originalSessionId, {
                 status: 'running',
                 hasUnread: false,
             });
         }
 
-        const assistantMessageId = crypto.randomUUID();
-        const thinkingPlaceholderId = `thinking-placeholder-${assistantMessageId}`;
+        // Use stable ID for existing sessions so it matches appendCurrentTurnFromEvents
+        // For new sessions (no ID yet), use a temporary random ID that will be updated later
+        let assistantMessageId = originalSessionId
+            ? `current-turn-${originalSessionId}`
+            : `temp-${crypto.randomUUID()}`;
 
         const thinkingPlaceholderBlock: MessageBlock = {
-            id: thinkingPlaceholderId,
+            id: `thinking-placeholder-${assistantMessageId}`,
             type: 'thinking',
             content: '思考中...',
             status: 'streaming',
@@ -1351,120 +886,91 @@ export function useChatLogic() {
             content: '',
             timestamp: Date.now(),
             blocks: [thinkingPlaceholderBlock],
+            isStreaming: true,
         };
         setMessages((prev) => [...prev, assistantMessage]);
 
-        // Track active tool calls and streaming state
-        const activeToolCalls = new Map<string, string>();
-        const toolBlocksInOrder: string[] = [];
-        let currentTextBlockId: string | null = null;
-        let currentThinkingBlockId: string | null = null;
-        let hasReceivedStreamingText = false;
-        let hasReceivedStreamingThinking = false;
-        let hasRemovedThinkingPlaceholder = false;
-
-        const removeThinkingPlaceholder = () => {
-            if (hasRemovedThinkingPlaceholder) return;
-            hasRemovedThinkingPlaceholder = true;
-            setMessages((prev) =>
-                prev.map((msg) => {
-                    if (msg.id === assistantMessageId && msg.blocks) {
-                        const filteredBlocks = msg.blocks.filter((block) => block.id !== thinkingPlaceholderId);
-                        return { ...msg, blocks: filteredBlocks };
-                    }
-                    return msg;
-                })
-            );
-        };
+        // For existing sessions, set up resumeState immediately so globalHandler can process events
+        if (originalSessionId) {
+            resumeSessionStateRef.current = {
+                sessionId: originalSessionId,
+                assistantMessageId: assistantMessageId,
+                processedEventCount: 0,
+            };
+        }
 
         try {
             await sessionClient.sendMessage({
                 content,
-                session_id: currentSessionIdRef.current || undefined,
-                workspace_id: currentWorkspace?.id || undefined,  // Pass workspace context for session lookup
+                session_id: originalSessionId || undefined,
+                workspace_id: currentWorkspace?.id || undefined,
                 endpoint_name: activeEndpoint || undefined,
                 model_name: activeModel || undefined,
                 security_mode: securityMode,
             }, (event) => {
-                // Update session ID ONLY for NEW session creation
-                // Capture the original session ID at send time - only sync if we started with none
                 const eventSessionId = event.metadata?.session_id;
 
-                // CRITICAL: Skip UI updates if user has switched to a different session
-                // This allows background streaming to continue without affecting the current view
-                const isCurrentSession = eventSessionId === currentSessionIdRef.current ||
-                    (!eventSessionId && originalSessionId === currentSessionIdRef.current);
-
-                // Debug: Log every 50th event or key events to see the flow
+                // Debug: Log key events
                 if (event.type === 'start' || event.type === 'done' || event.type === 'error') {
-                    console.log(`[handleSend] Event: ${event.type}, eventSession=${eventSessionId}, currentRef=${currentSessionIdRef.current}, isCurrentSession=${isCurrentSession}`);
+                    // console.log(`[handleSend] Event: ${event.type}, eventSession=${eventSessionId}, currentRef=${currentSessionIdRef.current}`);
                 }
 
-                // Debug log to track session switching during streaming
-                if (!isCurrentSession && (event.type === 'text_delta' || event.type === 'done')) {
-                    console.log(`[handleSend] Skipping UI update: eventSession=${eventSessionId}, currentSession=${currentSessionIdRef.current}`);
-                }
+                // Handle new session creation (when we started with no session_id)
+                // Key check: only sync session ID if user "is still there" (currentSessionIdRef.current === null)
+                // If user has switched away, this becomes a background session
+                if (eventSessionId && !originalSessionId) {
+                    // Only sync if user hasn't switched away (current is still null)
+                    if (currentSessionIdRef.current === null) {
+                        // console.log(`[handleSend] New session created: ${eventSessionId}`);
 
-                // CRITICAL FIX: Only sync session ID if:
-                // 1. We have an event with a session ID
-                // 2. The ORIGINAL session ID at send time was null (new session)
-                // 3. The current ref still matches the original (user hasn't switched away)
-                // This prevents pulling user back to a background session
-                if (eventSessionId && !originalSessionId && currentSessionIdRef.current !== eventSessionId) {
-                    // This is a newly created session - sync the ID
-                    currentSessionIdRef.current = eventSessionId;
-                    setCurrentSessionId(eventSessionId);
-                    // Also set the new session's status to 'running' so the callback protection works
-                    setSessionStatus(eventSessionId, {
-                        status: 'running',
-                        hasUnread: false,
-                    });
-                    // Refresh the session list in background to show the new item
-                    loadSessions();
-                }
+                        // Sync session ID - user is still here
+                        currentSessionIdRef.current = eventSessionId;
+                        setCurrentSessionId(eventSessionId);
+                        setSessionStatus(eventSessionId, {
+                            status: 'running',
+                            hasUnread: false,
+                        });
 
-                // Skip UI updates (messages, steps) if user has switched away from this session
-                if (!isCurrentSession) {
-                    // Still handle done/error events for status tracking
-                    if (event.type === 'done' || event.type === 'error') {
-                        console.log(`[handleSend] Background session ${event.type}: eventSession=${eventSessionId}, error=${event.content?.message}`);
-                        // Update session status in background
-                        if (eventSessionId) {
-                            if (event.type === 'done') {
-                                setSessionStatus(eventSessionId, { status: 'idle', hasUnread: true });
-                            } else {
-                                setSessionStatus(eventSessionId, {
-                                    status: 'error',
-                                    hasUnread: true,
-                                    error: event.content?.message || 'An error occurred'
-                                });
-                            }
-                        }
-                        // Refresh sessions immediately for status update
+                        // Update message ID to stable format
+                        const newMessageId = `current-turn-${eventSessionId}`;
+                        setMessages(prev => prev.map(msg =>
+                            msg.id === assistantMessageId
+                                ? { ...msg, id: newMessageId }
+                                : msg
+                        ));
+                        assistantMessageId = newMessageId;
+
+                        // Set up resumeState so globalHandler can process subsequent events
+                        resumeSessionStateRef.current = {
+                            sessionId: eventSessionId,
+                            assistantMessageId: newMessageId,
+                            processedEventCount: 0,
+                        };
+
+                        // Refresh session list to show new item
                         loadSessions();
-                        refreshWorkspaceSessions();
-                        // Also refresh after a delay to catch title updates from backend
-                        setTimeout(() => {
-                            loadSessions();
-                            refreshWorkspaceSessions();
-                        }, 500);
+                    } else {
+                        // User already switched away - this session runs in background
+                        // console.log(`[handleSend] New session ${eventSessionId} created but user switched to ${currentSessionIdRef.current}, running in background`);
+
+                        // Mark as running with unread (user is not viewing this session)
+                        setSessionStatus(eventSessionId, {
+                            status: 'running',
+                            hasUnread: true,
+                        });
+
+                        // Still set up resumeState for background event processing
+                        // The assistantMessageId stays as temp-xxx format (won't be displayed since user switched)
+                        resumeSessionStateRef.current = {
+                            sessionId: eventSessionId,
+                            assistantMessageId: assistantMessageId,
+                            processedEventCount: 0,
+                        };
+
+                        // Refresh session list so user can see the new session and switch back
+                        loadSessions();
                     }
-                    return;  // Skip UI updates
                 }
-
-                // IMPORTANT: Do NOT call loadSessions() here for every event, that causes flickering!
-                // We only need to load sessions:
-                // 1. At the start (handled above)
-                // 2. At the end (to update title)
-
-                const step: AgentStep = {
-                    id: crypto.randomUUID(),
-                    type: event.type as any,
-                    content: event.content,
-                    metadata: event.metadata,
-                    timestamp: Date.now(),
-                };
-                setSteps((prev) => [...prev, step]);
 
                 // Capture slash commands from init event
                 if ((event.type as string) === 'system' && event.metadata?.subtype === 'init') {
@@ -1478,554 +984,27 @@ export function useChatLogic() {
                     }
                 }
 
-                switch (event.type) {
-                    case 'thinking_start': {
-                        removeThinkingPlaceholder();
-                        hasReceivedStreamingThinking = true;
-                        const thinkingBlockId = crypto.randomUUID();
-                        const thinkingBlock: MessageBlock = {
-                            id: thinkingBlockId,
-                            type: 'thinking',
-                            content: '',
-                            status: 'streaming',
-                        };
-                        addBlock(assistantMessageId, thinkingBlock);
-                        currentThinkingBlockId = thinkingBlockId;
-                        break;
-                    }
+                // Log steps for debugging
+                const step: AgentStep = {
+                    id: crypto.randomUUID(),
+                    type: event.type as any,
+                    content: event.content,
+                    metadata: event.metadata,
+                    timestamp: Date.now(),
+                };
+                setSteps((prev) => [...prev, step]);
 
-                    case 'thinking_delta': {
-                        if (currentThinkingBlockId) {
-                            appendToTextBlock(assistantMessageId, currentThinkingBlockId, event.content);
-                        }
-                        break;
-                    }
-
-                    case 'thinking_end': {
-                        if (currentThinkingBlockId) {
-                            updateBlock(assistantMessageId, currentThinkingBlockId, { status: 'success' });
-                            currentThinkingBlockId = null;
-                        }
-                        break;
-                    }
-
-                    case 'thinking': {
-                        if (hasReceivedStreamingThinking) break;
-                        removeThinkingPlaceholder();
-                        const thinkingBlockId = crypto.randomUUID();
-                        const thinkingBlock: MessageBlock = {
-                            id: thinkingBlockId,
-                            type: 'thinking',
-                            content: event.content,
-                            status: 'success',
-                        };
-                        addBlock(assistantMessageId, thinkingBlock);
-                        break;
-                    }
-
-                    case 'tool_use': {
-                        removeThinkingPlaceholder();
-                        if (currentTextBlockId) {
-                            updateBlock(assistantMessageId, currentTextBlockId, { status: 'success' });
-                            currentTextBlockId = null;
-                        }
-
-                        const toolName = event.content?.name;
-                        const toolInput = event.content?.input;
-
-                        // Special handling for TodoWrite
-                        if (toolName === 'TodoWrite') {
-                            const todos = toolInput?.todos || [];
-                            if (todos.length > 0) {
-                                const toolCallId = event.content?.id;
-
-                                // Find and remove any streaming tool block for this TodoWrite
-                                const streamingBlockId = toolCallId ? activeToolCalls.get(toolCallId) : null;
-                                if (toolCallId && streamingBlockId) {
-                                    activeToolCalls.delete(toolCallId);
-                                }
-
-                                // Each TodoWrite creates a new plan block at its position
-                                const planBlockId = `plan-${toolCallId || crypto.randomUUID()}`;
-                                const planBlock: MessageBlock = {
-                                    id: planBlockId,
-                                    type: 'plan',
-                                    content: toolInput,
-                                    status: 'success',
-                                    metadata: {
-                                        toolName: 'TodoWrite',
-                                        toolCallId: toolCallId,
-                                        todos: todos.map((todo: any, index: number) => ({
-                                            id: `todo-${index}`,
-                                            content: todo.content || todo.task || String(todo),
-                                            status: todo.status || 'pending',
-                                        })),
-                                    },
-                                };
-
-                                setMessages((prev) =>
-                                    prev.map((msg) => {
-                                        if (msg.id !== assistantMessageId) return msg;
-
-                                        // Remove streaming tool block and add plan block
-                                        const filteredBlocks = streamingBlockId
-                                            ? (msg.blocks || []).filter(b => b.id !== streamingBlockId)
-                                            : (msg.blocks || []);
-
-                                        return { ...msg, blocks: [...filteredBlocks, planBlock] };
-                                    })
-                                );
-                            }
-                            break;
-                        }
-
-                        if (toolName === 'AskUserQuestion') break;
-
-                        const toolCallId = event.content?.id;
-
-                        // Check if a streaming block already exists for this tool (from tool_input_start)
-                        const existingBlockId = toolCallId ? activeToolCalls.get(toolCallId) : null;
-                        console.log(`[tool_use] toolName=${toolName}, toolCallId=${toolCallId}, existingBlockId=${existingBlockId}`);
-
-                        if (existingBlockId) {
-                            // Update existing streaming block with complete input and change status
-                            updateBlock(assistantMessageId, existingBlockId, {
-                                status: 'executing',
-                                content: {
-                                    name: toolName,
-                                    input: toolInput,
-                                },
-                                metadata: {
-                                    toolName: toolName,
-                                    toolCallId: toolCallId,
-                                    isStreaming: false,
-                                },
-                            });
-                            break;
-                        }
-
-                        // No existing block - create new one (fallback for non-streaming tools)
-                        const toolBlockId = crypto.randomUUID();
-                        const toolBlock: MessageBlock = {
-                            id: toolBlockId,
-                            type: 'tool_use',
-                            content: {
-                                name: toolName,
-                                input: toolInput,
-                            },
-                            status: 'executing',
-                            metadata: {
-                                toolName: toolName,
-                                toolCallId: toolCallId,
-                            },
-                        };
-                        addBlock(assistantMessageId, toolBlock);
-
-                        if (toolCallId) {
-                            activeToolCalls.set(toolCallId, toolBlockId);
-                        }
-                        toolBlocksInOrder.push(toolBlockId);
-                        break;
-                    }
-
-                    case 'tool_result': {
-                        const toolUseId = event.content?.tool_use_id;
-                        let blockId = toolUseId ? activeToolCalls.get(toolUseId) : null;
-                        console.log(`[tool_result] toolUseId=${toolUseId}, blockId=${blockId}, activeToolCalls size=${activeToolCalls.size}`);
-
-                        if (!blockId && toolBlocksInOrder.length > 0) {
-                            blockId = toolBlocksInOrder[0];
-                            toolBlocksInOrder.shift();
-                            console.log(`[tool_result] Using fallback blockId=${blockId}`);
-                        }
-
-                        if (blockId) {
-                            const isError = event.content?.is_error === true;
-                            // The result can be in event.content.result OR event.content.content
-                            const resultValue = event.content?.result ?? event.content?.content;
-                            console.log(`[tool_result] Updating block ${blockId} to status=${isError ? 'error' : 'success'}, hasResult=${resultValue !== undefined}`);
-                            // Use functional update to preserve existing content.name and content.input
-                            setMessages((prev) => {
-                                console.log(`[tool_result] setMessages called, looking for msg.id=${assistantMessageId}, blockId=${blockId}`);
-                                console.log(`[tool_result] Messages count: ${prev.length}, last msg id: ${prev[prev.length - 1]?.id}`);
-                                return prev.map((msg) => {
-                                    if (msg.id === assistantMessageId && msg.blocks) {
-                                        console.log(`[tool_result] Found message, blocks count: ${msg.blocks.length}`);
-                                        const blocks = msg.blocks.map((block) => {
-                                            if (block.id === blockId) {
-                                                console.log(`[tool_result] Found block, updating status and result`);
-                                                return {
-                                                    ...block,
-                                                    status: isError ? 'error' : 'success',
-                                                    content: {
-                                                        ...block.content,  // Preserve existing name, input, etc.
-                                                        result: resultValue,
-                                                    },
-                                                } as MessageBlock;
-                                            }
-                                            return block;
-                                        });
-                                        return { ...msg, blocks };
-                                    }
-                                    return msg;
-                                });
-                            });
-                            if (toolUseId) {
-                                activeToolCalls.delete(toolUseId);
-                            }
-                        } else {
-                            console.log(`[tool_result] No blockId found, skipping update`);
-                        }
-                        break;
-                    }
-
-                    // Tool input streaming events - show real-time progress during code generation
-                    case 'tool_input_start': {
-                        removeThinkingPlaceholder();
-                        if (currentTextBlockId) {
-                            updateBlock(assistantMessageId, currentTextBlockId, { status: 'success' });
-                            currentTextBlockId = null;
-                        }
-
-                        const toolName = event.content?.name || 'Tool';
-                        console.log(`[tool_input_start] toolName=${toolName}, event.id=${event.id}`);
-
-                        // Skip creating tool_use block for AskUserQuestion
-                        // The ask_user event will handle it with complete question data
-                        if (toolName === 'AskUserQuestion') {
-                            break;
-                        }
-
-                        const toolId = event.id || crypto.randomUUID();
-                        const toolBlockId = `tool-streaming-${toolId}`;
-
-                        const toolBlock: MessageBlock = {
-                            id: toolBlockId,
-                            type: 'tool_use',
-                            content: {
-                                name: toolName,
-                                input: {},  // Will accumulate via deltas
-                                inputBuffer: '',  // Raw JSON buffer for streaming display
-                            },
-                            status: 'streaming',
-                            metadata: {
-                                toolName: toolName,
-                                toolCallId: toolId,
-                                isStreaming: true,
-                            },
-                        };
-                        addBlock(assistantMessageId, toolBlock);
-
-                        // Track this streaming tool block
-                        if (event.id) {
-                            activeToolCalls.set(event.id, toolBlockId);
-                            console.log(`[tool_input_start] Added to activeToolCalls: ${event.id} -> ${toolBlockId}`);
-                        }
-                        toolBlocksInOrder.push(toolBlockId);
-                        break;
-                    }
-
-                    case 'tool_input_delta': {
-                        // console.log('[tool_input_delta] Event received:', event);
-                        // Find the streaming tool block by event.id
-                        const toolBlockId = event.id ? activeToolCalls.get(event.id) : null;
-                        // console.log('[tool_input_delta] Looking for block:', event.id, '→', toolBlockId);
-                        if (toolBlockId && event.content) {
-                            // Append partial JSON to the input buffer for display
-                            setMessages((prev) =>
-                                prev.map((msg) => {
-                                    if (msg.id === assistantMessageId && msg.blocks) {
-                                        const blocks = msg.blocks.map((block) => {
-                                            if (block.id === toolBlockId) {
-                                                const currentBuffer = block.content?.inputBuffer || '';
-                                                return {
-                                                    ...block,
-                                                    content: {
-                                                        ...block.content,
-                                                        inputBuffer: currentBuffer + event.content,
-                                                    },
-                                                };
-                                            }
-                                            return block;
-                                        });
-                                        return { ...msg, blocks };
-                                    }
-                                    return msg;
-                                })
-                            );
-                        }
-                        break;
-                    }
-
-                    case 'tool_input_end': {
-                        // Mark the streaming tool block as executing (waiting for result)
-                        const toolBlockId = event.id ? activeToolCalls.get(event.id) : null;
-                        if (toolBlockId) {
-                            updateBlock(assistantMessageId, toolBlockId, {
-                                status: 'executing',
-                                metadata: {
-                                    isStreaming: false,
-                                },
-                            });
-                        }
-                        break;
-                    }
-
-                    case 'text_start': {
-                        removeThinkingPlaceholder();
-                        hasReceivedStreamingText = true;
-                        const textBlockId = crypto.randomUUID();
-                        const textBlock: MessageBlock = {
-                            id: textBlockId,
-                            type: 'text',
-                            content: '',
-                            status: 'streaming',
-                        };
-                        addBlock(assistantMessageId, textBlock);
-                        currentTextBlockId = textBlockId;
-                        setMessages((prev) =>
-                            prev.map((msg) =>
-                                msg.id === assistantMessageId ? { ...msg, isStreaming: true } : msg
-                            )
-                        );
-                        break;
-                    }
-
-                    case 'text_delta': {
-                        if (currentTextBlockId) {
-                            appendToTextBlock(assistantMessageId, currentTextBlockId, event.content);
-                        }
-                        setMessages((prev) =>
-                            prev.map((msg) =>
-                                msg.id === assistantMessageId ? { ...msg, content: msg.content + event.content } : msg
-                            )
-                        );
-                        break;
-                    }
-
-                    case 'text_end': {
-                        if (currentTextBlockId) {
-                            updateBlock(assistantMessageId, currentTextBlockId, { status: 'success' });
-                            currentTextBlockId = null;
-                        }
-                        setMessages((prev) =>
-                            prev.map((msg) =>
-                                msg.id === assistantMessageId ? { ...msg, isStreaming: false } : msg
-                            )
-                        );
-                        break;
-                    }
-
-                    case 'text': {
-                        removeThinkingPlaceholder();
-                        if (hasReceivedStreamingText) break;
-                        const textBlockId = crypto.randomUUID();
-                        const textBlock: MessageBlock = {
-                            id: textBlockId,
-                            type: 'text',
-                            content: event.content,
-                            status: 'success',
-                        };
-                        addBlock(assistantMessageId, textBlock);
-                        setMessages((prev) =>
-                            prev.map((msg) => {
-                                if (msg.id === assistantMessageId && msg.content === '') {
-                                    return { ...msg, content: event.content };
-                                }
-                                return msg;
-                            })
-                        );
-                        break;
-                    }
-
-                    case 'todos': {
-                        const todos = event.content?.todos || [];
-                        if (todos.length > 0) {
-                            const planBlockId = `plan-${assistantMessageId}`;
-                            const planBlock: MessageBlock = {
-                                id: planBlockId,
-                                type: 'plan',
-                                content: event.content,
-                                status: 'success',
-                                metadata: {
-                                    todos: todos.map((todo: any, index: number) => ({
-                                        id: `todo-${index}`,
-                                        content: todo.content || todo.task || todo.text || String(todo),
-                                        status: todo.status || 'pending',
-                                    })),
-                                },
-                            };
-
-                            setMessages((prev) =>
-                                prev.map((msg) => {
-                                    if (msg.id === assistantMessageId) {
-                                        const existingPlanIndex = msg.blocks?.findIndex(b => b.id === planBlockId);
-                                        if (existingPlanIndex !== undefined && existingPlanIndex >= 0) {
-                                            const newBlocks = [...(msg.blocks || [])];
-                                            newBlocks[existingPlanIndex] = planBlock;
-                                            return { ...msg, blocks: newBlocks };
-                                        } else {
-                                            return { ...msg, blocks: [...(msg.blocks || []), planBlock] };
-                                        }
-                                    }
-                                    return msg;
-                                })
-                            );
-                        }
-                        break;
-                    }
-
-                    case 'done': {
-                        setIsProcessing(false);
-                        isProcessingRef.current = false;
-                        // Update session status to idle (task completed)
-                        // Use event's session_id for multiplexed mode
-                        const doneSessionId = event.metadata?.session_id || currentSessionIdRef.current;
-                        if (doneSessionId) {
-                            setSessionStatus(doneSessionId, {
-                                status: 'idle',
-                                hasUnread: false,
-                            });
-                        }
-                        // Refresh sessions immediately for status update
-                        loadSessions();
-                        refreshWorkspaceSessions();
-                        // Also refresh after a delay to catch title updates from backend
-                        setTimeout(() => {
-                            loadSessions();
-                            refreshWorkspaceSessions();
-                        }, 500);
-                        setMessages((prev) => {
-                            console.log(`[done] setMessages called, looking for msg.id=${assistantMessageId}`);
-                            return prev.map((msg) => {
-                                if (msg.id === assistantMessageId && msg.blocks) {
-                                    console.log(`[done] Found message with ${msg.blocks.length} blocks`);
-                                    const blocks = msg.blocks.map((block) => {
-                                        console.log(`[done] Block ${block.id}: status=${block.status}, hasResult=${!!block.content?.result}`);
-                                        if (block.status === 'executing' || block.status === 'streaming') {
-                                            return { ...block, status: 'success' as const };
-                                        }
-                                        return block;
-                                    });
-                                    return {
-                                        ...msg,
-                                        blocks,
-                                        usage: event.usage,
-                                        isStreaming: false
-                                    };
-                                }
-                                if (msg.id === assistantMessageId) {
-                                    return { ...msg, usage: event.usage, isStreaming: false };
-                                }
-                                return msg;
-                            });
-                        });
-                        setTimeout(() => inputAreaRef.current?.focus(), 100);
-                        break;
-                    }
-
-                    case 'ask_user': {
-                        const content = event.content as AskUserContent;
-                        // console.log('[ask_user] Event received:', event);
-                        // console.log('[ask_user] Content:', content);
-                        // console.log('[ask_user] Questions:', content?.questions);
-                        const askUserBlockId = `ask-user-${content.request_id}`;
-                        const askUserBlock: MessageBlock = {
-                            id: askUserBlockId,
-                            type: 'ask_user',
-                            content: {
-                                input: {
-                                    questions: content.questions,
-                                    timeout: content.timeout,
-                                },
-                            },
-                            status: 'pending',
-                            metadata: {
-                                requestId: content.request_id,
-                            },
-                        };
-
-                        setMessages((prev) =>
-                            prev.map((msg) => {
-                                if (msg.id === assistantMessageId) {
-                                    // Check if ask_user block already exists (prevent duplicates)
-                                    const existingBlock = msg.blocks?.find(b => b.id === askUserBlockId);
-                                    if (existingBlock) {
-                                        return msg;  // Already exists, don't add again
-                                    }
-                                    return { ...msg, blocks: [...(msg.blocks || []), askUserBlock] };
-                                }
-                                return msg;
-                            })
-                        );
-                        break;
-                    }
-
-                    case 'permission_request': {
-                        const permContent = event.content as { request_id: string; tool_name: string; input: any };
-                        const permBlockId = `permission-${permContent.request_id}`;
-                        const permBlock: MessageBlock = {
-                            id: permBlockId,
-                            type: 'tool_use',
-                            content: {
-                                name: permContent.tool_name,
-                                input: permContent.input,
-                                description: `Tool "${permContent.tool_name}" is requesting permission to execute`,
-                            },
-                            status: 'pending',
-                            metadata: {
-                                requestId: permContent.request_id,
-                                toolName: permContent.tool_name,
-                                requiresPermission: true,
-                            },
-                        };
-
-                        setMessages((prev) =>
-                            prev.map((msg) => {
-                                if (msg.id === assistantMessageId) {
-                                    return { ...msg, blocks: [...(msg.blocks || []), permBlock] };
-                                }
-                                return msg;
-                            })
-                        );
-                        break;
-                    }
-
-                    case 'error': {
-                        console.log(`[handleSend] ERROR event received! sessionId=${event.metadata?.session_id}, message=${event.content?.message}`);
-                        setIsProcessing(false);
-                        isProcessingRef.current = false;
-                        // Update session status to error
-                        // Use event's session_id for multiplexed mode
-                        const errorSessionId = event.metadata?.session_id || currentSessionIdRef.current;
-                        if (errorSessionId) {
-                            const errorMsg = event.content?.message || 'An error occurred';
-                            setSessionStatus(errorSessionId, {
-                                status: 'error',
-                                hasUnread: false,
-                                error: errorMsg,
-                            });
-                        }
-                        const errorMessage = event.content?.message || 'An error occurred';
-                        toast.error('Error', { description: errorMessage });
-
-                        // Add error block
-                        const errorBlockId = crypto.randomUUID();
-                        const errorBlock: MessageBlock = {
-                            id: errorBlockId,
-                            type: 'text',
-                            content: `Error: ${errorMessage}`,
-                            status: 'error',
-                        };
-                        addBlock(assistantMessageId, errorBlock);
-                        break;
-                    }
-                }
+                // All events go through the unified global handler
+                handleGlobalEventRef.current(event);
             });
         } catch (error: any) {
             console.error('Failed to send message:', error);
             setIsProcessing(false);
             isProcessingRef.current = false;
+            // Clear resume state on error
+            if (resumeSessionStateRef.current?.sessionId === currentSessionIdRef.current) {
+                resumeSessionStateRef.current = null;
+            }
             toast.error('Error', { description: error.message || 'Failed to send message' });
         }
     };

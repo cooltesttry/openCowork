@@ -16,6 +16,7 @@ import os
 import time
 import base64
 import uuid
+import re
 from io import BytesIO
 
 import requests
@@ -33,6 +34,8 @@ MODEL = os.environ.get("IMAGEGEN_MODEL", "")
 API_KEY = os.environ.get("IMAGEGEN_API_KEY", "")
 WORKDIR = os.environ.get("IMAGEGEN_WORKDIR", "/tmp")
 
+SUBDIR_NAME = "_generate"
+
 TOOLS = [
     {
         "name": "generate_image",
@@ -44,17 +47,17 @@ TOOLS = [
                     "type": "string",
                     "description": "Text prompt describing the image to generate"
                 },
+                "filename": {
+                    "type": "string",
+                    "description": "Required. A descriptive name for the output image (no path, no extension)."
+                },
                 "images": {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "(Optional) Reference image file paths for img2img generation. Must be absolute file paths."
-                },
-                "workdir": {
-                    "type": "string",
-                    "description": "(Optional) Directory to save the generated image. Defaults to IMAGEGEN_WORKDIR env var."
                 }
             },
-            "required": ["prompt"]
+            "required": ["prompt", "filename"]
         }
     }
 ]
@@ -119,7 +122,35 @@ def extract_base64_from_data_url(data_url: str) -> tuple[bytes, str]:
     return base64.b64decode(data_url), "image/png"
 
 
-def generate_image(prompt: str, images: list = None, output_dir: str = None) -> dict:
+def _sanitize_filename(value: str) -> str:
+    base = os.path.basename(value or "")
+    base = os.path.splitext(base)[0]
+    base = re.sub(r"[^A-Za-z0-9_-]+", "-", base).strip("-")
+    return base or "image"
+
+
+def _resolve_output_path(root_dir: str, filename: str, ext: str) -> str:
+    target_dir = os.path.join(os.path.abspath(root_dir), SUBDIR_NAME)
+    os.makedirs(target_dir, exist_ok=True)
+
+    base = _sanitize_filename(filename)
+    candidate = os.path.join(target_dir, f"{base}{ext}")
+    if not os.path.exists(candidate):
+        return candidate
+
+    # Avoid name collision with a short suffix.
+    for _ in range(10):
+        suffix = uuid.uuid4().hex[:4]
+        candidate = os.path.join(target_dir, f"{base}-{suffix}{ext}")
+        if not os.path.exists(candidate):
+            return candidate
+
+    # Fallback to a timestamp if collisions persist.
+    suffix = str(int(time.time()))
+    return os.path.join(target_dir, f"{base}-{suffix}{ext}")
+
+
+def generate_image(prompt: str, filename: str, images: list = None) -> dict:
     """调用生图 API 并保存结果
     
     支持两种 API 格式:
@@ -128,16 +159,17 @@ def generate_image(prompt: str, images: list = None, output_dir: str = None) -> 
     
     Args:
         prompt: 生成图片的文本提示
+        filename: 输出文件名（可不含扩展名）
         images: 参考图片文件路径列表 (可选)
-        output_dir: 输出目录 (可选)
     """
     if not ENDPOINT:
         raise ValueError("IMAGEGEN_ENDPOINT environment variable is not set")
     if not MODEL:
         raise ValueError("IMAGEGEN_MODEL environment variable is not set")
-    
-    output_dir = output_dir or WORKDIR
-    os.makedirs(output_dir, exist_ok=True)
+    if not filename or not str(filename).strip():
+        raise ValueError("filename is required")
+
+    output_root = WORKDIR
     
     # 构建请求头
     headers = {"Content-Type": "application/json"}
@@ -247,10 +279,9 @@ def generate_image(prompt: str, images: list = None, output_dir: str = None) -> 
         "image/gif": ".gif",
         "image/webp": ".webp"
     }.get(mime_type, ".png")
-    
-    # 生成唯一文件名
-    filename = f"{int(time.time())}_{uuid.uuid4().hex[:8]}{ext}"
-    file_path = os.path.join(output_dir, filename)
+
+    # 生成输出路径（子目录 + 文件名，避免冲突）
+    file_path = _resolve_output_path(output_root, filename, ext)
     
     with open(file_path, "wb") as f:
         f.write(image_data)
@@ -274,10 +305,10 @@ def generate_image(prompt: str, images: list = None, output_dir: str = None) -> 
 def handle_generate_image(args: dict) -> str:
     """处理 generate_image 工具调用"""
     prompt = args.get("prompt", "")
+    filename = args.get("filename", "")
     images = args.get("images")  # 数组格式
-    workdir = args.get("workdir")
     
-    result = generate_image(prompt, images, workdir)
+    result = generate_image(prompt, filename, images)
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 

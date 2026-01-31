@@ -112,7 +112,6 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFil
     // File watcher integration - auto-refresh on file system changes
     useEffect(() => {
         const handleFileChange = (event: FileWatchEvent) => {
-            console.log("[FileExplorer] File change detected:", event);
             fetchFiles();
         };
 
@@ -220,17 +219,13 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFil
 
         if (sourceParent === destPath) {
             // File is already in this folder, do nothing
-            console.log("File already in target folder, skipping move");
             return;
         }
 
         // Prevent dragging a folder into itself or any of its children
         if (sourceEntry?.is_directory && (destPath === sourcePath || destPath.startsWith(sourcePath + '/'))) {
-            console.log("Cannot move a folder into itself or its children");
             return;
         }
-
-        console.log(`Moving ${sourcePath} into ${destPath}`);
 
         await performMove(sourcePath, destPath);
     };

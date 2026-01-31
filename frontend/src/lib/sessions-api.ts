@@ -66,7 +66,6 @@ export const sessionsApi = {
             // If workspace API returns 404, fallback to global API
             // This handles sessions created before workspace mode was enabled
             if (response.status === 404) {
-                console.log(`[sessionsApi.get] Session ${id} not found in workspace, trying global API...`);
                 const globalResponse = await fetch(`${API_BASE}/sessions/${id}`);
                 if (!globalResponse.ok) {
                     if (globalResponse.status === 404) {

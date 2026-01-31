@@ -111,7 +111,7 @@ export class AgentClient {
 
         this.ws.onopen = () => {
             clearTimeout(timeout);
-            console.log("WebSocket connected");
+            // console.log("WebSocket connected");
             this.isConnected = true;
             this.processQueue();
             resolve();
@@ -119,7 +119,7 @@ export class AgentClient {
 
         this.ws.onclose = () => {
             clearTimeout(timeout);
-            console.log("WebSocket disconnected");
+            // console.log("WebSocket disconnected");
             this.isConnected = false;
             this.ws = null;
         };
@@ -252,17 +252,17 @@ export class MultiplexedClient {
 
         this.ws.onopen = () => {
             clearTimeout(timeout);
-            console.log("[MultiplexedClient] Connected");
+            // console.log("[MultiplexedClient] Connected");
             this.isConnected = true;
 
             // Clear old subscriptions on reconnect (they're stale)
             if (isReconnect) {
                 this.eventHandlers.clear();
-                console.log("[MultiplexedClient] Cleared stale subscriptions");
+                // console.log("[MultiplexedClient] Cleared stale subscriptions");
 
                 // Call reconnect callback to re-subscribe
                 if (this.onReconnectCallback) {
-                    console.log("[MultiplexedClient] Triggering reconnect callback");
+                    // console.log("[MultiplexedClient] Triggering reconnect callback");
                     this.onReconnectCallback();
                 }
             }
@@ -273,7 +273,7 @@ export class MultiplexedClient {
 
         this.ws.onclose = () => {
             clearTimeout(timeout);
-            console.log("[MultiplexedClient] Disconnected");
+            // console.log("[MultiplexedClient] Disconnected");
             this.isConnected = false;
             this.ws = null;
 
@@ -281,7 +281,7 @@ export class MultiplexedClient {
             if (this.reconnectAttempts < this.maxReconnectAttempts) {
                 this.reconnectAttempts++;
                 const delay = this.reconnectDelay * this.reconnectAttempts;
-                console.log(`[MultiplexedClient] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+                // console.log(`[MultiplexedClient] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
                 setTimeout(() => {
                     this.connect().catch(console.error);
                 }, delay);
@@ -299,18 +299,16 @@ export class MultiplexedClient {
                 const data = JSON.parse(event.data) as StreamEvent;
                 const sessionId = data.metadata?.session_id;
 
-                // Debug: Log tool_input events
-                if (data.type?.startsWith('tool_input')) {
-                    console.log('[WebSocket] Tool input event:', data.type, data.id);
+                // Log tool-related start/end events
+                if (data.type === 'tool_input_start' || data.type === 'tool_input_end') {
+                    // Tool event logging disabled
                 }
 
-                // Route to session-specific handler
+                // Prefer session-specific handler (more precise)
+                // Fall back to global handler for sessions without specific handler
                 if (sessionId && this.eventHandlers.has(sessionId)) {
                     this.eventHandlers.get(sessionId)!(data);
-                }
-
-                // Also call global handler
-                if (this.globalHandler) {
+                } else if (this.globalHandler) {
                     this.globalHandler(data);
                 }
             } catch (e) {
@@ -339,19 +337,22 @@ export class MultiplexedClient {
      * Subscribe to events from a session.
      * This will replay any cached events first, then stream live events.
      */
-    async subscribe(sessionId: string, onEvent: (event: StreamEvent) => void): Promise<void> {
+    async subscribe(sessionId: string, onEvent?: (event: StreamEvent) => void): Promise<void> {
         if (!this.isConnected || !this.ws) {
             await this.connect();
         }
 
-        this.eventHandlers.set(sessionId, onEvent);
+        // Only register session handler if provided
+        if (onEvent) {
+            this.eventHandlers.set(sessionId, onEvent);
+        }
 
         if (this.ws) {
             this.ws.send(JSON.stringify({
                 type: "subscribe",
                 session_id: sessionId,
             }));
-            console.log("[MultiplexedClient] Subscribed to:", sessionId);
+            // console.log("[MultiplexedClient] Subscribed to:", sessionId);
         }
     }
 
@@ -366,7 +367,7 @@ export class MultiplexedClient {
                 type: "unsubscribe",
                 session_id: sessionId,
             }));
-            console.log("[MultiplexedClient] Unsubscribed from:", sessionId);
+            // console.log("[MultiplexedClient] Unsubscribed from:", sessionId);
         }
     }
 
@@ -390,7 +391,7 @@ export class MultiplexedClient {
                 type: "query",
                 ...message,
             }));
-            console.log("[MultiplexedClient] Sent query for:", sessionId);
+            // console.log("[MultiplexedClient] Sent query for:", sessionId);
 
             // Also subscribe to get events
             if (sessionId && !this.eventHandlers.has(sessionId)) {
@@ -426,7 +427,7 @@ export class MultiplexedClient {
             request_id: requestId,
             answers: answers,
         }));
-        console.log("[MultiplexedClient] Sent user_response for:", requestId);
+        // console.log("[MultiplexedClient] Sent user_response for:", requestId);
     }
 
     /**
@@ -443,7 +444,7 @@ export class MultiplexedClient {
             request_id: requestId,
             approved: approved,
         }));
-        console.log("[MultiplexedClient] Sent permission_response for:", requestId, "approved:", approved);
+        // console.log("[MultiplexedClient] Sent permission_response for:", requestId, "approved:", approved);
     }
 }
 

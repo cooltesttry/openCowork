@@ -429,7 +429,7 @@ def _process_stream_event(sdk_event: SDKStreamEvent, block_state: dict) -> list[
                     type=StreamEventType.TEXT_END.value,
                     id=block["id"],
                 ))
-                # Also emit legacy TEXT event for backward compatibility
+                # Also emit legacy TEXT event for backward compatibility and persistence
                 if block["content"]:
                     events.append(StreamEvent(
                         type=StreamEventType.TEXT.value,
@@ -536,7 +536,7 @@ async def stream_agent_response(
             message_count += 1
             message_type = type(message).__name__
 
-            
+
             # Handle incremental stream events
             if isinstance(message, SDKStreamEvent):
                 stream_events = _process_stream_event(message, block_state)

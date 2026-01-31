@@ -148,6 +148,42 @@ class SearchIndex:
         ).fetchone()
         return row is not None
 
+    def _build_path_filter(
+        self,
+        path_prefix: str | None,
+        include_paths: list[str] | None,
+        exclude_paths: list[str] | None,
+    ) -> tuple[str, list[object]]:
+        """Build SQL WHERE clause and params for path filtering.
+
+        Returns (where_clause, params) where where_clause starts with " AND ..."
+        """
+        clauses: list[str] = []
+        params: list[object] = []
+
+        # Path prefix filter
+        if path_prefix:
+            clauses.append("d.path LIKE ? ESCAPE '\\'")
+            params.append(self._escape_like(path_prefix) + "%")
+
+        # Include paths: file must start with one of these prefixes
+        if include_paths:
+            include_clauses = []
+            for p in include_paths:
+                include_clauses.append("d.path LIKE ? ESCAPE '\\'")
+                params.append(self._escape_like(p) + "%")
+            clauses.append(f"({' OR '.join(include_clauses)})")
+
+        # Exclude paths: file must NOT start with any of these prefixes
+        if exclude_paths:
+            for p in exclude_paths:
+                clauses.append("d.path NOT LIKE ? ESCAPE '\\'")
+                params.append(self._escape_like(p) + "%")
+
+        if clauses:
+            return " AND " + " AND ".join(clauses), params
+        return "", []
+
     def _resolve_paths(self, paths: Optional[Iterable[str]]) -> list[Path]:
         if not paths:
             return self._scan_workdir()
@@ -163,13 +199,15 @@ class SearchIndex:
     def _scan_workdir(self) -> list[Path]:
         files: list[Path] = []
         for root, dirs, filenames in os.walk(self.workdir):
-            dirs[:] = [d for d in dirs if d not in IGNORE_DIRS and not d.startswith(".")]
+            # Exclude hidden directories except .opencowork
+            dirs[:] = [d for d in dirs if d not in IGNORE_DIRS and (not d.startswith(".") or d == ".opencowork")]
             for name in filenames:
                 files.append(Path(root) / name)
         return files
 
     def _is_hidden_path(self, path: Path) -> bool:
-        return any(part.startswith(".") for part in path.parts)
+        # Allow .opencowork directory, skip other hidden paths
+        return any(part.startswith(".") and part != ".opencowork" for part in path.parts)
 
     def _detect_language(self, text: str) -> str:
         for ch in text:
@@ -330,6 +368,8 @@ class SearchIndex:
         use_vector: bool = True,
         use_fts: bool = True,
         path_prefix: str | None = None,
+        include_paths: list[str] | None = None,
+        exclude_paths: list[str] | None = None,
         rerank: str = "rrf",
         alpha: float = 0.75,
     ) -> list[dict]:
@@ -348,13 +388,15 @@ class SearchIndex:
 
         results: dict[int, dict] = {}
         try:
+            # Build path filter clause
+            path_filter, path_params = self._build_path_filter(
+                path_prefix, include_paths, exclude_paths
+            )
+
             fts_query = tokenize_query(query) if use_fts else ""
             if fts_query:
                 params: list[object] = [fts_query]
-                where_extra = ""
-                if path_prefix:
-                    where_extra = " AND d.path LIKE ? ESCAPE '\\\\'"
-                    params.append(self._escape_like(path_prefix) + "%")
+                params.extend(path_params)
                 params.append(limit)
 
                 rows = conn.execute(
@@ -364,7 +406,7 @@ class SearchIndex:
                     FROM chunks_fts
                     JOIN chunks c ON c.id = chunks_fts.rowid
                     JOIN documents d ON d.id = c.doc_id
-                    WHERE chunks_fts MATCH ?{where_extra}
+                    WHERE chunks_fts MATCH ?{path_filter}
                     ORDER BY bm25(chunks_fts)
                     LIMIT ?
                     """,
@@ -402,10 +444,7 @@ class SearchIndex:
                 if embedding:
                     vec_query = json.dumps(embedding[0])
                     params = [vec_query, vector_k]
-                    where_extra = ""
-                    if path_prefix:
-                        where_extra = " AND d.path LIKE ? ESCAPE '\\\\'"
-                        params.append(self._escape_like(path_prefix) + "%")
+                    params.extend(path_params)
 
                     rows = conn.execute(
                         f"""
@@ -413,7 +452,7 @@ class SearchIndex:
                         FROM vec_chunks v
                         JOIN chunks c ON c.id = v.chunk_id
                         JOIN documents d ON d.id = c.doc_id
-                        WHERE v.embedding MATCH ? AND k = ?{where_extra}
+                        WHERE v.embedding MATCH ? AND k = ?{path_filter}
                         ORDER BY v.distance
                         """,
                         params,
@@ -470,6 +509,8 @@ class SearchIndex:
         use_vector: bool = True,
         use_fts: bool = True,
         path_prefix: str | None = None,
+        include_paths: list[str] | None = None,
+        exclude_paths: list[str] | None = None,
         filename_query: str | None = None,
         rerank: str = "rrf",
         alpha: float = 0.75,
@@ -483,6 +524,8 @@ class SearchIndex:
             use_vector=use_vector,
             use_fts=use_fts,
             path_prefix=path_prefix,
+            include_paths=include_paths,
+            exclude_paths=exclude_paths,
             rerank=rerank,
             alpha=alpha,
         )
@@ -555,18 +598,21 @@ class SearchIndex:
             self._ensure_filename_column(conn)
             like = f"%{self._escape_like(filename_query)}%"
             filename_limit = min(max(limit * 5, limit), 200)
+
+            # Build path filter for filename search
+            path_filter, path_params = self._build_path_filter(
+                path_prefix, include_paths, exclude_paths
+            )
+
             params: list[object] = [like]
-            where_extra = ""
-            if path_prefix:
-                where_extra = " AND d.path LIKE ? ESCAPE '\\\\'"
-                params.append(self._escape_like(path_prefix) + "%")
+            params.extend(path_params)
             params.append(filename_limit)
 
             rows = conn.execute(
                 f"""
                 SELECT d.path, d.filename
                 FROM documents d
-                WHERE LOWER(d.filename) LIKE LOWER(?) ESCAPE '\\\\'{where_extra}
+                WHERE LOWER(d.filename) LIKE LOWER(?) ESCAPE '\\'{path_filter}
                 ORDER BY LENGTH(d.filename) ASC, d.filename ASC
                 LIMIT ?
                 """,

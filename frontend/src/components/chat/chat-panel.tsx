@@ -461,7 +461,6 @@ export function ChatPanel() {
                             description: '',  // SDK doesn't provide descriptions
                         }));
                         setSlashCommands(formattedCmds);
-                        console.log('[ChatPanel] Captured slash commands:', formattedCmds);
                     }
                 }
 

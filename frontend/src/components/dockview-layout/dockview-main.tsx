@@ -11,6 +11,7 @@ import { ToolsPanelContent } from './panels/tools-panel';
 import { EditorPanel } from '../panels/editor-panel';
 import { TerminalPanel } from '../panels/terminal-panel';
 import { FilePreviewPanel } from '../panels/file-preview-panel';
+import { SearchPanel } from '../panels/search-panel';
 import { AgentsPanel } from '../panels/agents-panel';
 import { SuperAgentPanel } from '../agent/super-agent-panel';
 
@@ -25,6 +26,7 @@ const components = {
     editor: EditorPanel,
     terminal: TerminalPanel,
     files: FilePreviewPanel,
+    search: SearchPanel,
     agents: AgentsPanel,
     superagent: SuperAgentPanel,
 };
@@ -386,6 +388,17 @@ export function DockviewMain() {
                 position: { referencePanel: editorPanel, direction: 'within' },
                 params: {
                     onOpenInEditor: handleOpenInEditor,
+                }
+            });
+            api.addPanel({
+                id: 'search-panel',
+                component: 'search',
+                title: 'Search',
+                position: { referencePanel: editorPanel, direction: 'within' },
+                params: {
+                    onSelectFile: (path: string, name: string) => {
+                        handlePreviewFileRef.current?.(path, name);
+                    },
                 }
             });
             api.addPanel({

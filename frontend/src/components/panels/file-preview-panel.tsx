@@ -279,7 +279,6 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
                 ) : isHtml ? (() => {
                     // If inline htmlContent is provided, use srcdoc for direct rendering
                     if (currentDoc.htmlContent) {
-                        console.log('[FilePreviewPanel] Rendering inline HTML with srcdoc, length:', currentDoc.htmlContent.length);
                         return (
                             <div className="h-full">
                                 <iframe
@@ -300,14 +299,6 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
                     // Encode each path segment to handle special characters and Chinese filenames
                     const encodedPath = filePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
                     const webserverUri = `http://localhost:8000/api/files/webserver/${encodedPath}`;
-
-                    // Debug logging
-                    console.log('[FilePreviewPanel] HTML Preview Debug:', {
-                        originalUri: currentDoc.uri,
-                        extractedPath: filePath,
-                        encodedPath: encodedPath,
-                        webserverUri: webserverUri
-                    });
 
                     return (
                         <div className="h-full">

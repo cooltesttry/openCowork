@@ -54,7 +54,6 @@ export class FileWatcherClient {
             this.ws = new WebSocket(this.url);
 
             this.ws.onopen = () => {
-                console.log("[FileWatcher] Connected");
                 this.isConnecting = false;
 
                 // Start ping interval to keep connection alive
@@ -66,7 +65,6 @@ export class FileWatcherClient {
             };
 
             this.ws.onclose = () => {
-                console.log("[FileWatcher] Disconnected");
                 this.isConnecting = false;
                 this.stopPingInterval();
 
@@ -110,7 +108,6 @@ export class FileWatcherClient {
         }
 
         this.onChangeCallback = null;
-        console.log("[FileWatcher] Disconnected (manual)");
     }
 
     private handleMessage(event: MessageEvent): void {
@@ -121,8 +118,6 @@ export class FileWatcherClient {
             if (data.type === "pong") {
                 return;
             }
-
-            console.log("[FileWatcher] Received event:", data.type, data);
 
             if (this.onChangeCallback && (data.type === "file_change" || data.type === "files_changed")) {
                 this.onChangeCallback(data as FileWatchEvent);
@@ -137,7 +132,6 @@ export class FileWatcherClient {
             return;
         }
 
-        console.log("[FileWatcher] Scheduling reconnect in 3s...");
         this.reconnectTimeout = setTimeout(() => {
             this.reconnectTimeout = null;
             this.doConnect();
