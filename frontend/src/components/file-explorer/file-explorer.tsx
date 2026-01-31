@@ -25,9 +25,11 @@ interface FileExplorerProps {
     onOpenFile?: (path: string) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
     isPreviewPanelActive?: () => boolean;
+    /** Workspace ID - when this changes, files are refetched */
+    workspaceId?: string | null;
 }
 
-export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFile, isPreviewPanelActive }: FileExplorerProps) {
+export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFile, isPreviewPanelActive, workspaceId }: FileExplorerProps) {
     const [rootFiles, setRootFiles] = useState<FileEntry[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
@@ -96,6 +98,16 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFil
     useEffect(() => {
         fetchFiles();
     }, [fetchFiles]);
+
+    // Refetch files when workspace changes
+    useEffect(() => {
+        if (workspaceId !== undefined) {
+            // Clear expanded paths when workspace changes
+            setExpandedPaths(new Set());
+            // Refetch files for new workspace
+            fetchFiles();
+        }
+    }, [workspaceId, fetchFiles]);
 
     // File watcher integration - auto-refresh on file system changes
     useEffect(() => {

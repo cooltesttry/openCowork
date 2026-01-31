@@ -36153,3 +36153,180 @@ Error output: Check stderr output for details
 2026-01-31 03:13:50 - core.session_manager - INFO - [SessionManager] Cleaning up idle session: d2f9ccf7-5d88-46d4-b77d-414fc8566db2
 2026-01-31 03:13:50 - claude_agent_sdk._internal.query - DEBUG - Read task cancelled
 2026-01-31 03:13:50 - core.session_manager - ERROR - [SessionManager] Error closing session d2f9ccf7-5d88-46d4-b77d-414fc8566db2: Attempted to exit cancel scope in a different task than it was entered in
+2026-01-31 03:15:31 - core.workspace_storage - INFO - Created session in workspace: 3c5a0b8c-4877-4475-a4cc-954d49737932
+2026-01-31 03:15:39 - routers.agent - INFO - [Multiplexed] Using workspace storage for session 3c5a0b8c-4877-4475-a4cc-954d49737932
+2026-01-31 03:15:39 - routers.agent - INFO - [Multiplexed] Using workspace path as cwd: /Users/huawang/Documents/agenttest
+2026-01-31 03:15:39 - core.task_runner - INFO - [TaskRunner] Started task b631a5c9-f30c-461e-b664-8b745fb70451 for session 3c5a0b8c-4877-4475-a4cc-954d49737932
+2026-01-31 03:15:39 - core.agent_client - INFO - [AgentOptions] permission_mode=bypassPermissions, can_use_tool=SET
+2026-01-31 03:15:39 - core.session_manager - INFO - [SessionManager] Created session: 3c5a0b8c-4877-4475-a4cc-954d49737932 (endpoint=Local, model=gemini-claude-opus-4-5-thinking, security=bypassPermissions)
+2026-01-31 03:15:39 - claude_agent_sdk._internal.transport.subprocess_cli - INFO - Using bundled Claude Code CLI: /Users/huawang/pyproject/openCowork/backend/.venv/lib/python3.13/site-packages/claude_agent_sdk/_bundled/claude
+2026-01-31 03:15:40 - core.session_manager - INFO - [SessionManager] Captured SDK session_id: dccbcdc0-c505-4f6d-8d50-b83301230b9d
+2026-01-31 03:15:40 - core.session_manager - INFO - [SessionManager] Captured slash_commands: ['keybindings-help', 'compact', 'context', 'cost', 'init', 'pr-comments', 'release-notes', 'review', 'security-review', 'mcp__FMP__list_mcp_assets']
+2026-01-31 03:15:46 - core.task_runner - INFO - [TaskRunner] Session 3c5a0b8c-4877-4475-a4cc-954d49737932 marked as viewed
+2026-01-31 03:15:49 - routers.terminal - INFO - WebSocket disconnected
+2026-01-31 03:15:49 - routers.terminal - INFO - Closing terminal session 81471
+2026-01-31 03:15:49 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-01-31 03:15:49 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-01-31 03:15:50 - routers.terminal - INFO - Terminal session started with PID 81764
+2026-01-31 03:15:51 - routers.files - INFO - [FileWatch WS] Client connected
+2026-01-31 03:15:51 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-01-31 03:15:51 - routers.terminal - INFO - WebSocket disconnected
+2026-01-31 03:15:51 - routers.terminal - INFO - Closing terminal session 81764
+2026-01-31 03:15:51 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-01-31 03:15:51 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-01-31 03:15:51 - routers.terminal - INFO - Terminal session started with PID 81768
+2026-01-31 03:15:51 - routers.agent - INFO - [Warmup] Filesystem scan complete: 1 skills, 0 agents
+2026-01-31 03:15:51 - routers.agent - INFO - [Warmup] Filesystem scan complete: 1 skills, 0 agents
+2026-01-31 03:15:53 - core.task_runner - INFO - [TaskRunner] Task completed for session 3c5a0b8c-4877-4475-a4cc-954d49737932
+2026-01-31 03:15:53 - routers.agent - INFO - [Multiplexed] Task completed for session 3c5a0b8c-4877-4475-a4cc-954d49737932
+2026-01-31 03:15:53 - core.task_runner - INFO - [TaskRunner] Session 3c5a0b8c-4877-4475-a4cc-954d49737932 marked as viewed
+2026-01-31 03:15:53 - core.task_runner - INFO - [TaskRunner] Session 3c5a0b8c-4877-4475-a4cc-954d49737932 marked as viewed
+2026-01-31 03:15:54 - routers.files - INFO - [FileWatch WS] Client connected
+2026-01-31 03:15:54 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-01-31 03:16:50 - core.session_manager - INFO - [SessionManager] Cleaning up idle session: a3d48435-7f7b-43a5-ab30-df6ad896f2e4
+2026-01-31 03:16:50 - claude_agent_sdk._internal.query - DEBUG - Read task cancelled
+2026-01-31 03:16:50 - core.session_manager - ERROR - [SessionManager] Error closing session a3d48435-7f7b-43a5-ab30-df6ad896f2e4: Attempted to exit cancel scope in a different task than it was entered in
+2026-01-31 03:17:25 - routers.agent - INFO - [Warmup] Filesystem scan complete: 1 skills, 0 agents
+2026-01-31 03:17:25 - routers.agent - INFO - [Warmup] Filesystem scan complete: 1 skills, 0 agents
+2026-01-31 03:17:35 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-01-31 03:17:35 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "GET /health HTTP/1.1" 200 15
+2026-01-31 03:17:35 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-01-31 03:17:35 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "POST /v1/embeddings HTTP/1.1" 200 16431
+2026-01-31 03:18:50 - core.session_manager - INFO - [SessionManager] Cleaning up idle session: cc6e2747-4aca-44ed-ada0-c0116e47f527
+2026-01-31 03:18:50 - claude_agent_sdk._internal.query - DEBUG - Read task cancelled
+2026-01-31 03:18:50 - core.session_manager - ERROR - [SessionManager] Error closing session cc6e2747-4aca-44ed-ada0-c0116e47f527: Attempted to exit cancel scope in a different task than it was entered in
+2026-01-31 03:18:58 - routers.agent - INFO - [Multiplexed] Using workspace storage for session 3c5a0b8c-4877-4475-a4cc-954d49737932
+2026-01-31 03:18:58 - routers.agent - INFO - [Multiplexed] Using workspace path as cwd: /Users/huawang/Documents/agenttest
+2026-01-31 03:18:58 - core.task_runner - INFO - [TaskRunner] Started task c14ea6c4-cae6-40b2-8f57-f119ac7b52de for session 3c5a0b8c-4877-4475-a4cc-954d49737932
+2026-01-31 03:18:58 - core.session_manager - INFO - [SessionManager] Reusing session: 3c5a0b8c-4877-4475-a4cc-954d49737932 (pending security_mode: bypassPermissions)
+2026-01-31 03:18:58 - core.session_manager - INFO - [SessionManager] Captured SDK session_id: dccbcdc0-c505-4f6d-8d50-b83301230b9d
+2026-01-31 03:18:58 - core.session_manager - INFO - [SessionManager] Captured slash_commands: ['keybindings-help', 'compact', 'context', 'cost', 'init', 'pr-comments', 'release-notes', 'review', 'security-review', 'mcp__FMP__list_mcp_assets']
+2026-01-31 03:19:04 - core.workspace_storage - DEBUG - [WorkspaceManager] Adding workspace f567f15e-a828-4105-a9e3-8471064b7f3f to recent. Current count: 2
+2026-01-31 03:19:04 - core.workspace_storage - INFO - [WorkspaceManager] Added workspace test (f567f15e-a828-4105-a9e3-8471064b7f3f) to recent. Total: 2
+2026-01-31 03:19:04 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/workspace.json", inode=30358162, flags=11400, id=123547915): is_file, is_inode_meta_mod, is_modified
+2026-01-31 03:19:04 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/workspace.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-01-31 03:19:05 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-01-31 03:19:06 - core.workspace_storage - INFO - Created session in workspace: faa3096d-9cae-4eb8-896e-88bf4bf2fda0
+2026-01-31 03:19:06 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/sessions/faa3096d-9cae-4eb8-896e-88bf4bf2fda0.json", inode=30384754, flags=19100, id=123548185): is_created, is_file, is_modified, is_xattr_mod
+2026-01-31 03:19:06 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/sessions/faa3096d-9cae-4eb8-896e-88bf4bf2fda0.json', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-01-31 03:19:06 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/sessions', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-01-31 03:19:06 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/sessions/faa3096d-9cae-4eb8-896e-88bf4bf2fda0.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-01-31 03:19:06 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-01-31 03:19:15 - routers.agent - INFO - [Multiplexed] Using workspace storage for session faa3096d-9cae-4eb8-896e-88bf4bf2fda0
+2026-01-31 03:19:15 - routers.agent - INFO - [Multiplexed] Using workspace path as cwd: /Users/huawang/Documents/test
+2026-01-31 03:19:15 - core.task_runner - INFO - [TaskRunner] Started task a14a9670-a1c7-4e6c-b220-8b16fb19e257 for session faa3096d-9cae-4eb8-896e-88bf4bf2fda0
+2026-01-31 03:19:15 - core.agent_client - INFO - [AgentOptions] permission_mode=bypassPermissions, can_use_tool=SET
+2026-01-31 03:19:15 - core.session_manager - INFO - [SessionManager] Created session: faa3096d-9cae-4eb8-896e-88bf4bf2fda0 (endpoint=Local, model=gemini-claude-opus-4-5-thinking, security=bypassPermissions)
+2026-01-31 03:19:15 - claude_agent_sdk._internal.transport.subprocess_cli - INFO - Using bundled Claude Code CLI: /Users/huawang/pyproject/openCowork/backend/.venv/lib/python3.13/site-packages/claude_agent_sdk/_bundled/claude
+2026-01-31 03:19:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/sessions/faa3096d-9cae-4eb8-896e-88bf4bf2fda0.json", inode=30384754, flags=19500, id=123549908): is_created, is_file, is_inode_meta_mod, is_modified, is_xattr_mod
+2026-01-31 03:19:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/sessions/faa3096d-9cae-4eb8-896e-88bf4bf2fda0.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-01-31 03:19:15 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-01-31 03:19:16 - core.session_manager - INFO - [SessionManager] Captured SDK session_id: 54c5b331-8742-4bce-9135-406e9ca8cfc2
+2026-01-31 03:19:16 - core.session_manager - INFO - [SessionManager] Captured slash_commands: ['keybindings-help', 'compact', 'context', 'cost', 'init', 'pr-comments', 'release-notes', 'review', 'security-review', 'mcp__FMP__list_mcp_assets']
+2026-01-31 03:19:16 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/sessions/faa3096d-9cae-4eb8-896e-88bf4bf2fda0.json", inode=30384754, flags=19500, id=123550150): is_created, is_file, is_inode_meta_mod, is_modified, is_xattr_mod
+2026-01-31 03:19:16 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/sessions/faa3096d-9cae-4eb8-896e-88bf4bf2fda0.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-01-31 03:19:16 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-01-31 03:19:25 - core.workspace_storage - DEBUG - [WorkspaceManager] Adding workspace 2806a6d2-2e1e-43fa-9695-86d9db8ed417 to recent. Current count: 2
+2026-01-31 03:19:25 - core.workspace_storage - INFO - [WorkspaceManager] Added workspace agenttest (2806a6d2-2e1e-43fa-9695-86d9db8ed417) to recent. Total: 2
+2026-01-31 03:19:30 - core.workspace_storage - DEBUG - [WorkspaceManager] Adding workspace f567f15e-a828-4105-a9e3-8471064b7f3f to recent. Current count: 2
+2026-01-31 03:19:30 - core.workspace_storage - INFO - [WorkspaceManager] Added workspace test (f567f15e-a828-4105-a9e3-8471064b7f3f) to recent. Total: 2
+2026-01-31 03:19:30 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/workspace.json", inode=30358162, flags=11400, id=123554432): is_file, is_inode_meta_mod, is_modified
+2026-01-31 03:19:30 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/workspace.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-01-31 03:19:31 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-01-31 03:19:35 - core.workspace_storage - DEBUG - [WorkspaceManager] Adding workspace 2806a6d2-2e1e-43fa-9695-86d9db8ed417 to recent. Current count: 2
+2026-01-31 03:19:35 - core.workspace_storage - INFO - [WorkspaceManager] Added workspace agenttest (2806a6d2-2e1e-43fa-9695-86d9db8ed417) to recent. Total: 2
+2026-01-31 03:19:38 - core.task_runner - INFO - [TaskRunner] Session 3c5a0b8c-4877-4475-a4cc-954d49737932 marked as viewed
+2026-01-31 03:19:39 - core.task_runner - INFO - [TaskRunner] Task completed for session faa3096d-9cae-4eb8-896e-88bf4bf2fda0
+2026-01-31 03:19:39 - routers.agent - INFO - [Multiplexed] Task completed for session faa3096d-9cae-4eb8-896e-88bf4bf2fda0
+2026-01-31 03:19:39 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/sessions/faa3096d-9cae-4eb8-896e-88bf4bf2fda0.json", inode=30384754, flags=11400, id=123558248): is_file, is_inode_meta_mod, is_modified
+2026-01-31 03:19:39 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/sessions/faa3096d-9cae-4eb8-896e-88bf4bf2fda0.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-01-31 03:19:39 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-01-31 03:19:44 - core.workspace_storage - DEBUG - [WorkspaceManager] Adding workspace f567f15e-a828-4105-a9e3-8471064b7f3f to recent. Current count: 2
+2026-01-31 03:19:44 - core.workspace_storage - INFO - [WorkspaceManager] Added workspace test (f567f15e-a828-4105-a9e3-8471064b7f3f) to recent. Total: 2
+2026-01-31 03:19:44 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/workspace.json", inode=30358162, flags=11400, id=123559899): is_file, is_inode_meta_mod, is_modified
+2026-01-31 03:19:44 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/workspace.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-01-31 03:19:44 - core.task_runner - INFO - [TaskRunner] Session faa3096d-9cae-4eb8-896e-88bf4bf2fda0 marked as viewed
+2026-01-31 03:19:45 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-01-31 03:19:53 - core.workspace_storage - DEBUG - [WorkspaceManager] Adding workspace 2806a6d2-2e1e-43fa-9695-86d9db8ed417 to recent. Current count: 2
+2026-01-31 03:19:53 - core.workspace_storage - INFO - [WorkspaceManager] Added workspace agenttest (2806a6d2-2e1e-43fa-9695-86d9db8ed417) to recent. Total: 2
+2026-01-31 03:21:01 - core.task_runner - INFO - [TaskRunner] Task completed for session 3c5a0b8c-4877-4475-a4cc-954d49737932
+2026-01-31 03:21:01 - routers.agent - INFO - [Multiplexed] Task completed for session 3c5a0b8c-4877-4475-a4cc-954d49737932
+2026-01-31 03:21:01 - core.task_runner - INFO - [TaskRunner] Session 3c5a0b8c-4877-4475-a4cc-954d49737932 marked as viewed
+2026-01-31 03:21:01 - core.task_runner - INFO - [TaskRunner] Session 3c5a0b8c-4877-4475-a4cc-954d49737932 marked as viewed
+2026-01-31 03:21:39 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-01-31 03:21:39 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-01-31 03:21:39 - routers.terminal - INFO - WebSocket disconnected
+2026-01-31 03:21:39 - routers.terminal - INFO - Closing terminal session 81768
+2026-01-31 03:21:39 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-01-31 03:21:39 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-01-31 03:21:39 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-01-31 03:21:39 - routers.files - INFO - [FileWatch WS] Client connected
+2026-01-31 03:21:39 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-01-31 03:21:39 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-01-31 03:21:39 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-01-31 03:21:39 - routers.agent - INFO - [Warmup] Filesystem scan complete: 1 skills, 0 agents
+2026-01-31 03:21:39 - routers.agent - INFO - [Warmup] Filesystem scan complete: 1 skills, 0 agents
+2026-01-31 03:21:40 - routers.terminal - INFO - Terminal session started with PID 82140
+2026-01-31 03:21:40 - routers.terminal - INFO - WebSocket disconnected
+2026-01-31 03:21:40 - routers.terminal - INFO - Closing terminal session 82140
+2026-01-31 03:21:40 - routers.terminal - INFO - Terminal session started with PID 82141
+2026-01-31 03:21:42 - routers.files - INFO - [FileWatch WS] Client connected
+2026-01-31 03:21:42 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-01-31 03:22:00 - routers.terminal - INFO - WebSocket disconnected
+2026-01-31 03:22:00 - routers.terminal - INFO - Closing terminal session 82141
+2026-01-31 03:22:00 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-01-31 03:22:00 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-01-31 03:22:00 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-01-31 03:22:00 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-01-31 03:22:01 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-01-31 03:22:01 - routers.files - INFO - [FileWatch WS] Client connected
+2026-01-31 03:22:01 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-01-31 03:22:01 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-01-31 03:22:01 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-01-31 03:22:01 - routers.agent - INFO - [Warmup] Filesystem scan complete: 1 skills, 0 agents
+2026-01-31 03:22:01 - routers.agent - INFO - [Warmup] Filesystem scan complete: 1 skills, 0 agents
+2026-01-31 03:22:01 - routers.terminal - INFO - Terminal session started with PID 82171
+2026-01-31 03:22:04 - routers.files - INFO - [FileWatch WS] Client connected
+2026-01-31 03:22:04 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-01-31 03:24:50 - core.session_manager - INFO - [SessionManager] Cleaning up idle session: 3c5a0b8c-4877-4475-a4cc-954d49737932
+2026-01-31 03:24:50 - claude_agent_sdk._internal.query - DEBUG - Read task cancelled
+2026-01-31 03:24:50 - core.session_manager - ERROR - [SessionManager] Error closing session 3c5a0b8c-4877-4475-a4cc-954d49737932: Attempted to exit cancel scope in a different task than it was entered in
+2026-01-31 03:24:50 - core.session_manager - INFO - [SessionManager] Cleaning up idle session: faa3096d-9cae-4eb8-896e-88bf4bf2fda0
+2026-01-31 03:24:50 - claude_agent_sdk._internal.query - DEBUG - Read task cancelled
+2026-01-31 03:24:50 - core.session_manager - ERROR - [SessionManager] Error closing session faa3096d-9cae-4eb8-896e-88bf4bf2fda0: Attempted to exit cancel scope in a different task than it was entered in
+2026-01-31 03:24:56 - core.workspace_storage - DEBUG - [WorkspaceManager] Adding workspace f567f15e-a828-4105-a9e3-8471064b7f3f to recent. Current count: 2
+2026-01-31 03:24:56 - core.workspace_storage - INFO - [WorkspaceManager] Added workspace test (f567f15e-a828-4105-a9e3-8471064b7f3f) to recent. Total: 2
+2026-01-31 03:24:56 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/workspace.json", inode=30358162, flags=11400, id=123597001): is_file, is_inode_meta_mod, is_modified
+2026-01-31 03:24:56 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/workspace.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-01-31 03:24:57 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-01-31 03:26:12 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-01-31 03:26:12 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-01-31 03:26:12 - routers.files - INFO - [FileWatch WS] Client connected
+2026-01-31 03:26:12 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-01-31 03:26:16 - routers.files - INFO - [FileWatch WS] Client connected
+2026-01-31 03:26:16 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-01-31 03:26:16 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-01-31 03:26:16 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-01-31 03:26:25 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-01-31 03:26:25 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-01-31 03:26:25 - routers.files - INFO - [FileWatch WS] Client connected
+2026-01-31 03:26:25 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-01-31 03:27:18 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-01-31 03:27:18 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-01-31 03:27:18 - routers.files - INFO - [FileWatch WS] Client connected
+2026-01-31 03:27:18 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-01-31 03:27:18 - routers.agent - INFO - [Warmup] Filesystem scan complete: 1 skills, 0 agents
+2026-01-31 03:29:37 - core.workspace_storage - DEBUG - [WorkspaceManager] Adding workspace 2806a6d2-2e1e-43fa-9695-86d9db8ed417 to recent. Current count: 2
+2026-01-31 03:29:37 - core.workspace_storage - INFO - [WorkspaceManager] Added workspace agenttest (2806a6d2-2e1e-43fa-9695-86d9db8ed417) to recent. Total: 2
+2026-01-31 03:29:42 - core.workspace_storage - DEBUG - [WorkspaceManager] Adding workspace f567f15e-a828-4105-a9e3-8471064b7f3f to recent. Current count: 2
+2026-01-31 03:29:42 - core.workspace_storage - INFO - [WorkspaceManager] Added workspace test (f567f15e-a828-4105-a9e3-8471064b7f3f) to recent. Total: 2
+2026-01-31 03:29:42 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/workspace.json", inode=30358162, flags=11400, id=123608071): is_file, is_inode_meta_mod, is_modified
+2026-01-31 03:29:42 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/workspace.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-01-31 03:29:42 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-01-31 03:29:47 - core.workspace_storage - DEBUG - [WorkspaceManager] Adding workspace 2806a6d2-2e1e-43fa-9695-86d9db8ed417 to recent. Current count: 2
+2026-01-31 03:29:47 - core.workspace_storage - INFO - [WorkspaceManager] Added workspace agenttest (2806a6d2-2e1e-43fa-9695-86d9db8ed417) to recent. Total: 2
+2026-01-31 03:29:50 - core.workspace_storage - DEBUG - [WorkspaceManager] Adding workspace f567f15e-a828-4105-a9e3-8471064b7f3f to recent. Current count: 2
+2026-01-31 03:29:50 - core.workspace_storage - INFO - [WorkspaceManager] Added workspace test (f567f15e-a828-4105-a9e3-8471064b7f3f) to recent. Total: 2
+2026-01-31 03:29:50 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/workspace.json", inode=30358162, flags=11400, id=123608530): is_file, is_inode_meta_mod, is_modified
+2026-01-31 03:29:50 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/workspace.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-01-31 03:29:50 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change

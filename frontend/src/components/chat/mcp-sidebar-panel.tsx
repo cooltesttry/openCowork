@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import * as Tabs from "@radix-ui/react-tabs";
 import { FileExplorer } from "../file-explorer/file-explorer";
+import { useWorkspace } from "@/lib/workspace-store";
 
 interface MCPServer {
     name: string;
@@ -38,6 +39,7 @@ interface McpSidebarPanelProps {
 }
 
 export function McpSidebarPanel({ onMentionFile, onOpenFile, onSelectFile, isPreviewPanelActive }: McpSidebarPanelProps) {
+    const { currentWorkspace } = useWorkspace();
     const [servers, setServers] = useState<MCPServer[]>([]);
     const [searchConfig, setSearchConfig] = useState<SearchConfig | null>(null);
     const [imageGenConfig, setImageGenConfig] = useState<ImageGenConfig | null>(null);
@@ -487,6 +489,7 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onSelectFile, isPre
                         onOpenFile={onOpenFile}
                         onSelectFile={onSelectFile}
                         isPreviewPanelActive={isPreviewPanelActive}
+                        workspaceId={currentWorkspace?.id}
                     />
                 </Tabs.Content>
             </Tabs.Root>

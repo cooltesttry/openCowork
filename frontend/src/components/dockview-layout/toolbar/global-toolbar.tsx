@@ -3,9 +3,9 @@
 import { useChat } from '@/lib/store';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
-import { PanelRightClose, PanelRightOpen, Settings } from 'lucide-react';
+import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { SessionSidebarToggle } from '@/components/chat/session-sidebar-new';
-import Link from 'next/link';
+import { SettingsDialog } from '@/components/settings/settings-dialog';
 
 export function GlobalToolbar() {
     const { isProcessing, isSidebarOpen, setIsSidebarOpen, isSessionSidebarOpen, setIsSessionSidebarOpen } = useChat();
@@ -39,11 +39,7 @@ export function GlobalToolbar() {
                     {isSidebarOpen ? <PanelRightClose className="h-5 w-5" /> : <PanelRightOpen className="h-5 w-5" />}
                 </Button>
                 <ThemeToggle />
-                <Link href="/settings">
-                    <Button variant="ghost" size="icon">
-                        <Settings className="h-5 w-5" />
-                    </Button>
-                </Link>
+                <SettingsDialog />
             </div>
         </header>
     );
