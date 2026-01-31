@@ -337,6 +337,7 @@ class SearchIndex:
         vec_enabled = False
         if use_vector:
             vec_enabled = self._load_vec_extension(conn)
+        self._init_schema(conn, vec_enabled)
         embedder = EmbeddingProvider(self.model_path, self.embedding_server_url) if vec_enabled else None
         vector_available = (
             vec_enabled

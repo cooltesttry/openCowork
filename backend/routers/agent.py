@@ -713,12 +713,19 @@ async def websocket_multiplexed(websocket: WebSocket):
         user_msg = SessionMessage.create(role="user", content=message.content)
         storage_session.add_message(user_msg)
         save_session_func(storage_session)
-        
+
         # Determine effective settings
         effective_endpoint = message.endpoint_name or settings.model.selected_endpoint
         effective_model = message.model_name or settings.model.model_name
         resume_sdk_session_id = storage_session.sdk_session_id
-        
+
+        # Determine effective cwd: prefer workspace path, then message.cwd, then settings
+        effective_cwd = message.cwd
+        if workspace_storage_obj:
+            # Use workspace path as cwd when in workspace mode
+            effective_cwd = str(workspace_storage_obj.workspace_path)
+            logger.info(f"[Multiplexed] Using workspace path as cwd: {effective_cwd}")
+
         # Create the task coroutine
         async def task_coroutine():
             """Generator that yields events from session_manager.stream_message."""
@@ -730,7 +737,7 @@ async def websocket_multiplexed(websocket: WebSocket):
                 model_name=effective_model,
                 websocket=websocket,  # For can_use_tool callbacks
                 resume_sdk_session_id=resume_sdk_session_id,
-                cwd=message.cwd,
+                cwd=effective_cwd,
                 security_mode=message.security_mode,
             )
             

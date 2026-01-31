@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from core.workspace_storage import WorkspaceManager
 from models.workspace import WorkspaceConfig, MCPServerConfig
+from routers.config import save_workdir
 
 
 logger = logging.getLogger(__name__)
@@ -113,9 +114,10 @@ async def open_workspace(request: Request, body: OpenWorkspaceRequest):
     manager = get_workspace_manager(request)
     workspace = manager.open_workspace(str(path), body.name)
 
-    # Update app settings with new workdir
+    # Update app settings with new workdir and sync to config.json
     settings = request.app.state.settings
     settings.default_workdir = str(path)
+    save_workdir(str(path))
 
     return {"workspace": workspace.to_dict()}
 
@@ -132,9 +134,10 @@ async def switch_workspace(request: Request, workspace_id: str):
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    # Update app settings with new workdir
+    # Update app settings with new workdir and sync to config.json
     settings = request.app.state.settings
     settings.default_workdir = workspace.path
+    save_workdir(workspace.path)
 
     return {"workspace": workspace.to_dict()}
 

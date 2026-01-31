@@ -96,6 +96,12 @@ async def lifespan(app: FastAPI):
     # Initialize workspace manager
     app.state.workspace_manager = WorkspaceManager(CONFIG_FILE)
 
+    # Restore default_workdir from current workspace (if any)
+    current_ws = app.state.workspace_manager.get_current_workspace()
+    if current_ws:
+        app.state.settings.default_workdir = current_ws.path
+        logging.info(f"[Lifespan] Restored workdir from current workspace: {current_ws.path}")
+
     # Ensure default workspace exists and migrate legacy sessions
     default_ws = app.state.workspace_manager.ensure_default_workspace(
         app.state.settings.default_workdir
@@ -115,12 +121,13 @@ async def lifespan(app: FastAPI):
         logging.info(f"[Lifespan] File watcher started for: {app.state.settings.default_workdir}")
     
     yield
-    
+
     # Cleanup on shutdown
     await file_watcher_service.stop()
     await task_runner.stop()
     await session_manager.stop()
-    save_settings(app.state.settings)
+    # Note: Settings are NOT auto-saved on shutdown.
+    # Only explicit user saves should persist to config.json.
 
 
 # Create FastAPI app

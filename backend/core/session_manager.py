@@ -294,14 +294,14 @@ class SessionManager:
         return can_use_tool
     
     async def stream_message(
-        self, 
-        session: ManagedSession, 
+        self,
+        session: ManagedSession,
         message: str,
         security_mode: Optional[str] = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """
         Send a message and stream the response with incremental events.
-        
+
         Yields StreamEvents including:
         - text_start/delta/end
         - tool_input_start/delta/end
@@ -313,11 +313,32 @@ class SessionManager:
         if not session.client:
             yield StreamEvent(type=StreamEventType.ERROR.value, content="Session not initialized")
             return
-        
+
         # Start client if not already started
         if not session.is_started:
-            await session.client.__aenter__()
-            session.is_started = True
+            try:
+                await session.client.__aenter__()
+                session.is_started = True
+            except Exception as e:
+                # If resume failed, try without resume
+                if session.sdk_session_id:
+                    logger.warning(f"[SessionManager] Resume failed (sdk_session_id={session.sdk_session_id}), retrying without resume: {e}")
+                    # Clear the resume ID and recreate client
+                    session.sdk_session_id = None
+                    if session.client.options:
+                        session.client.options.resume = None
+                    # Try again without resume
+                    try:
+                        await session.client.__aenter__()
+                        session.is_started = True
+                    except Exception as e2:
+                        logger.error(f"[SessionManager] Failed to start client even without resume: {e2}")
+                        yield StreamEvent(type=StreamEventType.ERROR.value, content=f"Failed to start session: {e2}")
+                        return
+                else:
+                    logger.error(f"[SessionManager] Failed to start client: {e}")
+                    yield StreamEvent(type=StreamEventType.ERROR.value, content=f"Failed to start session: {e}")
+                    return
         
         # Apply security_mode dynamically using SDK's set_permission_mode
         if security_mode and security_mode != session.security_mode:

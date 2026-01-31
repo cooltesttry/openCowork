@@ -26,6 +26,26 @@ def save_settings(settings: AppSettings) -> None:
         json.dump(settings.model_dump(), f, indent=2)
 
 
+def save_workdir(workdir: str) -> None:
+    """Only update default_workdir in config file, preserving all other settings."""
+    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Load existing config
+    config_data = {}
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                config_data = json.load(f)
+        except Exception:
+            pass
+
+    # Update only default_workdir
+    config_data["default_workdir"] = workdir
+
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config_data, f, indent=2)
+
+
 # ============== Full Settings ==============
 
 @router.get("/", response_model=AppSettings)

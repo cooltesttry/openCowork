@@ -3,7 +3,7 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { Message, MessageBlock, AgentStep } from '@/lib/types';
 import { sessionClient, AskUserContent, StreamEvent } from '@/lib/websocket';
-import { sessionsApi } from '@/lib/sessions-api';
+import { sessionsApi, setWorkspaceMode } from '@/lib/sessions-api';
 import { useChat } from '@/lib/store';
 import { useWorkspace } from '@/lib/workspace-store';
 import { toast } from 'sonner';
@@ -236,18 +236,36 @@ export function useChatLogic() {
             });
             if (isCurrentSession) {
                 setIsProcessing(false);
-                // Mark current turn message as not streaming
-                setMessages(prev => prev.map(msg =>
-                    msg.id.startsWith(`current-turn-${sessionId}`)
-                        ? { ...msg, isStreaming: false }
-                        : msg
-                ));
+                // Mark current turn message as not streaming and update block statuses
+                setMessages(prev => prev.map(msg => {
+                    if (msg.id.startsWith(`current-turn-${sessionId}`)) {
+                        // Update all executing/streaming blocks to success
+                        const updatedBlocks = msg.blocks?.map(block => {
+                            if (block.status === 'executing' || block.status === 'streaming') {
+                                return { ...block, status: 'success' as const };
+                            }
+                            return block;
+                        });
+                        return {
+                            ...msg,
+                            blocks: updatedBlocks,
+                            isStreaming: false
+                        };
+                    }
+                    return msg;
+                }));
                 sessionsApi.markRead(sessionId).catch(err =>
                     console.warn(`Failed to mark session ${sessionId} as read:`, err)
                 );
             }
             // Refresh session list to update title (backend may have auto-generated title)
             loadSessions();
+            refreshWorkspaceSessions();
+            // Also refresh after a delay to catch title updates from backend
+            setTimeout(() => {
+                loadSessions();
+                refreshWorkspaceSessions();
+            }, 500);
             return;
         } else if (event.type === 'error') {
             console.log(`[handleGlobalEvent] Error event for ${sessionId}: ${event.content?.message}`);
@@ -278,7 +296,9 @@ export function useChatLogic() {
                     return;
                 }
                 // Also check if resume state is still valid for this session
-                if (resumeSessionStateRef.current?.sessionId !== sessionId) {
+                // If resumeSessionStateRef is null, the session has ended (done event received)
+                if (!resumeSessionStateRef.current || resumeSessionStateRef.current.sessionId !== sessionId) {
+                    // console.log(`[handleGlobalEvent] Resume state no longer valid, session may have ended`);
                     return;
                 }
 
@@ -304,7 +324,7 @@ export function useChatLogic() {
                 }
             });
         }
-    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions]);
+    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, refreshWorkspaceSessions]);
 
     // Stable wrapper that always calls the latest handler
     const handleGlobalEvent = useCallback((event: StreamEvent) => {
@@ -461,6 +481,12 @@ export function useChatLogic() {
         // Only update UI if this is the current session - prevents background sessions
         // from affecting the displayed messages and causing scroll/lag issues
         if (sessionId !== currentSessionIdRef.current) {
+            return;
+        }
+        // Also check if resume state is still valid - if it's null, session has ended
+        // and we shouldn't update the message (this prevents overwriting isStreaming: false)
+        if (!resumeSessionStateRef.current || resumeSessionStateRef.current.sessionId !== sessionId) {
+            console.log(`[appendCurrentTurnFromEvents] Skipping - resume state invalid for session ${sessionId}`);
             return;
         }
         if (!events || events.length === 0) return;
@@ -836,6 +862,9 @@ export function useChatLogic() {
 
     // Initialize connection, load sessions, and setup recovery
     useEffect(() => {
+        // Sync workspace mode to sessionsApi at initialization
+        setWorkspaceMode(currentWorkspace?.id || null);
+
         // Connect to WebSocket
         sessionClient.connect().catch((err) => {
             console.warn('Session WebSocket connection failed, will retry on message send', err);
@@ -865,6 +894,39 @@ export function useChatLogic() {
             sessionClient.setGlobalHandler(() => { }); // Clear global handler
         };
     }, [loadSessions, recoverAllSessions, handleGlobalEvent, currentWorkspace]);
+
+    // Track previous workspace ID to detect workspace changes
+    const prevWorkspaceIdRef = useRef<string | null | undefined>(undefined);
+
+    // Handle workspace changes - clean up state and sync workspace mode
+    useEffect(() => {
+        const currentWorkspaceId = currentWorkspace?.id;
+        const prevWorkspaceId = prevWorkspaceIdRef.current;
+
+        // Always sync workspace mode to sessionsApi (including initial mount)
+        setWorkspaceMode(currentWorkspaceId || null);
+
+        // Handle workspace change (skip on initial mount when prevWorkspaceId is undefined)
+        if (prevWorkspaceId !== undefined && prevWorkspaceId !== currentWorkspaceId) {
+            console.log(`[useChatLogic] Workspace changed: ${prevWorkspaceId} -> ${currentWorkspaceId}`);
+
+            // IMPORTANT: Clear messages immediately when workspace changes
+            // This prevents old workspace messages from being shown in the new workspace
+            // The workspace session callback will then load the correct messages
+            setMessages([]);
+            setSteps([]);
+            setIsProcessing(false);
+
+            // Clear current turn state (belongs to old session)
+            currentTurnStateRef.current = null;
+            resumeSessionStateRef.current = null;
+
+            // Reset the current session ID ref since we're in a new workspace
+            currentSessionIdRef.current = null;
+        }
+
+        prevWorkspaceIdRef.current = currentWorkspaceId;
+    }, [currentWorkspace?.id, setMessages, setSteps, setIsProcessing]);
 
     // Load session messages when currentSessionId changes
     // NOTE: For running sessions, handleSelectSession already handles loading with proper sequencing.
@@ -953,8 +1015,27 @@ export function useChatLogic() {
             // console.log(`[handleSelectSession] Loading history for session: ${id}`);
             await loadSessionMessages(id);
 
-            // Step 2: If running, append current turn events and subscribe
-            if (sessionStatus.status === 'running') {
+            // Step 2: Fetch fresh session status from backend
+            // This is crucial because local status may be stale (e.g., after returning from Settings page)
+            let isRunning = sessionStatus.status === 'running';
+            try {
+                const activeStatuses = await sessionsApi.getActiveStatus();
+                const freshStatus = activeStatuses[id];
+                if (freshStatus) {
+                    isRunning = freshStatus.status === 'running';
+                    // Update local status cache
+                    setSessionStatus(id, {
+                        status: freshStatus.status as 'idle' | 'running' | 'error',
+                        hasUnread: freshStatus.has_unread,
+                        error: freshStatus.error || undefined,
+                    });
+                }
+            } catch (err) {
+                console.warn('[handleSelectSession] Failed to fetch fresh status, using cached:', err);
+            }
+
+            // Step 3: If running, append current turn events and subscribe
+            if (isRunning) {
                 // console.log(`[handleSelectSession] Session is running, loading current turn events...`);
 
                 try {
@@ -962,19 +1043,20 @@ export function useChatLogic() {
                     const eventsData = await sessionsApi.getEvents(id);
                     // console.log(`[handleSelectSession] Got ${eventsData.events?.length || 0} current turn events`);
 
-                    // Append current turn to messages (not replace) - this does the "fast-forward"
-                    if (eventsData.events && eventsData.events.length > 0) {
-                        appendCurrentTurnFromEvents(eventsData.events, id);
-                    }
-
-                    // Step 3: Set resume state so handleGlobalEvent processes content events
+                    // Set resume state BEFORE calling appendCurrentTurnFromEvents
+                    // This is required because appendCurrentTurnFromEvents checks resumeSessionStateRef
                     resumeSessionStateRef.current = {
                         sessionId: id,
                         assistantMessageId: `current-turn-${id}`,  // Prefix used by appendCurrentTurnFromEvents
                         processedEventCount: eventsData.events?.length || 0,  // Track how many events we've processed
                     };
 
-                    // Step 4: Subscribe for live updates using global handler
+                    // Append current turn to messages (not replace) - this does the "fast-forward"
+                    if (eventsData.events && eventsData.events.length > 0) {
+                        appendCurrentTurnFromEvents(eventsData.events, id);
+                    }
+
+                    // Subscribe for live updates using global handler
                     sessionClient.subscribe(id, handleGlobalEvent);
                     // console.log(`[handleSelectSession] Subscribed for live updates: ${id}`);
                 } catch (err) {
@@ -1017,15 +1099,15 @@ export function useChatLogic() {
     // This bridges the workspace store with the chat logic
     useEffect(() => {
         const unsubscribe = registerSessionChangeCallback((sessionId: string, workspaceId: string) => {
-            // Only handle if session actually changed
-            const currentId = currentSessionIdRef.current;
-            console.log(`[WorkspaceCallback] sessionId=${sessionId}, currentId=${currentId}`);
-            if (sessionId !== currentId) {
-                // When switching sessions during streaming, we should:
-                // 1. Update the session ID ref immediately
-                // 2. Load the new session's messages
-                // The streaming callback will detect the ID change and skip UI updates
+            // CRITICAL: Update sessionsApi workspace mode BEFORE loading session messages
+            // This ensures API calls use the correct workspace
+            setWorkspaceMode(workspaceId || null);
 
+            const currentId = currentSessionIdRef.current;
+            console.log(`[WorkspaceCallback] sessionId=${sessionId}, workspaceId=${workspaceId}, currentId=${currentId}`);
+
+            // Only process if session actually changed to avoid infinite loops
+            if (sessionId !== currentId) {
                 // Check if the OLD session (currentId) is running
                 // We still want to allow switching away from it
                 if (currentId && isProcessingRef.current) {

@@ -35,6 +35,10 @@ class WorkspaceStorage:
         self.data_dir = self.workspace_path / OPENCOWORK_DIR
         self.sessions_dir = self.data_dir / "sessions"
         self.memory_dir = self.data_dir / "memory"
+        # Claude Agent SDK directories
+        self.claude_dir = self.workspace_path / ".claude"
+        self.skills_dir = self.claude_dir / "skills"
+        self.commands_dir = self.claude_dir / "commands"
         self._workspace: Optional[Workspace] = None
         self._config: Optional[WorkspaceConfig] = None
 
@@ -59,15 +63,21 @@ class WorkspaceStorage:
         Initialize workspace storage.
 
         Creates the .opencowork/ directory structure and workspace.json.
+        Also creates .claude/skills/ and .claude/commands/ for Claude Agent SDK.
         If already initialized, returns existing workspace.
         """
         if self.exists():
+            # Ensure Claude SDK directories exist even for existing workspaces
+            self._ensure_claude_directories()
             return self.get_workspace()
 
         # Create directory structure
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.sessions_dir.mkdir(exist_ok=True)
         self.memory_dir.mkdir(exist_ok=True)
+
+        # Create Claude Agent SDK directories
+        self._ensure_claude_directories()
 
         # Create workspace metadata
         workspace = Workspace.create(str(self.workspace_path), name)
@@ -82,6 +92,16 @@ class WorkspaceStorage:
 
         logger.info(f"Initialized workspace: {workspace.name} at {self.workspace_path}")
         return workspace
+
+    def _ensure_claude_directories(self) -> None:
+        """Create Claude Agent SDK directories (.claude/skills/, .claude/commands/)."""
+        try:
+            self.claude_dir.mkdir(exist_ok=True)
+            self.skills_dir.mkdir(exist_ok=True)
+            self.commands_dir.mkdir(exist_ok=True)
+            logger.debug(f"Ensured Claude SDK directories at {self.claude_dir}")
+        except Exception as e:
+            logger.warning(f"Failed to create Claude SDK directories: {e}")
 
     def get_workspace(self) -> Optional[Workspace]:
         """Get workspace metadata."""
@@ -301,46 +321,46 @@ class WorkspaceManager:
     """
     Manages multiple workspaces and the global workspace registry.
 
-    The registry is stored in storage/config.json under the "workspaces" key.
+    The registry is stored in storage/workspaces.json (separate from config.json).
     """
 
     def __init__(self, global_config_path: Path):
-        self.global_config_path = global_config_path
+        # global_config_path points to storage/config.json
+        # We use storage/workspaces.json for workspace data
+        self.storage_dir = global_config_path.parent
+        self.workspaces_file = self.storage_dir / "workspaces.json"
         self._storage_cache: dict[str, WorkspaceStorage] = {}
 
-    def _load_global_config(self) -> dict:
-        """Load global config file."""
-        if not self.global_config_path.exists():
-            return {}
+    def _load_workspaces_file(self) -> dict:
+        """Load workspaces.json file."""
+        if not self.workspaces_file.exists():
+            return {"recent": [], "current_workspace_id": None}
 
         try:
-            with open(self.global_config_path, "r", encoding="utf-8") as f:
+            with open(self.workspaces_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            logger.error(f"Failed to load global config: {e}")
-            return {}
+            logger.error(f"Failed to load workspaces.json: {e}")
+            return {"recent": [], "current_workspace_id": None}
 
-    def _save_global_config(self, config: dict) -> bool:
-        """Save global config file."""
+    def _save_workspaces_file(self, data: dict) -> bool:
+        """Save workspaces.json file."""
         try:
-            self.global_config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.global_config_path, "w", encoding="utf-8") as f:
-                json.dump(config, f, ensure_ascii=False, indent=2)
+            self.storage_dir.mkdir(parents=True, exist_ok=True)
+            with open(self.workspaces_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
             return True
         except Exception as e:
-            logger.error(f"Failed to save global config: {e}")
+            logger.error(f"Failed to save workspaces.json: {e}")
             return False
 
     def _get_workspaces_config(self) -> dict:
-        """Get workspaces section from global config."""
-        config = self._load_global_config()
-        return config.get("workspaces", {"recent": [], "current_workspace_id": None})
+        """Get workspaces config."""
+        return self._load_workspaces_file()
 
     def _save_workspaces_config(self, workspaces_config: dict) -> bool:
-        """Save workspaces section to global config."""
-        config = self._load_global_config()
-        config["workspaces"] = workspaces_config
-        return self._save_global_config(config)
+        """Save workspaces config."""
+        return self._save_workspaces_file(workspaces_config)
 
     def get_recent_workspaces(self) -> List[dict]:
         """Get list of recent workspaces."""
@@ -402,6 +422,9 @@ class WorkspaceManager:
         ws_config = self._get_workspaces_config()
         recent = ws_config.get("recent", [])
 
+        # Log current state
+        logger.debug(f"[WorkspaceManager] Adding workspace {workspace.id} to recent. Current count: {len(recent)}")
+
         # Remove existing entry with same path or id
         recent = [
             w for w in recent
@@ -413,7 +436,12 @@ class WorkspaceManager:
 
         # Keep only last 20
         ws_config["recent"] = recent[:20]
-        self._save_workspaces_config(ws_config)
+        success = self._save_workspaces_config(ws_config)
+
+        if success:
+            logger.info(f"[WorkspaceManager] Added workspace {workspace.name} ({workspace.id}) to recent. Total: {len(ws_config['recent'])}")
+        else:
+            logger.error(f"[WorkspaceManager] FAILED to save workspace {workspace.id} to recent list!")
 
     def remove_from_recent(self, workspace_id: str) -> bool:
         """Remove workspace from recent list (does not delete data)."""
@@ -450,6 +478,12 @@ class WorkspaceManager:
     def switch_workspace(self, workspace_id: str) -> Optional[Workspace]:
         """Switch to a workspace by ID."""
         storage = self.get_storage_by_id(workspace_id)
+
+        # If not found in recent list, try to find by scanning known workspace directories
+        if not storage:
+            logger.warning(f"[WorkspaceManager] Workspace {workspace_id} not in recent list, scanning disk...")
+            storage = self._find_workspace_on_disk(workspace_id)
+
         if not storage:
             return None
 
@@ -461,6 +495,43 @@ class WorkspaceManager:
             self.set_current_workspace_id(workspace_id)
 
         return workspace
+
+    def _find_workspace_on_disk(self, workspace_id: str) -> Optional[WorkspaceStorage]:
+        """
+        Fallback: scan common directories for a workspace with matching ID.
+        This handles cases where workspace exists on disk but was removed from recent list.
+        """
+        import os
+
+        # Directories to scan for workspaces
+        scan_dirs = [
+            os.path.expanduser("~/Documents"),
+            os.path.expanduser("~/Projects"),
+            os.path.expanduser("~/Desktop"),
+            os.path.expanduser("~"),
+        ]
+
+        for scan_dir in scan_dirs:
+            if not os.path.isdir(scan_dir):
+                continue
+
+            try:
+                for entry in os.scandir(scan_dir):
+                    if entry.is_dir():
+                        workspace_json = os.path.join(entry.path, OPENCOWORK_DIR, "workspace.json")
+                        if os.path.exists(workspace_json):
+                            try:
+                                with open(workspace_json, "r", encoding="utf-8") as f:
+                                    data = json.load(f)
+                                    if data.get("id") == workspace_id:
+                                        logger.info(f"[WorkspaceManager] Found workspace {workspace_id} at {entry.path}")
+                                        return self.get_storage(entry.path)
+                            except Exception as e:
+                                logger.debug(f"Error reading {workspace_json}: {e}")
+            except PermissionError:
+                continue
+
+        return None
 
     def ensure_default_workspace(self, default_workdir: Optional[str]) -> Optional[Workspace]:
         """

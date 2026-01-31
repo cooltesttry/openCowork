@@ -229,6 +229,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (!currentWorkspace) {
             setSessions([]);
+            currentSessionIdRef.current = null;
             setCurrentSessionId(null);
             return;
         }
@@ -239,22 +240,25 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 const sessionList = await fetchWorkspaceSessions(currentWorkspace.id);
                 setSessions(sessionList);
 
-                // Check if current session exists in the list
-                const currentExists = currentSessionId && sessionList.some(s => s.id === currentSessionId);
+                // Use ref to get the most current session ID (not stale closure value)
+                const currentId = currentSessionIdRef.current;
+                const currentExists = currentId && sessionList.some(s => s.id === currentId);
+
+                console.log(`[workspace-store] loadSessions: currentId=${currentId}, exists=${currentExists}, sessions=${sessionList.length}`);
 
                 if (currentExists) {
-                    // Session exists, update ref and notify listeners (for initial load from localStorage)
-                    currentSessionIdRef.current = currentSessionId;
+                    // Session exists in this workspace, notify listeners
                     sessionChangeCallbacksRef.current.forEach(callback => {
                         try {
-                            callback(currentSessionId!, currentWorkspace.id);
+                            callback(currentId!, currentWorkspace.id);
                         } catch (e) {
                             console.error('Session change callback error:', e);
                         }
                     });
                 } else if (sessionList.length > 0) {
-                    // Session doesn't exist or none selected, auto-select first
+                    // Session doesn't exist in this workspace or none selected, auto-select first
                     const firstSessionId = sessionList[0].id;
+                    console.log(`[workspace-store] Auto-selecting first session: ${firstSessionId}`);
                     // Update ref BEFORE triggering callbacks
                     currentSessionIdRef.current = firstSessionId;
                     setCurrentSessionId(firstSessionId);
@@ -267,7 +271,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         }
                     });
                 } else {
-                    // No sessions, clear selection
+                    // No sessions in this workspace, clear selection
+                    console.log(`[workspace-store] No sessions in workspace, clearing selection`);
                     currentSessionIdRef.current = null;
                     setCurrentSessionId(null);
                 }
@@ -281,8 +286,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }, [currentWorkspace?.id]);
 
     // Load session detail when current session changes
+    // Only load if session exists in the current sessions list (avoids race condition)
     useEffect(() => {
         if (!currentWorkspace || !currentSessionId) {
+            setCurrentSessionDetail(null);
+            return;
+        }
+
+        // Check if the session exists in current sessions list before fetching
+        const sessionExists = sessions.some(s => s.id === currentSessionId);
+        if (!sessionExists) {
             setCurrentSessionDetail(null);
             return;
         }
@@ -297,7 +310,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
         };
         loadDetail();
-    }, [currentWorkspace?.id, currentSessionId]);
+    }, [currentWorkspace?.id, currentSessionId, sessions]);
 
     const refreshWorkspaces = useCallback(async () => {
         try {
