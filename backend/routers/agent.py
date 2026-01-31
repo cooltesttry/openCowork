@@ -4,6 +4,7 @@ Agent WebSocket router for real-time streaming.
 import asyncio
 import json
 import logging
+import time
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request
@@ -754,7 +755,40 @@ async def websocket_multiplexed(websocket: WebSocket):
             # Thinking content accumulator for streaming thinking events
             thinking_content = ""
             thinking_block_index = -1
+            text_block_index = -1
+            text_block_content = ""
+            text_streaming_active = False
+            last_text_streaming = None
+            tool_blocks_in_order = []
             event_count = 0
+            # Streaming persistence state
+            assistant_msg: Optional[SessionMessage] = None
+            last_persist = time.monotonic()
+            last_persist_event = 0
+            persist_interval = 0.5
+            persist_event_interval = 50
+
+            def persist_partial(force: bool = False) -> None:
+                nonlocal assistant_msg, last_persist, last_persist_event
+                if assistant_msg is None and not (assistant_content or all_blocks):
+                    return
+                now = time.monotonic()
+                if not force and (now - last_persist) < persist_interval and (event_count - last_persist_event) < persist_event_interval:
+                    return
+                if assistant_msg is None:
+                    assistant_msg = SessionMessage.create(
+                        role="assistant",
+                        content=assistant_content,
+                        blocks=all_blocks if all_blocks else None,
+                    )
+                    storage_session.add_message(assistant_msg)
+                else:
+                    assistant_msg.content = assistant_content
+                    assistant_msg.blocks = all_blocks if all_blocks else None
+                storage_session.updated_at = time.time()
+                save_session_func(storage_session)
+                last_persist = now
+                last_persist_event = event_count
             
             try:
                 async for event in session_manager.stream_message(
@@ -771,41 +805,147 @@ async def websocket_multiplexed(websocket: WebSocket):
                             storage_session.sdk_session_id = content["sdk_session_id"]
                             save_session_func(storage_session)
                     
-                    # Accumulate text
-                    if event_type == "text":
-                        assistant_content += str(event_dict.get("content", ""))
+                    # Streaming text events
+                    if event_type == "text_start":
+                        text_block_content = ""
+                        text_block_index = len(all_blocks)
+                        text_streaming_active = True
                         all_blocks.append({
-                            "id": f"text-{event_count}",
+                            "id": event_dict.get("id") or f"text-{event_count}",
                             "type": "text",
-                            "content": event_dict.get("content", ""),
-                            "status": "success",
+                            "content": "",
+                            "status": "streaming",
                             "metadata": {},
                         })
+                    elif event_type == "text_delta":
+                        delta = str(event_dict.get("content", ""))
+                        if delta:
+                            assistant_content += delta
+                            text_block_content += delta
+                            text_streaming_active = True
+                            if text_block_index >= 0 and text_block_index < len(all_blocks):
+                                all_blocks[text_block_index]["content"] = text_block_content
+                            else:
+                                text_block_index = len(all_blocks)
+                                all_blocks.append({
+                                    "id": event_dict.get("id") or f"text-{event_count}",
+                                    "type": "text",
+                                    "content": text_block_content,
+                                    "status": "streaming",
+                                    "metadata": {},
+                                })
+                    elif event_type == "text_end":
+                        if text_block_index >= 0 and text_block_index < len(all_blocks):
+                            all_blocks[text_block_index]["status"] = "success"
+                        last_text_streaming = text_streaming_active
+                        text_streaming_active = False
+                        text_block_index = -1
+                        text_block_content = ""
+                    # Accumulate completed text block (non-streaming or finalization)
+                    elif event_type == "text":
+                        text_content = str(event_dict.get("content", ""))
+                        if not last_text_streaming:
+                            assistant_content += text_content
+                        # Update last text block if exists, otherwise create
+                        last_text_idx = -1
+                        for i in range(len(all_blocks) - 1, -1, -1):
+                            if all_blocks[i].get("type") == "text":
+                                last_text_idx = i
+                                break
+                        if last_text_idx >= 0:
+                            all_blocks[last_text_idx]["content"] = text_content
+                            all_blocks[last_text_idx]["status"] = "success"
+                        else:
+                            all_blocks.append({
+                                "id": event_dict.get("id") or f"text-{event_count}",
+                                "type": "text",
+                                "content": text_content,
+                                "status": "success",
+                                "metadata": {},
+                            })
+                        last_text_streaming = None
                     
                     # Handle tool_use
+                    elif event_type == "tool_input_start":
+                        block_content = event_dict.get("content", {})
+                        tool_name = block_content.get("name", "")
+                        if tool_name != "AskUserQuestion":
+                            tool_use_id = event_dict.get("id", f"tool-{event_count}")
+                            tool_block = {
+                                "id": f"tool-streaming-{tool_use_id}",
+                                "type": "tool_use",
+                                "content": {
+                                    "name": tool_name,
+                                    "input": {},
+                                    "inputBuffer": "",
+                                },
+                                "status": "streaming",
+                                "metadata": {
+                                    "toolName": tool_name,
+                                    "toolCallId": tool_use_id,
+                                    "isStreaming": True,
+                                },
+                            }
+                            tool_block_indices[tool_use_id] = len(all_blocks)
+                            tool_blocks_in_order.append(len(all_blocks))
+                            all_blocks.append(tool_block)
+                    elif event_type == "tool_input_delta":
+                        tool_use_id = event_dict.get("id")
+                        if tool_use_id and tool_use_id in tool_block_indices:
+                            idx = tool_block_indices[tool_use_id]
+                            input_buffer = all_blocks[idx]["content"].get("inputBuffer", "")
+                            all_blocks[idx]["content"]["inputBuffer"] = input_buffer + str(event_dict.get("content", ""))
+                    elif event_type == "tool_input_end":
+                        tool_use_id = event_dict.get("id")
+                        if tool_use_id and tool_use_id in tool_block_indices:
+                            idx = tool_block_indices[tool_use_id]
+                            all_blocks[idx]["status"] = "executing"
+                            all_blocks[idx]["metadata"] = {
+                                **(all_blocks[idx].get("metadata") or {}),
+                                "isStreaming": False,
+                            }
                     elif event_type == "tool_use":
                         block_content = event_dict.get("content", {})
                         tool_use_id = block_content.get("id", f"tool-{event_count}")
-                        tool_block = {
-                            "id": tool_use_id,
-                            "type": "tool_use",
-                            "content": {
-                                "name": block_content.get("name", ""),
+                        tool_name = block_content.get("name", "")
+                        if tool_name == "AskUserQuestion":
+                            pass
+                        elif tool_use_id in tool_block_indices:
+                            idx = tool_block_indices[tool_use_id]
+                            all_blocks[idx]["content"] = {
+                                "name": tool_name,
                                 "input": block_content.get("input", {}),
-                            },
-                            "status": "running",
-                            "metadata": {"toolName": block_content.get("name", "")},
-                        }
-                        tool_block_indices[tool_use_id] = len(all_blocks)
-                        all_blocks.append(tool_block)
+                            }
+                            all_blocks[idx]["status"] = "executing"
+                            all_blocks[idx]["metadata"] = {
+                                **(all_blocks[idx].get("metadata") or {}),
+                                "toolName": tool_name,
+                                "toolCallId": tool_use_id,
+                                "isStreaming": False,
+                            }
+                        else:
+                            tool_block = {
+                                "id": tool_use_id,
+                                "type": "tool_use",
+                                "content": {
+                                    "name": tool_name,
+                                    "input": block_content.get("input", {}),
+                                },
+                                "status": "executing",
+                                "metadata": {"toolName": tool_name, "toolCallId": tool_use_id},
+                            }
+                            tool_block_indices[tool_use_id] = len(all_blocks)
+                            tool_blocks_in_order.append(len(all_blocks))
+                            all_blocks.append(tool_block)
                     
                     # Handle tool_result
                     elif event_type == "tool_result":
                         block_content = event_dict.get("content", {})
                         tool_use_id = block_content.get("tool_use_id", "")
+                        result_value = block_content.get("result", block_content.get("content", ""))
                         if tool_use_id in tool_block_indices:
                             idx = tool_block_indices[tool_use_id]
-                            all_blocks[idx]["content"]["result"] = block_content.get("content", "")
+                            all_blocks[idx]["content"]["result"] = result_value
                             all_blocks[idx]["content"]["is_error"] = block_content.get("is_error", False)
                             all_blocks[idx]["status"] = "error" if block_content.get("is_error") else "success"
                     
@@ -868,6 +1008,7 @@ async def websocket_multiplexed(websocket: WebSocket):
                         })
 
                     yield event_dict
+                    persist_partial()
 
                 # Normalize block statuses before saving (streaming/executing -> success)
                 # This ensures blocks are in final state when loaded from storage
@@ -876,21 +1017,15 @@ async def websocket_multiplexed(websocket: WebSocket):
                         block["status"] = "success"
 
                 # Save assistant response after completion
-                if assistant_content or all_blocks:
-                    assistant_msg = SessionMessage.create(
-                        role="assistant",
-                        content=assistant_content,
-                        blocks=all_blocks if all_blocks else None,
-                    )
-                    storage_session.add_message(assistant_msg)
-                    storage_session.last_model_name = effective_model
-                    storage_session.last_endpoint_name = effective_endpoint or "(legacy)"
-                    save_session_func(storage_session)
+                storage_session.last_model_name = effective_model
+                storage_session.last_endpoint_name = effective_endpoint or "(legacy)"
+                persist_partial(force=True)
                 
                 logger.info(f"[Multiplexed] Task completed for session {session_id}")
                 
             except Exception as e:
                 logger.error(f"[Multiplexed] Task error for session {session_id}: {e}", exc_info=True)
+                persist_partial(force=True)
                 yield {"type": "error", "content": str(e), "metadata": {"error_type": type(e).__name__}}
         
         # Start the background task
@@ -1011,6 +1146,5 @@ async def websocket_multiplexed(websocket: WebSocket):
         for session_id, task in subscriptions.items():
             task.cancel()
         logger.info("[Multiplexed] WebSocket closed, subscriptions cancelled")
-
 
 

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { FolderOpen } from "lucide-react";
+import { FilePickerDialog } from "@/components/ui/file-picker";
 
 interface AgentConfig {
     allowed_tools: string[];
@@ -19,6 +20,7 @@ interface AgentConfig {
 export function AgentConfig() {
     const [config, setConfig] = useState<AgentConfig | null>(null);
     const [loading, setLoading] = useState(true);
+    const [folderPickerOpen, setFolderPickerOpen] = useState(false);
 
     useEffect(() => {
         loadConfig();
@@ -59,15 +61,38 @@ export function AgentConfig() {
                         <FolderOpen className="h-4 w-4" />
                         Default Working Directory
                     </Label>
-                    <Input
-                        value={config.default_workdir || ""}
-                        onChange={(e) => setConfig({ ...config, default_workdir: e.target.value || null })}
-                        placeholder="/path/to/your/project"
-                    />
+                    <div className="flex gap-2">
+                        <Input
+                            value={config.default_workdir || ""}
+                            onChange={(e) => setConfig({ ...config, default_workdir: e.target.value || null })}
+                            placeholder="/path/to/your/project"
+                            className="flex-1"
+                        />
+                        <Button
+                            variant="outline"
+                            onClick={() => setFolderPickerOpen(true)}
+                        >
+                            <FolderOpen className="h-4 w-4 mr-2" />
+                            Browse
+                        </Button>
+                    </div>
                     <p className="text-xs text-muted-foreground">
                         The default working directory for the agent SDK. This is where the agent will execute commands and access files.
                     </p>
                 </div>
+
+                <FilePickerDialog
+                    open={folderPickerOpen}
+                    onOpenChange={setFolderPickerOpen}
+                    mode="select"
+                    type="directory"
+                    title="Select Working Directory"
+                    defaultPath={config.default_workdir || undefined}
+                    onSelect={(path) => {
+                        setConfig({ ...config, default_workdir: path });
+                        toast.success("Directory selected", { description: path });
+                    }}
+                />
 
                 <div className="space-y-2">
                     <Label>Max Turns</Label>

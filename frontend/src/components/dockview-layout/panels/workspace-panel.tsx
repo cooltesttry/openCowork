@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { WorkspaceSidebar } from '@/components/workspace/workspace-sidebar';
 import { useWorkspace } from '@/lib/workspace-store';
 import { useChat } from '@/lib/store';
 import { setWorkspaceMode } from '@/lib/sessions-api';
+import { FilePickerDialog } from '@/components/ui/file-picker';
 
 interface WorkspacePanelContentProps {
     params?: {
@@ -16,6 +17,7 @@ interface WorkspacePanelContentProps {
 }
 
 export function WorkspacePanelContent({ params }: WorkspacePanelContentProps) {
+    const [folderPickerOpen, setFolderPickerOpen] = useState(false);
     const {
         workspaces,
         currentWorkspace,
@@ -39,15 +41,16 @@ export function WorkspacePanelContent({ params }: WorkspacePanelContentProps) {
         setWorkspaceMode(currentWorkspace?.id || null);
     }, [currentWorkspace?.id]);
 
-    const handleOpenFolder = async () => {
-        const path = prompt("Enter folder path:");
-        if (path) {
-            try {
-                await openWorkspace(path);
-            } catch (error) {
-                console.error("Failed to open workspace:", error);
-                alert("Failed to open workspace: " + (error as Error).message);
-            }
+    const handleOpenFolder = () => {
+        setFolderPickerOpen(true);
+    };
+
+    const handleFolderSelected = async (path: string) => {
+        try {
+            await openWorkspace(path);
+        } catch (error) {
+            console.error("Failed to open workspace:", error);
+            alert("Failed to open workspace: " + (error as Error).message);
         }
     };
 
@@ -85,22 +88,32 @@ export function WorkspacePanelContent({ params }: WorkspacePanelContentProps) {
     }));
 
     return (
-        <WorkspaceSidebar
-            workspaces={workspaces}
-            currentWorkspace={currentWorkspace}
-            isWorkspacesLoading={isWorkspacesLoading}
-            onSwitchWorkspace={switchWorkspace}
-            onRemoveWorkspace={removeWorkspace}
-            onOpenFolder={handleOpenFolder}
-            sessions={sessionsWithStatus}
-            currentSessionId={currentSessionId}
-            isSessionsLoading={isSessionsLoading}
-            onNewSession={handleNewSession}
-            onSelectSession={handleSelectSession}
-            onDeleteSession={handleDeleteSession}
-            isOpen={true}
-            onToggle={params?.onToggle || (() => {})}
-            getSessionStatus={getSessionStatus}
-        />
+        <>
+            <WorkspaceSidebar
+                workspaces={workspaces}
+                currentWorkspace={currentWorkspace}
+                isWorkspacesLoading={isWorkspacesLoading}
+                onSwitchWorkspace={switchWorkspace}
+                onRemoveWorkspace={removeWorkspace}
+                onOpenFolder={handleOpenFolder}
+                sessions={sessionsWithStatus}
+                currentSessionId={currentSessionId}
+                isSessionsLoading={isSessionsLoading}
+                onNewSession={handleNewSession}
+                onSelectSession={handleSelectSession}
+                onDeleteSession={handleDeleteSession}
+                isOpen={true}
+                onToggle={params?.onToggle || (() => {})}
+                getSessionStatus={getSessionStatus}
+            />
+            <FilePickerDialog
+                open={folderPickerOpen}
+                onOpenChange={setFolderPickerOpen}
+                mode="select"
+                type="directory"
+                title="Open Folder"
+                onSelect={handleFolderSelected}
+            />
+        </>
     );
 }

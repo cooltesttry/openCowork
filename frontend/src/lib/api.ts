@@ -416,3 +416,58 @@ export async function listSuperAgentSessions(): Promise<{ sessions: SuperAgentSe
     if (!res.ok) throw new Error("Failed to list Super Agent sessions");
     return res.json();
 }
+
+
+// ============== File Picker ==============
+
+export interface CommonDirectory {
+    name: string;
+    path: string;
+    icon: string;
+}
+
+export interface FilePickerItem {
+    name: string;
+    path: string;
+    is_directory: boolean;
+    size: number | null;
+    modified_at: number;
+}
+
+export interface ListFilesAbsoluteResponse {
+    files: FilePickerItem[];
+    current_path: string;
+    parent_path: string | null;
+}
+
+export async function fetchCommonDirectories(): Promise<{ directories: CommonDirectory[] }> {
+    const res = await fetch(`${API_ROOT}/files/common-directories`);
+    if (!res.ok) throw new Error("Failed to fetch common directories");
+    return res.json();
+}
+
+export async function listFilesAbsolute(path: string = "", showHidden: boolean = false): Promise<ListFilesAbsoluteResponse> {
+    const params = new URLSearchParams();
+    if (path) params.append("path", path);
+    if (showHidden) params.append("show_hidden", "true");
+
+    const res = await fetch(`${API_ROOT}/files/list-absolute?${params.toString()}`);
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Failed to list files" }));
+        throw new Error(err.detail || "Failed to list files");
+    }
+    return res.json();
+}
+
+export async function createDirectoryAbsolute(path: string): Promise<{ status: string; path: string }> {
+    const res = await fetch(`${API_ROOT}/files/create-directory`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, is_directory: true }),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Failed to create directory" }));
+        throw new Error(err.detail || "Failed to create directory");
+    }
+    return res.json();
+}

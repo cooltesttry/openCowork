@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useCallback, useRef, useState, useMemo } from 'react';
 import { Message, MessageBlock, AgentStep } from '@/lib/types';
 import { sessionClient, AskUserContent, StreamEvent } from '@/lib/websocket';
 import { sessionsApi, setWorkspaceMode } from '@/lib/sessions-api';
@@ -9,10 +9,13 @@ import { useWorkspace } from '@/lib/workspace-store';
 import { toast } from 'sonner';
 import type { InputAreaRef, SecurityMode } from '@/components/chat/input-area';
 import {
+    createInitialState,
+    processEvent,
     processEvents,
     buildMessageFromState,
     ProcessableEvent,
 } from '@/lib/event-processor';
+import type { EventProcessorState } from '@/lib/event-processor';
 
 /**
  * Shared hook containing all the business logic from ChatPanel
@@ -191,12 +194,36 @@ export function useChatLogic() {
     interface ResumeSessionState {
         sessionId: string;
         assistantMessageId: string;
-        processedEventCount: number;  // Track how many events have been processed to avoid duplication
+        pendingReplaySkip: number; // Skip replayed cached events after a manual fetch
     }
     const resumeSessionStateRef = useRef<ResumeSessionState | null>(null);
-
-    // Ref for appendCurrentTurnFromEvents to use in handleGlobalEvent
-    const appendCurrentTurnFromEventsRef = useRef<(events: unknown[], sessionId: string) => void>(() => { });
+    const processorStateRef = useRef<Map<string, EventProcessorState>>(new Map());
+    const eventRateRef = useRef({ count: 0, lastTs: performance.now() });
+    const subscribedSessionsRef = useRef<Set<string>>(new Set());
+    const CONTENT_EVENT_TYPES = useMemo(
+        () =>
+            new Set([
+                'thinking_start',
+                'thinking_delta',
+                'thinking_end',
+                'thinking',
+                'text_start',
+                'text_delta',
+                'text_end',
+                'text',
+                'tool_use',
+                'tool_result',
+                'tool_input_start',
+                'tool_input_delta',
+                'tool_input_end',
+                'todos',
+                'ask_user',
+                'ask_user_result',
+                'permission_request',
+                'permission_response',
+            ]),
+        []
+    );
 
     // Global event handler for processing events from any session
     // Use a ref to avoid re-render loops when this is used as a dependency
@@ -206,8 +233,21 @@ export function useChatLogic() {
         const sessionId = event.metadata?.session_id;
         if (!sessionId) return;
 
+        subscribedSessionsRef.current.add(sessionId);
+
         const isCurrentSession = sessionId === currentSessionIdRef.current;
         const isResumedSession = resumeSessionStateRef.current?.sessionId === sessionId;
+
+        if (isCurrentSession) {
+            const now = performance.now();
+            const rate = eventRateRef.current;
+            rate.count += 1;
+            if (now - rate.lastTs >= 1000) {
+                console.info(`[chat] event rate: ${rate.count}/s (session ${sessionId})`);
+                rate.count = 0;
+                rate.lastTs = now;
+            }
+        }
 
         // Handle status events (done/error) for ALL sessions
         if (event.type === 'done') {
@@ -217,6 +257,7 @@ export function useChatLogic() {
             if (isResumedSession) {
                 resumeSessionStateRef.current = null;
             }
+            processorStateRef.current.delete(sessionId);
             setSessionStatus(sessionId, {
                 status: 'idle',
                 hasUnread: !isCurrentSession,
@@ -237,6 +278,7 @@ export function useChatLogic() {
             // Refresh session list to update title (backend may have auto-generated title)
             loadSessions();
             refreshWorkspaceSessions();
+            subscribedSessionsRef.current.delete(sessionId);
             // Also refresh after a delay to catch title updates from backend
             setTimeout(() => {
                 loadSessions();
@@ -249,6 +291,7 @@ export function useChatLogic() {
             if (isResumedSession) {
                 resumeSessionStateRef.current = null;
             }
+            processorStateRef.current.delete(sessionId);
             const errorMessage = event.content?.message || 'An error occurred';
             setSessionStatus(sessionId, {
                 status: 'error',
@@ -280,50 +323,46 @@ export function useChatLogic() {
                     return msg;
                 }));
             }
+            subscribedSessionsRef.current.delete(sessionId);
             return;
         }
 
-        // For sessions with resumeState, process content events by fetching from cache
-        // This is the UNIFIED path for both new messages and resumed sessions
+        // For sessions with resumeState, process content events incrementally
         if (isResumedSession && isCurrentSession && resumeSessionStateRef.current) {
-            // console.log(`[handleGlobalEvent] Content event for session: ${sessionId}, fetching events...`);
-            sessionsApi.getEvents(sessionId).then(eventsData => {
-                // IMPORTANT: Re-check if this session is still the current one after async fetch
-                // User may have switched sessions while fetch was in progress
-                if (currentSessionIdRef.current !== sessionId) {
-                    // console.log(`[handleGlobalEvent] Session ${sessionId} no longer current, skipping update`);
-                    return;
-                }
-                // Also check if resume state is still valid for this session
-                // If resumeSessionStateRef is null, the session has ended (done event received)
-                if (!resumeSessionStateRef.current || resumeSessionStateRef.current.sessionId !== sessionId) {
-                    // console.log(`[handleGlobalEvent] Resume state no longer valid, session may have ended`);
-                    return;
-                }
+            if (!CONTENT_EVENT_TYPES.has(event.type as string)) {
+                return;
+            }
 
-                const allEvents = eventsData.events || [];
-                const processedCount = resumeSessionStateRef.current?.processedEventCount || 0;
+            if (resumeSessionStateRef.current.pendingReplaySkip > 0) {
+                resumeSessionStateRef.current.pendingReplaySkip -= 1;
+                return;
+            }
 
-                // Only process new events
-                if (allEvents.length > processedCount) {
-                    // console.log(`[handleGlobalEvent] Processing ${allEvents.length - processedCount} new events (total: ${allEvents.length}, processed: ${processedCount})`);
+            const assistantMessageId = resumeSessionStateRef.current.assistantMessageId;
+            let state = processorStateRef.current.get(sessionId) ?? createInitialState();
+            state = processEvent(state, event, assistantMessageId);
+            processorStateRef.current.set(sessionId, state);
 
-                    // Update the entire message with all events (including new ones)
-                    appendCurrentTurnFromEventsRef.current(allEvents, sessionId);
+            if (!state.blocks.length && !state.textContent) {
+                return;
+            }
 
-                    // Update processed count
-                    if (resumeSessionStateRef.current) {
-                        resumeSessionStateRef.current.processedEventCount = allEvents.length;
-                    }
+            const assistantMessage = buildMessageFromState(state, assistantMessageId, true);
+            setMessages(prev => {
+                const existingIndex = prev.findIndex(m => m.id === assistantMessageId);
+                if (existingIndex >= 0) {
+                    const updated = [...prev];
+                    updated[existingIndex] = {
+                        ...assistantMessage,
+                        id: assistantMessageId,
+                        isStreaming: true,
+                    };
+                    return updated;
                 }
-            }).catch(err => {
-                // Silently ignore errors if session is no longer current (user switched away)
-                if (currentSessionIdRef.current === sessionId) {
-                    console.error(`[handleGlobalEvent] Failed to fetch events for ${sessionId}:`, err);
-                }
+                return [...prev, assistantMessage];
             });
         }
-    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, refreshWorkspaceSessions, loadSessionMessages]);
+    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, refreshWorkspaceSessions, loadSessionMessages, CONTENT_EVENT_TYPES]);
 
     // Stable wrapper that always calls the latest handler
     const handleGlobalEvent = useCallback((event: StreamEvent) => {
@@ -341,7 +380,14 @@ export function useChatLogic() {
 
         const assistantMessageId = `replayed-${sessionId}-${Date.now()}`;
         const state = processEvents(events as ProcessableEvent[], assistantMessageId);
+        processorStateRef.current.set(sessionId, state);
         const assistantMessage = buildMessageFromState(state, assistantMessageId, true);
+
+        resumeSessionStateRef.current = {
+            sessionId,
+            assistantMessageId,
+            pendingReplaySkip: 0,
+        };
 
         setMessages(prev => {
             // Check if we already have a replayed message for this session
@@ -374,6 +420,7 @@ export function useChatLogic() {
         // Use stable ID without timestamp - crucial for avoiding duplicate keys
         const assistantMessageId = `current-turn-${sessionId}`;
         const state = processEvents(events as ProcessableEvent[], assistantMessageId);
+        processorStateRef.current.set(sessionId, state);
         const assistantMessage = buildMessageFromState(state, assistantMessageId, true);
 
         // Append to existing messages (history already loaded)
@@ -391,9 +438,6 @@ export function useChatLogic() {
         setIsProcessing(true);
     }, [setMessages, setIsProcessing]);
 
-    // Keep ref updated so handleGlobalEvent can call this function
-    appendCurrentTurnFromEventsRef.current = appendCurrentTurnFromEvents;
-
     // Recover all running sessions - subscribe to their events
     const recoverAllSessions = useCallback(async () => {
         // console.log('[useChatLogic] Recovering all session states...');
@@ -403,6 +447,7 @@ export function useChatLogic() {
             const activeStatuses = await sessionsApi.getActiveStatus();
 
             // 2. Update statuses and subscribe to running sessions
+            const currentId = currentSessionIdRef.current;
             for (const [sessionId, status] of Object.entries(activeStatuses)) {
                 setSessionStatus(sessionId, {
                     status: status.status as 'idle' | 'running' | 'error',
@@ -412,13 +457,18 @@ export function useChatLogic() {
 
                 // Subscribe to running sessions
                 if (status.status === 'running') {
+                    if (sessionId === currentId) {
+                        continue;
+                    }
                     // console.log(`[useChatLogic] Subscribing to running session: ${sessionId}`);
-                    sessionClient.subscribe(sessionId);
+                    if (!subscribedSessionsRef.current.has(sessionId)) {
+                        sessionClient.subscribe(sessionId);
+                        subscribedSessionsRef.current.add(sessionId);
+                    }
                 }
             }
 
             // 3. If current session is running, load its events
-            const currentId = currentSessionIdRef.current;
             if (currentId) {
                 const currentStatus = activeStatuses[currentId];
                 if (currentStatus?.status === 'running') {
@@ -426,6 +476,13 @@ export function useChatLogic() {
                     const eventsData = await sessionsApi.getEvents(currentId);
                     if (eventsData.events && eventsData.events.length > 0) {
                         rebuildMessagesFromEvents(eventsData.events, currentId);
+                        if (resumeSessionStateRef.current?.sessionId === currentId) {
+                            resumeSessionStateRef.current.pendingReplaySkip = eventsData.events.length;
+                        }
+                    }
+                    if (!subscribedSessionsRef.current.has(currentId)) {
+                        sessionClient.subscribe(currentId);
+                        subscribedSessionsRef.current.add(currentId);
                     }
                 }
             }
@@ -462,6 +519,7 @@ export function useChatLogic() {
         // Set reconnect callback
         sessionClient.setOnReconnect(() => {
             // console.log('[useChatLogic] WebSocket reconnected, recovering sessions...');
+            subscribedSessionsRef.current.clear();
             recoverAllSessions();
         });
 
@@ -495,6 +553,8 @@ export function useChatLogic() {
 
             // Clear resume state (belongs to old session)
             resumeSessionStateRef.current = null;
+            subscribedSessionsRef.current.clear();
+            processorStateRef.current.clear();
 
             // Reset the current session ID ref since we're in a new workspace
             currentSessionIdRef.current = null;
@@ -562,6 +622,10 @@ export function useChatLogic() {
                 if (resumeSessionStateRef.current?.sessionId === currentId) {
                     resumeSessionStateRef.current = null;
                 }
+                processorStateRef.current.delete(currentId);
+                if (prevStatus.status !== 'running') {
+                    subscribedSessionsRef.current.delete(currentId);
+                }
             }
 
             // console.log(`[handleSelectSession] Setting currentSessionIdRef.current = ${id}`);
@@ -620,10 +684,11 @@ export function useChatLogic() {
 
                     // Set resume state BEFORE calling appendCurrentTurnFromEvents
                     // This is required because appendCurrentTurnFromEvents checks resumeSessionStateRef
+                    const wasSubscribed = subscribedSessionsRef.current.has(id);
                     resumeSessionStateRef.current = {
                         sessionId: id,
                         assistantMessageId: `current-turn-${id}`,  // Prefix used by appendCurrentTurnFromEvents
-                        processedEventCount: eventsData.events?.length || 0,  // Track how many events we've processed
+                        pendingReplaySkip: wasSubscribed ? 0 : (eventsData.events?.length || 0),
                     };
 
                     // Append current turn to messages (not replace) - this does the "fast-forward"
@@ -632,7 +697,10 @@ export function useChatLogic() {
                     }
 
                     // Subscribe for live updates (uses global handler via fallback)
-                    sessionClient.subscribe(id);
+                    if (!wasSubscribed) {
+                        sessionClient.subscribe(id);
+                        subscribedSessionsRef.current.add(id);
+                    }
                     // console.log(`[handleSelectSession] Subscribed for live updates: ${id}`);
                 } catch (err) {
                     console.error(`[handleSelectSession] Failed to load events for session ${id}:`, err);
@@ -895,8 +963,9 @@ export function useChatLogic() {
             resumeSessionStateRef.current = {
                 sessionId: originalSessionId,
                 assistantMessageId: assistantMessageId,
-                processedEventCount: 0,
+                pendingReplaySkip: 0,
             };
+            processorStateRef.current.set(originalSessionId, createInitialState());
         }
 
         try {
@@ -944,8 +1013,9 @@ export function useChatLogic() {
                         resumeSessionStateRef.current = {
                             sessionId: eventSessionId,
                             assistantMessageId: newMessageId,
-                            processedEventCount: 0,
+                            pendingReplaySkip: 0,
                         };
+                        processorStateRef.current.set(eventSessionId, createInitialState());
 
                         // Refresh session list to show new item
                         loadSessions();
@@ -964,8 +1034,9 @@ export function useChatLogic() {
                         resumeSessionStateRef.current = {
                             sessionId: eventSessionId,
                             assistantMessageId: assistantMessageId,
-                            processedEventCount: 0,
+                            pendingReplaySkip: 0,
                         };
+                        processorStateRef.current.set(eventSessionId, createInitialState());
 
                         // Refresh session list so user can see the new session and switch back
                         loadSessions();
@@ -1005,6 +1076,7 @@ export function useChatLogic() {
             if (resumeSessionStateRef.current?.sessionId === currentSessionIdRef.current) {
                 resumeSessionStateRef.current = null;
             }
+            subscribedSessionsRef.current.delete(currentSessionIdRef.current || '');
             toast.error('Error', { description: error.message || 'Failed to send message' });
         }
     };

@@ -688,6 +688,128 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# ============ File Picker Endpoints ============
+
+class CommonDirectory(BaseModel):
+    name: str
+    path: str
+    icon: str
+
+
+@router.get("/common-directories")
+async def get_common_directories():
+    """Return common Mac directories for quick access in file picker."""
+    home = Path.home()
+    directories = [
+        {"name": "Home", "path": str(home), "icon": "home"},
+        {"name": "Desktop", "path": str(home / "Desktop"), "icon": "monitor"},
+        {"name": "Documents", "path": str(home / "Documents"), "icon": "file-text"},
+        {"name": "Downloads", "path": str(home / "Downloads"), "icon": "download"},
+        {"name": "Pictures", "path": str(home / "Pictures"), "icon": "image"},
+        {"name": "Music", "path": str(home / "Music"), "icon": "music"},
+        {"name": "Movies", "path": str(home / "Movies"), "icon": "video"},
+    ]
+    # Filter to only existing directories
+    return {"directories": [d for d in directories if Path(d["path"]).exists()]}
+
+
+@router.get("/list-absolute")
+async def list_files_absolute(path: str = "", show_hidden: bool = False):
+    """
+    List files at an absolute path (with security restrictions).
+    Used by file picker dialog to browse the file system.
+    """
+    # Default to home directory if no path provided
+    if not path:
+        path = str(Path.home())
+
+    try:
+        target_path = Path(path).resolve()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid path: {str(e)}")
+
+    # Security check against forbidden directories
+    for forbidden in FORBIDDEN_DIRS:
+        if str(target_path).startswith(forbidden):
+            raise HTTPException(status_code=403, detail="Access denied: System directory")
+
+    if not target_path.exists():
+        raise HTTPException(status_code=404, detail="Directory not found")
+
+    if not target_path.is_dir():
+        raise HTTPException(status_code=400, detail="Path is not a directory")
+
+    results = []
+
+    try:
+        items = sorted(target_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+
+        for item in items:
+            # Skip hidden files unless requested
+            if not show_hidden and item.name.startswith('.'):
+                continue
+
+            try:
+                stat = item.stat()
+                results.append({
+                    "name": item.name,
+                    "path": str(item),
+                    "is_directory": item.is_dir(),
+                    "size": stat.st_size if not item.is_dir() else None,
+                    "modified_at": stat.st_mtime
+                })
+            except (PermissionError, OSError):
+                # Skip files we can't access
+                continue
+
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Get parent path for navigation
+    parent_path = str(target_path.parent) if target_path != target_path.parent else None
+
+    return {
+        "files": results,
+        "current_path": str(target_path),
+        "parent_path": parent_path
+    }
+
+
+@router.post("/create-directory")
+async def create_directory_absolute(request: Request, body: CreateFileRequest):
+    """
+    Create a directory at an absolute path (with security restrictions).
+    Used by file picker dialog to create new folders.
+    """
+    path = body.path
+
+    if not path.startswith('/'):
+        raise HTTPException(status_code=400, detail="Path must be absolute")
+
+    try:
+        target_path = Path(path).resolve()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid path: {str(e)}")
+
+    # Security check
+    for forbidden in FORBIDDEN_DIRS:
+        if str(target_path).startswith(forbidden):
+            raise HTTPException(status_code=403, detail="Access denied: System directory")
+
+    if target_path.exists():
+        raise HTTPException(status_code=409, detail="Directory already exists")
+
+    try:
+        target_path.mkdir(parents=True, exist_ok=False)
+        return {"status": "success", "path": str(target_path)}
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.websocket("/ws/watch")
 async def websocket_file_watch(websocket: WebSocket):
     """
