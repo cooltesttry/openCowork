@@ -103,7 +103,7 @@ async function fetchSessionDetail(workspaceId: string, sessionId: string): Promi
 // ==================== Context ====================
 
 // Session change callback type
-type SessionChangeCallback = (sessionId: string, workspaceId: string) => void;
+type SessionChangeCallback = (sessionId: string | null, workspaceId: string) => void;
 
 interface WorkspaceContextType {
     // Workspaces
@@ -134,6 +134,7 @@ interface WorkspaceContextType {
 
     // Callback registration for external components (e.g., chat panel)
     registerSessionChangeCallback: (callback: SessionChangeCallback) => () => void;
+    startNewSessionDraft: () => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -376,6 +377,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
     }, [currentWorkspace?.id, refreshSessions]);
 
+    const startNewSessionDraft = useCallback(() => {
+        const workspaceId = currentWorkspaceRef.current?.id;
+        if (!workspaceId) return;
+        currentSessionIdRef.current = null;
+        setCurrentSessionId(null);
+        sessionChangeCallbacksRef.current.forEach(callback => {
+            try {
+                callback(null, workspaceId);
+            } catch (e) {
+                console.error('Session change callback error:', e);
+            }
+        });
+    }, []);
+
     const switchSession = useCallback(async (sessionId: string) => {
         // CRITICAL: Update ref IMMEDIATELY before triggering callbacks
         // This ensures registerSessionChangeCallback's immediate trigger uses the correct value
@@ -457,6 +472,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             currentSessionDetail,
             loadSessionDetail,
             registerSessionChangeCallback,
+            startNewSessionDraft,
         }}>
             {children}
         </WorkspaceContext.Provider>

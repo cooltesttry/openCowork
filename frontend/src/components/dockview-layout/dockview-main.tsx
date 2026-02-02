@@ -4,7 +4,7 @@ import { DockviewReact, DockviewReadyEvent, DockviewApi } from 'dockview';
 import 'dockview/dist/styles/dockview.css';
 import { useRef, useEffect, useCallback } from 'react';
 import { useChat } from '@/lib/store';
-import { GlobalToolbar } from './toolbar/global-toolbar';
+import { DocksideToolbars, DOCKSIDE_TOOLBAR_WIDTH } from './toolbar/side-toolbars';
 import { WorkspacePanelContent } from './panels/workspace-panel';
 import { ChatPanelContent } from './panels/chat-panel';
 import { ToolsPanelContent } from './panels/tools-panel';
@@ -15,6 +15,7 @@ import { SearchPanel } from '../panels/search-panel';
 import { AgentsPanel } from '../panels/agents-panel';
 import { SuperAgentPanel } from '../agent/super-agent-panel';
 import { ImageEditorPanel } from './panels/image-editor-panel';
+import { FloatingAudioPlayer } from '@/components/audio/floating-audio-player';
 
 import { useChatLogic } from './useChatLogic';
 import { Toaster, toast } from 'sonner';
@@ -123,6 +124,42 @@ export function DockviewMain() {
             console.error('Error opening file:', error);
             toast.error("Failed to open file in editor");
         }
+    }, []);
+
+    // Handle opening an image in ImageEditor panel
+    const handleOpenInImageEditor = useCallback((imagePath: string) => {
+        if (!apiRef.current) return;
+
+        let imageEditorPanel = apiRef.current.getPanel('image-editor-panel');
+
+        if (!imageEditorPanel) {
+            // Panel doesn't exist, create it
+            const editorPanel = apiRef.current.getPanel('editor-panel');
+            const chatPanel = apiRef.current.getPanel('chat-panel');
+            const referencePanel = editorPanel || chatPanel;
+
+            if (referencePanel) {
+                imageEditorPanel = apiRef.current.addPanel({
+                    id: 'image-editor-panel',
+                    component: 'image-editor',
+                    title: 'Image Editor',
+                    position: { referencePanel: referencePanel, direction: editorPanel ? 'within' : 'right' },
+                    params: {
+                        addImage: imagePath,
+                    }
+                });
+            }
+        } else {
+            // Panel already exists, update addImage parameter
+            imageEditorPanel.update({
+                params: {
+                    addImage: imagePath,
+                }
+            });
+        }
+
+        // Activate the panel
+        imageEditorPanel?.api.setActive();
     }, []);
 
     // Handle opening a file in editor from Preview panel
@@ -464,6 +501,7 @@ export function DockviewMain() {
                     onMentionFile: handleMentionFile,
                     onOpenFile: handleOpenFile,
                     onSelectFile: handleFileSelect,
+                    onOpenImage: handleOpenInImageEditor,
                     isPreviewPanelActive: isPreviewPanelActive
                 }
             });
@@ -515,6 +553,7 @@ export function DockviewMain() {
                         onMentionFile: handleMentionFile,
                         onOpenFile: handleOpenFile,
                         onSelectFile: handleFileSelect,
+                        onOpenImage: handleOpenInImageEditor,
                         isPreviewPanelActive: isPreviewPanelActive
                     }
                 });
@@ -525,7 +564,7 @@ export function DockviewMain() {
         } else if (!isSidebarOpen && toolsPanel) {
             toolsPanel.api.close();
         }
-    }, [isSidebarOpen, handleMentionFile, handleOpenFile, handleFileSelect, isPreviewPanelActive]);
+    }, [isSidebarOpen, handleMentionFile, handleOpenFile, handleFileSelect, handleOpenInImageEditor, isPreviewPanelActive]);
 
     // Handle toggle of workspaces panel
     useEffect(() => {
@@ -567,12 +606,18 @@ export function DockviewMain() {
 
     return (
         <div className="h-screen flex flex-col bg-background">
-            {/* Global Toolbar */}
-            <GlobalToolbar />
 
             {/* Dockview Layout with theme support */}
             {/* min-h-0 is critical: allows flex item to shrink below content's intrinsic size */}
-            <div ref={containerRef} className="flex-1 min-h-0 overflow-hidden">
+            <div
+                ref={containerRef}
+                className="flex-1 min-h-0 overflow-hidden"
+                style={{
+                    paddingLeft: isSessionSidebarOpen ? 0 : DOCKSIDE_TOOLBAR_WIDTH,
+                    paddingRight: isSidebarOpen ? 0 : DOCKSIDE_TOOLBAR_WIDTH,
+                    transition: "padding 200ms ease-out",
+                }}
+            >
                 <div className="h-full w-full">
                     <style jsx global>{`
             /* Increase specificity to override library defaults without !important */
@@ -603,6 +648,8 @@ export function DockviewMain() {
                     />
                 </div>
             </div>
+            <DocksideToolbars toolsPanelWidth={TOOLS_PANEL_WIDTH} />
+            <FloatingAudioPlayer />
             <Toaster />
         </div>
     );

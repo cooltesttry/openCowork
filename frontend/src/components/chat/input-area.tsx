@@ -73,6 +73,7 @@ interface InputAreaProps {
 export interface InputAreaRef {
     focus: () => void;
     addFileReference: (path: string) => void;
+    setValue: (value: string) => void;
 }
 
 export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
@@ -128,6 +129,16 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
         useImperativeHandle(ref, () => ({
             focus: () => {
                 textareaRef.current?.focus();
+            },
+            setValue: (value: string) => {
+                setContent(value);
+                requestAnimationFrame(() => {
+                    if (textareaRef.current) {
+                        textareaRef.current.focus();
+                        const end = value.length;
+                        textareaRef.current.setSelectionRange(end, end);
+                    }
+                });
             },
             addFileReference: async (relativePath: string) => {
                 // Resolve to absolute path and add to attachments

@@ -37,7 +37,7 @@ export function useChatLogic() {
     } = useChat();
 
     // Workspace context for session change notifications
-    const { registerSessionChangeCallback, currentWorkspace, refreshSessions: refreshWorkspaceSessions } = useWorkspace();
+    const { registerSessionChangeCallback, currentWorkspace, refreshSessions: refreshWorkspaceSessions, switchSession: switchWorkspaceSession } = useWorkspace();
 
     // Compute if CURRENT session is processing (for per-session input blocking)
     const isCurrentSessionProcessing = currentSessionId
@@ -88,7 +88,7 @@ export function useChatLogic() {
                     setMessages([]);
                 }
                 // If session exists, do NOT modify currentSessionId - user may have switched
-            } else if (sessionList.length > 0 && !currentActiveId) {
+            } else if (sessionList.length > 0 && !currentActiveId && !isDraftSessionRef.current) {
                 // Initial load - no session selected, pick the first one
                 // console.log('[loadSessions] No active session, setting to first:', sessionList[0].id);
                 currentSessionIdRef.current = sessionList[0].id;
@@ -200,6 +200,7 @@ export function useChatLogic() {
     const processorStateRef = useRef<Map<string, EventProcessorState>>(new Map());
     const eventRateRef = useRef({ count: 0, lastTs: performance.now() });
     const subscribedSessionsRef = useRef<Set<string>>(new Set());
+    const isDraftSessionRef = useRef(false);
     const CONTENT_EVENT_TYPES = useMemo(
         () =>
             new Set([
@@ -584,21 +585,40 @@ export function useChatLogic() {
         }
     }, [currentSessionId, currentWorkspace, loadSessionMessages, getSessionStatus]);
 
-    // Create a new session
-    const handleNewSession = useCallback(async () => {
-        try {
-            const newSession = await sessionsApi.create();
-            setSessions((prev) => [newSession, ...prev]);
-            currentSessionIdRef.current = newSession.id;
-            setCurrentSessionId(newSession.id);
-            setMessages([]);
-            setSteps([]);
-            setTimeout(() => inputAreaRef.current?.focus(), 100);
-        } catch (error) {
-            console.error('Failed to create session:', error);
-            toast.error('Error', { description: 'Failed to create new session' });
+    const switchToDraftSession = useCallback(() => {
+        const currentId = currentSessionIdRef.current;
+        if (currentId) {
+            const currentStatus = getSessionStatus(currentId);
+            if (currentStatus.status === 'running') {
+                setSessionStatus(currentId, {
+                    ...currentStatus,
+                    hasUnread: true,
+                });
+            } else {
+                sessionClient.unsubscribe(currentId);
+                subscribedSessionsRef.current.delete(currentId);
+            }
+
+            if (resumeSessionStateRef.current?.sessionId === currentId) {
+                resumeSessionStateRef.current = null;
+            }
+            processorStateRef.current.delete(currentId);
         }
-    }, [setCurrentSessionId, setMessages, setSessions, setSteps]);
+
+        currentSessionIdRef.current = null;
+        isDraftSessionRef.current = true;
+        setCurrentSessionId(null);
+        setMessages([]);
+        setSteps([]);
+        setIsProcessing(false);
+        isProcessingRef.current = false;
+        setTimeout(() => inputAreaRef.current?.focus(), 100);
+    }, [getSessionStatus, setSessionStatus, setCurrentSessionId, setMessages, setSteps, setIsProcessing]);
+
+    // Create a new session (draft only - actual session created on send)
+    const handleNewSession = useCallback(async () => {
+        switchToDraftSession();
+    }, [switchToDraftSession]);
 
     // Select a session
     // NOTE: Uses currentSessionIdRef.current for comparisons to keep callback stable
@@ -630,6 +650,7 @@ export function useChatLogic() {
 
             // console.log(`[handleSelectSession] Setting currentSessionIdRef.current = ${id}`);
             currentSessionIdRef.current = id;
+            isDraftSessionRef.current = false;
             // console.log(`[handleSelectSession] Ref updated, calling setCurrentSessionId(${id})`);
             setCurrentSessionId(id);
             setSteps([]);
@@ -741,13 +762,18 @@ export function useChatLogic() {
     // When a session is selected in the workspace sidebar, sync to chat state
     // This bridges the workspace store with the chat logic
     useEffect(() => {
-        const unsubscribe = registerSessionChangeCallback((sessionId: string, workspaceId: string) => {
+        const unsubscribe = registerSessionChangeCallback((sessionId: string | null, workspaceId: string) => {
             // CRITICAL: Update sessionsApi workspace mode BEFORE loading session messages
             // This ensures API calls use the correct workspace
             setWorkspaceMode(workspaceId || null);
 
             const currentId = currentSessionIdRef.current;
             // console.log(`[WorkspaceCallback] sessionId=${sessionId}, workspaceId=${workspaceId}, currentId=${currentId}`);
+
+            if (sessionId === null) {
+                switchToDraftSession();
+                return;
+            }
 
             // Only process if session actually changed to avoid infinite loops
             if (sessionId !== currentId) {
@@ -770,7 +796,7 @@ export function useChatLogic() {
         });
 
         return unsubscribe;
-    }, [registerSessionChangeCallback, handleSelectSession, getSessionStatus, setCurrentSessionId]);
+    }, [registerSessionChangeCallback, handleSelectSession, getSessionStatus, setCurrentSessionId, switchToDraftSession]);
 
     // Permission response handler
     const handlePermissionResponse = useCallback((blockId: string, approved: boolean) => {
@@ -914,6 +940,8 @@ export function useChatLogic() {
         // This is used to detect new session creation vs background session events
         const originalSessionId = currentSessionIdRef.current;
 
+        const sentContent = content;
+
         const userMessage: Message = {
             id: crypto.randomUUID(),
             role: 'user',
@@ -935,28 +963,32 @@ export function useChatLogic() {
         }
 
         // Use stable ID for existing sessions so it matches appendCurrentTurnFromEvents
-        // For new sessions (no ID yet), use a temporary random ID that will be updated later
-        let assistantMessageId = originalSessionId
+        // For new sessions (no ID yet), wait until session_id arrives before creating assistant message
+        let assistantMessageId: string | null = originalSessionId
             ? `current-turn-${originalSessionId}`
-            : `temp-${crypto.randomUUID()}`;
+            : null;
+        const pendingEvents: ProcessableEvent[] = [];
+        let backgroundSessionId: string | null = null;
 
-        const thinkingPlaceholderBlock: MessageBlock = {
-            id: `thinking-placeholder-${assistantMessageId}`,
-            type: 'thinking',
-            content: '思考中...',
-            status: 'streaming',
-            metadata: { isPlaceholder: true },
-        };
+        if (assistantMessageId) {
+            const thinkingPlaceholderBlock: MessageBlock = {
+                id: `thinking-placeholder-${assistantMessageId}`,
+                type: 'thinking',
+                content: '思考中...',
+                status: 'streaming',
+                metadata: { isPlaceholder: true },
+            };
 
-        const assistantMessage: Message = {
-            id: assistantMessageId,
-            role: 'assistant',
-            content: '',
-            timestamp: Date.now(),
-            blocks: [thinkingPlaceholderBlock],
-            isStreaming: true,
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
+            const assistantMessage: Message = {
+                id: assistantMessageId,
+                role: 'assistant',
+                content: '',
+                timestamp: Date.now(),
+                blocks: [thinkingPlaceholderBlock],
+                isStreaming: true,
+            };
+            setMessages((prev) => [...prev, assistantMessage]);
+        }
 
         // For existing sessions, set up resumeState immediately so globalHandler can process events
         if (originalSessionId) {
@@ -978,6 +1010,12 @@ export function useChatLogic() {
                 security_mode: securityMode,
             }, (event) => {
                 const eventSessionId = event.metadata?.session_id;
+                let handledEvent = false;
+
+                if (backgroundSessionId && eventSessionId === backgroundSessionId) {
+                    handleGlobalEventRef.current(event);
+                    return;
+                }
 
                 // Debug: Log key events
                 if (event.type === 'start' || event.type === 'done' || event.type === 'error') {
@@ -985,61 +1023,76 @@ export function useChatLogic() {
                 }
 
                 // Handle new session creation (when we started with no session_id)
-                // Key check: only sync session ID if user "is still there" (currentSessionIdRef.current === null)
-                // If user has switched away, this becomes a background session
-                if (eventSessionId && !originalSessionId) {
-                    // Only sync if user hasn't switched away (current is still null)
-                    if (currentSessionIdRef.current === null) {
-                        // console.log(`[handleSend] New session created: ${eventSessionId}`);
+                if (!originalSessionId) {
+                    if (!assistantMessageId) {
+                        if (!eventSessionId) {
+                            if (CONTENT_EVENT_TYPES.has(event.type as string)) {
+                                pendingEvents.push(event as ProcessableEvent);
+                            }
+                            return;
+                        }
 
-                        // Sync session ID - user is still here
-                        currentSessionIdRef.current = eventSessionId;
-                        setCurrentSessionId(eventSessionId);
-                        setSessionStatus(eventSessionId, {
-                            status: 'running',
-                            hasUnread: false,
-                        });
+                        // Adopt new session once session_id arrives
+                        if (isDraftSessionRef.current) {
+                            currentSessionIdRef.current = eventSessionId;
+                            isDraftSessionRef.current = false;
+                            setCurrentSessionId(eventSessionId);
+                            setSessionStatus(eventSessionId, {
+                                status: 'running',
+                                hasUnread: false,
+                            });
+                            if (currentWorkspace) {
+                                switchWorkspaceSession(eventSessionId);
+                            }
+                        } else {
+                            backgroundSessionId = eventSessionId;
+                            setSessionStatus(eventSessionId, {
+                                status: 'running',
+                                hasUnread: true,
+                            });
+                            isDraftSessionRef.current = false;
+                            loadSessions();
+                            refreshWorkspaceSessions();
+                            handleGlobalEventRef.current(event);
+                            return;
+                        }
 
-                        // Update message ID to stable format
-                        const newMessageId = `current-turn-${eventSessionId}`;
-                        setMessages(prev => prev.map(msg =>
-                            msg.id === assistantMessageId
-                                ? { ...msg, id: newMessageId }
-                                : msg
-                        ));
-                        assistantMessageId = newMessageId;
+                        assistantMessageId = `current-turn-${eventSessionId}`;
+                        let state = createInitialState();
+                        for (const pending of pendingEvents) {
+                            if (CONTENT_EVENT_TYPES.has(pending.type)) {
+                                state = processEvent(state, pending, assistantMessageId);
+                            }
+                        }
+                        if (CONTENT_EVENT_TYPES.has(event.type as string)) {
+                            state = processEvent(state, event as ProcessableEvent, assistantMessageId);
+                            handledEvent = true;
+                        }
 
-                        // Set up resumeState so globalHandler can process subsequent events
-                        resumeSessionStateRef.current = {
-                            sessionId: eventSessionId,
-                            assistantMessageId: newMessageId,
-                            pendingReplaySkip: 0,
-                        };
-                        processorStateRef.current.set(eventSessionId, createInitialState());
+                        if (!state.blocks.length && !state.textContent) {
+                            state.blocks.push({
+                                id: `thinking-placeholder-${assistantMessageId}`,
+                                type: 'thinking',
+                                content: '思考中...',
+                                status: 'streaming',
+                                metadata: { isPlaceholder: true },
+                            });
+                        }
 
-                        // Refresh session list to show new item
-                        loadSessions();
-                    } else {
-                        // User already switched away - this session runs in background
-                        // console.log(`[handleSend] New session ${eventSessionId} created but user switched to ${currentSessionIdRef.current}, running in background`);
+                        const assistantMessage = buildMessageFromState(state, assistantMessageId, true);
+                        setMessages(prev => [...prev, assistantMessage]);
 
-                        // Mark as running with unread (user is not viewing this session)
-                        setSessionStatus(eventSessionId, {
-                            status: 'running',
-                            hasUnread: true,
-                        });
-
-                        // Still set up resumeState for background event processing
-                        // The assistantMessageId stays as temp-xxx format (won't be displayed since user switched)
                         resumeSessionStateRef.current = {
                             sessionId: eventSessionId,
                             assistantMessageId: assistantMessageId,
                             pendingReplaySkip: 0,
                         };
-                        processorStateRef.current.set(eventSessionId, createInitialState());
+                        processorStateRef.current.set(eventSessionId, state);
+                        pendingEvents.length = 0;
 
-                        // Refresh session list so user can see the new session and switch back
+                        // Refresh session list to show new item
                         loadSessions();
+                        refreshWorkspaceSessions();
                     }
                 }
 
@@ -1066,12 +1119,16 @@ export function useChatLogic() {
                 setSteps((prev) => [...prev, step]);
 
                 // All events go through the unified global handler
-                handleGlobalEventRef.current(event);
+                if (!handledEvent) {
+                    handleGlobalEventRef.current(event);
+                }
             });
         } catch (error: any) {
             console.error('Failed to send message:', error);
             setIsProcessing(false);
             isProcessingRef.current = false;
+            setMessages((prev) => prev.filter(msg => msg.id !== userMessage.id && msg.id !== assistantMessageId));
+            inputAreaRef.current?.setValue?.(sentContent);
             // Clear resume state on error
             if (resumeSessionStateRef.current?.sessionId === currentSessionIdRef.current) {
                 resumeSessionStateRef.current = null;

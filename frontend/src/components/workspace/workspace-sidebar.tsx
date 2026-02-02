@@ -214,20 +214,6 @@ export function WorkspaceSidebar({
                         )}
                     </div>
 
-                    {/* New Session Button */}
-                    {currentWorkspace && (
-                        <div className="px-3 py-2 shrink-0">
-                            <Button
-                                variant="outline"
-                                className="w-full justify-start gap-2"
-                                onClick={onNewSession}
-                            >
-                                <Plus className="h-4 w-4" />
-                                New Chat
-                            </Button>
-                        </div>
-                    )}
-
                     {/* Session List */}
                     <div
                         className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-1"
@@ -242,67 +228,85 @@ export function WorkspaceSidebar({
                                 <div className="px-3 py-8 text-center text-sm text-muted-foreground">
                                     Loading...
                                 </div>
-                            ) : sessions.length === 0 ? (
-                                <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-                                    No conversations yet
-                                </div>
                             ) : (
-                                sessions.map((session) => (
+                                <>
                                     <div
-                                        key={session.id}
-                                        onClick={() => deletingSessionId !== session.id && onSelectSession(session.id)}
+                                        onClick={onNewSession}
                                         className={cn(
                                             "group relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-md cursor-pointer",
-                                            fadingOutSessionId === session.id && "opacity-0 scale-95 transition-all duration-200",
-                                            currentSessionId === session.id
+                                            currentSessionId === null
                                                 ? "bg-primary/10 text-primary"
                                                 : "hover:bg-muted"
                                         )}
                                     >
-                                        {getStatusIcon(session.id)}
+                                        <Plus className="h-3.5 w-3.5 shrink-0 opacity-60" />
                                         <div className="flex-1 min-w-0 overflow-hidden transition-all duration-150 group-hover:pr-7">
-                                            <div className="text-sm truncate">
-                                                {session.title || "New Chat"}
-                                            </div>
+                                            <div className="text-sm truncate">New Chat</div>
                                         </div>
-
-                                        {deletingSessionId === session.id ? (
-                                            <div
-                                                className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-card/95 backdrop-blur-sm rounded-md"
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                    onClick={(e) => handleDeleteSessionClick(e, session.id)}
-                                                    title="Confirm delete"
-                                                >
-                                                    <Trash2 className="h-3 w-3" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-6 w-6 hover:bg-muted"
-                                                    onClick={handleCancelDelete}
-                                                    title="Cancel"
-                                                >
-                                                    <X className="h-3 w-3" />
-                                                </Button>
-                                            </div>
-                                        ) : (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive hover:bg-destructive/10 bg-card/80"
-                                                onClick={(e) => handleDeleteSessionClick(e, session.id)}
-                                                title="Delete"
-                                            >
-                                                <Trash2 className="h-3 w-3" />
-                                            </Button>
-                                        )}
                                     </div>
-                                ))
+                                    {sessions.length === 0 ? (
+                                        <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+                                            No conversations yet
+                                        </div>
+                                    ) : (
+                                        sessions.map((session) => (
+                                            <div
+                                                key={session.id}
+                                                onClick={() => deletingSessionId !== session.id && onSelectSession(session.id)}
+                                                className={cn(
+                                                    "group relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-md cursor-pointer",
+                                                    fadingOutSessionId === session.id && "opacity-0 scale-95 transition-all duration-200",
+                                                    currentSessionId === session.id
+                                                        ? "bg-primary/10 text-primary"
+                                                        : "hover:bg-muted"
+                                                )}
+                                            >
+                                                {getStatusIcon(session.id)}
+                                                <div className="flex-1 min-w-0 overflow-hidden transition-all duration-150 group-hover:pr-7">
+                                                    <div className="text-sm truncate">
+                                                        {session.title || "New Chat"}
+                                                    </div>
+                                                </div>
+
+                                                {deletingSessionId === session.id ? (
+                                                    <div
+                                                        className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-card/95 backdrop-blur-sm rounded-md"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                            onClick={(e) => handleDeleteSessionClick(e, session.id)}
+                                                            title="Confirm delete"
+                                                        >
+                                                            <Trash2 className="h-3 w-3" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6 hover:bg-muted"
+                                                            onClick={handleCancelDelete}
+                                                            title="Cancel"
+                                                        >
+                                                            <X className="h-3 w-3" />
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive hover:bg-destructive/10 bg-card/80"
+                                                        onClick={(e) => handleDeleteSessionClick(e, session.id)}
+                                                        title="Delete"
+                                                    >
+                                                        <Trash2 className="h-3 w-3" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        ))
+                                    )}
+                                </>
                             )}
                         </div>
                     </div>

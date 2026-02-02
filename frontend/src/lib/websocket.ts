@@ -196,6 +196,7 @@ export class MultiplexedClient {
     private url: string;
     private isConnected = false;
     private eventHandlers: Map<string, (event: StreamEvent) => void> = new Map();
+    private pendingHandler: ((event: StreamEvent) => void) | null = null;
     private globalHandler: ((event: StreamEvent) => void) | null = null;
     private onReconnectCallback: (() => void) | null = null;
     private reconnectAttempts = 0;
@@ -305,10 +306,29 @@ export class MultiplexedClient {
                 }
 
                 // Prefer session-specific handler (more precise)
-                // Fall back to global handler for sessions without specific handler
+                // Fall back to pending handler for new sessions without session_id
                 if (sessionId && this.eventHandlers.has(sessionId)) {
                     this.eventHandlers.get(sessionId)!(data);
-                } else if (this.globalHandler) {
+                    return;
+                }
+
+                if (sessionId && this.pendingHandler) {
+                    const handler = this.pendingHandler;
+                    this.eventHandlers.set(sessionId, handler);
+                    this.pendingHandler = null;
+                    handler(data);
+                    return;
+                }
+
+                if (!sessionId && this.pendingHandler) {
+                    this.pendingHandler(data);
+                    if (data.type === 'done' || data.type === 'error') {
+                        this.pendingHandler = null;
+                    }
+                    return;
+                }
+
+                if (this.globalHandler) {
                     this.globalHandler(data);
                 }
             } catch (e) {
@@ -384,6 +404,9 @@ export class MultiplexedClient {
         if (sessionId) {
             // Register handler for this session
             this.eventHandlers.set(sessionId, onEvent);
+        } else {
+            // Hold a pending handler until session_id is assigned
+            this.pendingHandler = onEvent;
         }
 
         if (this.ws) {
@@ -457,4 +480,3 @@ export class SessionClient extends MultiplexedClient {
 
 export const sessionClient = new SessionClient();
 export const multiplexedClient = new MultiplexedClient();
-

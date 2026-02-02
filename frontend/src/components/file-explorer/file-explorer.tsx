@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { FilePreviewPopup } from "./file-preview-popup";
 import { fileWatcherClient, FileWatchEvent } from "@/lib/file-watcher";
 import { useWorkspace } from "@/lib/workspace-store";
+import { enqueueAudio } from "@/lib/audio-player";
 
 type CategoryType = "images" | "documents" | "video" | "audio" | "code";
 type ViewFilter = "all" | CategoryType;
@@ -75,12 +76,13 @@ interface FileExplorerProps {
     onMentionFile?: (path: string) => void;
     onOpenFile?: (path: string) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
+    onOpenImage?: (path: string) => void;
     isPreviewPanelActive?: () => boolean;
     /** Workspace ID - when this changes, files are refetched */
     workspaceId?: string | null;
 }
 
-export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFile, isPreviewPanelActive, workspaceId }: FileExplorerProps) {
+export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFile, onOpenImage, isPreviewPanelActive, workspaceId }: FileExplorerProps) {
     const { currentWorkspace } = useWorkspace();
     const [flatFiles, setFlatFiles] = useState<FileEntry[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -1013,7 +1015,21 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFil
             return;
         }
 
-        // Try to open in editor if it's a code file and we have the callback
+        const ext = getExtension(entry.name);
+
+        // Audio files - play in audio player
+        if (AUDIO_EXTS.has(ext)) {
+            enqueueAudio({ path: entry.path, name: entry.name });
+            return;
+        }
+
+        // Image files - open in Image Editor
+        if (IMAGE_EXTS.has(ext) && onOpenImage) {
+            onOpenImage(entry.path);
+            return;
+        }
+
+        // Code files - open in editor
         if (onOpenFile && isCodeFile(entry.name)) {
             onOpenFile(entry.path);
             return;

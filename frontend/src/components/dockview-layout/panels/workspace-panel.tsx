@@ -28,7 +28,7 @@ export function WorkspacePanelContent({ params }: WorkspacePanelContentProps) {
         switchWorkspace,
         removeWorkspace,
         openWorkspace,
-        createSession,
+        startNewSessionDraft,
         switchSession,
         deleteSession,
     } = useWorkspace();
@@ -55,10 +55,13 @@ export function WorkspacePanelContent({ params }: WorkspacePanelContentProps) {
     };
 
     const handleNewSession = async () => {
-        // Use workspace's createSession if available, otherwise fallback to params
+        // In workspace mode, start a draft session (no server create yet)
         if (currentWorkspace) {
-            await createSession();
-        } else if (params?.onNewSession) {
+            startNewSessionDraft();
+            return;
+        }
+        // Fallback to legacy behavior
+        if (params?.onNewSession) {
             params.onNewSession();
         }
     };

@@ -852,8 +852,10 @@ async def read_file_base64(request: Request, path: str):
     """
     Read a file and return its contents as a base64 data URL.
     Used by image editor to load images for reference.
+    HEIC/HEIF files are automatically converted to JPEG for browser compatibility.
     """
-    workdir = request.app.state.settings.agent.default_workdir or os.getcwd()
+    settings = request.app.state.settings
+    workdir = settings.default_workdir or os.getcwd()
 
     try:
         target_path = resolve_file_path(workdir, path)
@@ -869,18 +871,55 @@ async def read_file_base64(request: Request, path: str):
         raise HTTPException(status_code=400, detail="Path is not a file")
 
     try:
-        # Read file and encode as base64
+        # Read file
         with open(target_path, "rb") as f:
             file_bytes = f.read()
-
-        b64_str = base64.b64encode(file_bytes).decode("utf-8")
 
         # Determine MIME type
         mime_type, _ = mimetypes.guess_type(str(target_path))
         if not mime_type:
-            # Default to octet-stream for unknown types
             mime_type = "application/octet-stream"
 
+        # Check if HEIC/HEIF format - browsers can't display these
+        ext = target_path.suffix.lower()
+        if ext in (".heic", ".heif") or mime_type in ("image/heic", "image/heif"):
+            try:
+                import pillow_heif
+                from PIL import Image
+                pillow_heif.register_heif_opener()
+
+                # Convert HEIC to JPEG
+                img = Image.open(io.BytesIO(file_bytes))
+
+                # Handle EXIF orientation
+                from core.image_pipeline.exif import apply_orientation_fix
+                img = apply_orientation_fix(img)
+
+                # Convert to RGB (HEIC may have alpha)
+                if img.mode in ("RGBA", "LA", "P"):
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    if img.mode == "P":
+                        img = img.convert("RGBA")
+                    if img.mode in ("RGBA", "LA"):
+                        mask = img.split()[-1]
+                        background.paste(img, mask=mask)
+                    img = background
+                elif img.mode != "RGB":
+                    img = img.convert("RGB")
+
+                # Export as JPEG
+                output = io.BytesIO()
+                img.save(output, format="JPEG", quality=90, optimize=True)
+                file_bytes = output.getvalue()
+                mime_type = "image/jpeg"
+            except ImportError:
+                # pillow-heif not installed, return raw (browser won't display)
+                pass
+            except Exception as e:
+                # Conversion failed, return raw
+                pass
+
+        b64_str = base64.b64encode(file_bytes).decode("utf-8")
         data_url = f"data:{mime_type};base64,{b64_str}"
 
         return {"status": "success", "data_url": data_url, "mime_type": mime_type}

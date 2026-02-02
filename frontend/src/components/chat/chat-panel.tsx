@@ -36,6 +36,7 @@ export function ChatPanel() {
 
     // Ref for focusing input
     const inputAreaRef = useRef<InputAreaRef>(null);
+    const isDraftSessionRef = useRef(false);
 
     // Ref to track current session ID (for use in callbacks to get latest value)
     const currentSessionIdRef = useRef<string | null>(currentSessionId);
@@ -83,7 +84,7 @@ export function ChatPanel() {
                     setCurrentSessionId(sessionList.length > 0 ? sessionList[0].id : null);
                     setMessages([]);
                 }
-            } else if (sessionList.length > 0) {
+            } else if (sessionList.length > 0 && !isDraftSessionRef.current) {
                 // If no current session but sessions exist, select the first one
                 setCurrentSessionId(sessionList[0].id);
             }
@@ -144,25 +145,20 @@ export function ChatPanel() {
         }
     };
 
-    // Create a new session
+    // Start a draft session (actual session created on send)
     const handleNewSession = async () => {
-        try {
-            const newSession = await sessionsApi.create();
-            setSessions((prev) => [newSession, ...prev]);
-            setCurrentSessionId(newSession.id);
-            setMessages([]);
-            setSteps([]);
-            // Auto-focus input after creating new session
-            setTimeout(() => inputAreaRef.current?.focus(), 100);
-        } catch (error) {
-            console.error("Failed to create session:", error);
-            toast.error("Error", { description: "Failed to create new session" });
-        }
+        setCurrentSessionId(null);
+        isDraftSessionRef.current = true;
+        setMessages([]);
+        setSteps([]);
+        setIsProcessing(false);
+        setTimeout(() => inputAreaRef.current?.focus(), 100);
     };
 
     // Select a session
     const handleSelectSession = (id: string) => {
         if (id !== currentSessionId) {
+            isDraftSessionRef.current = false;
             setCurrentSessionId(id);
             setSteps([]);
             // Auto-focus input after selecting session
@@ -423,10 +419,11 @@ export function ChatPanel() {
                 const streamingSessionId = event.metadata?.session_id || currentSessionId;
 
                 // Update currentSessionId if returned from server (for new sessions)
-                if (event.metadata?.session_id && !currentSessionId) {
+                if (event.metadata?.session_id && !currentSessionId && isDraftSessionRef.current) {
                     setCurrentSessionId(event.metadata.session_id);
                     // Also update the ref immediately so subsequent checks work
                     currentSessionIdRef.current = event.metadata.session_id;
+                    isDraftSessionRef.current = false;
                     // Reload sessions to include the new one
                     loadSessions();
                 }
@@ -1016,4 +1013,3 @@ export function ChatPanel() {
         </div>
     );
 }
-
