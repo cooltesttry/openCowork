@@ -471,3 +471,50 @@ export async function createDirectoryAbsolute(path: string): Promise<{ status: s
     }
     return res.json();
 }
+
+
+// ============== Base64 File Operations ==============
+
+export async function writeBase64File(path: string, base64Data: string): Promise<{ status: string; path: string }> {
+    const res = await fetch(`${API_ROOT}/files/write-base64`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, base64_data: base64Data }),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Failed to write file" }));
+        throw new Error(err.detail || "Failed to write file");
+    }
+    return res.json();
+}
+
+
+// ============== Image Generation ==============
+
+export interface GenerateImageRequest {
+    prompt: string;
+    filename?: string;
+    reference_images?: string[];  // List of data URLs
+}
+
+export interface GenerateImageResponse {
+    status: string;
+    file_path: string;
+    mime_type: string;
+    width: number;
+    height: number;
+    note?: string;
+}
+
+export async function generateImage(request: GenerateImageRequest): Promise<GenerateImageResponse> {
+    const res = await fetch(`${API_ROOT}/imagegen/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Failed to generate image" }));
+        throw new Error(err.detail || "Failed to generate image");
+    }
+    return res.json();
+}

@@ -14,6 +14,7 @@ import { FilePreviewPanel } from '../panels/file-preview-panel';
 import { SearchPanel } from '../panels/search-panel';
 import { AgentsPanel } from '../panels/agents-panel';
 import { SuperAgentPanel } from '../agent/super-agent-panel';
+import { ImageEditorPanel } from './panels/image-editor-panel';
 
 import { useChatLogic } from './useChatLogic';
 import { Toaster, toast } from 'sonner';
@@ -29,6 +30,7 @@ const components = {
     search: SearchPanel,
     agents: AgentsPanel,
     superagent: SuperAgentPanel,
+    'image-editor': ImageEditorPanel,
 };
 
 const SESSION_PANEL_WIDTH = 238;
@@ -411,6 +413,12 @@ export function DockviewMain() {
                 id: 'super-agent-panel',
                 component: 'superagent',
                 title: 'Super Agent',
+                position: { referencePanel: editorPanel, direction: 'within' },
+            });
+            api.addPanel({
+                id: 'image-editor-panel',
+                component: 'image-editor',
+                title: 'Image Editor',
                 position: { referencePanel: editorPanel, direction: 'within' },
             });
 

@@ -24,6 +24,7 @@ import type {
   FilePickerItem,
   CommonDirectory,
   FilePickerState,
+  FormatOption,
 } from "./types";
 
 export function FilePickerDialog({
@@ -36,6 +37,9 @@ export function FilePickerDialog({
   fileFilter,
   onSelect,
   onCancel,
+  formatOptions,
+  defaultFormat,
+  customShortcut,
 }: FilePickerDialogProps) {
   const [state, setState] = React.useState<FilePickerState>({
     currentPath: defaultPath || "",
@@ -51,6 +55,7 @@ export function FilePickerDialog({
   const [commonDirs, setCommonDirs] = React.useState<CommonDirectory[]>([]);
   const [creatingFolder, setCreatingFolder] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState("");
+  const [selectedFormat, setSelectedFormat] = React.useState(defaultFormat || (formatOptions?.[0]?.value ?? ""));
   const filenameInputRef = React.useRef<HTMLInputElement>(null);
 
   // Load common directories on mount
@@ -128,10 +133,10 @@ export function FilePickerDialog({
     if (item.is_directory) {
       setState((prev) => ({ ...prev, currentPath: item.path }));
     } else if (type !== "directory" && mode === "select") {
-      onSelect(item.path);
+      onSelect(item.path, selectedFormat || undefined);
       onOpenChange(false);
     }
-  }, [type, mode, onSelect, onOpenChange]);
+  }, [type, mode, onSelect, onOpenChange, selectedFormat]);
 
   const handleConfirm = React.useCallback(() => {
     setState((prev) => {
@@ -140,20 +145,28 @@ export function FilePickerDialog({
           if (type === "directory" && !prev.selectedItem.is_directory) {
             return prev; // Can't select a file when only directories are allowed
           }
-          onSelect(prev.selectedItem.path);
+          onSelect(prev.selectedItem.path, selectedFormat || undefined);
           onOpenChange(false);
         }
       } else {
         // Create mode
         if (prev.filename) {
-          const fullPath = prev.currentPath + "/" + prev.filename;
-          onSelect(fullPath);
+          // Add extension from format if provided and filename doesn't have one
+          let filename = prev.filename;
+          if (formatOptions && selectedFormat) {
+            const formatOption = formatOptions.find(f => f.value === selectedFormat);
+            if (formatOption && !filename.includes('.')) {
+              filename = `${filename}.${formatOption.extension}`;
+            }
+          }
+          const fullPath = prev.currentPath + "/" + filename;
+          onSelect(fullPath, selectedFormat || undefined);
           onOpenChange(false);
         }
       }
       return prev;
     });
-  }, [mode, type, onSelect, onOpenChange]);
+  }, [mode, type, onSelect, onOpenChange, selectedFormat, formatOptions]);
 
   const handleCancel = React.useCallback(() => {
     onCancel?.();
@@ -261,6 +274,7 @@ export function FilePickerDialog({
             directories={commonDirs}
             currentPath={state.currentPath}
             onNavigate={navigateTo}
+            customShortcut={customShortcut}
           />
 
           {/* Main content */}
@@ -369,6 +383,19 @@ export function FilePickerDialog({
                 placeholder="Enter filename"
                 className="h-8"
               />
+              {formatOptions && formatOptions.length > 0 && (
+                <select
+                  value={selectedFormat}
+                  onChange={(e) => setSelectedFormat(e.target.value)}
+                  className="h-8 px-2 text-sm border border-input rounded-md bg-background"
+                >
+                  {formatOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
           <Button variant="outline" onClick={handleCancel}>
@@ -383,4 +410,4 @@ export function FilePickerDialog({
   );
 }
 
-export type { FilePickerDialogProps, FileFilter, FilePickerItem } from "./types";
+export type { FilePickerDialogProps, FileFilter, FilePickerItem, FormatOption } from "./types";

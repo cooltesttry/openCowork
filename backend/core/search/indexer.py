@@ -10,6 +10,7 @@ from typing import Iterable, Optional
 
 from core.search.embeddings import EmbeddingProvider
 from core.search.extractors import ExtractionError, extract_text
+from core.search.metadata import classify_kind, extract_metadata
 from core.search.paths import (
     default_embedding_server_url,
     default_model_path,
@@ -79,7 +80,39 @@ class SearchIndex:
             logger.warning("Failed to load sqlite-vec extension: %s", exc)
             return False
 
+    def _require_vec_extension(self, conn: sqlite3.Connection, action: str) -> bool:
+        if self._load_vec_extension(conn):
+            return True
+        raise SearchIndexError(
+            f"sqlite-vec extension not available for {action}: {self.vec_extension_path}"
+        )
+
     def _init_schema(self, conn: sqlite3.Connection, vec_enabled: bool) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS file_catalog (
+                id INTEGER PRIMARY KEY,
+                path TEXT UNIQUE,
+                filename TEXT,
+                ext TEXT,
+                kind TEXT,
+                is_directory INTEGER DEFAULT 0,
+                size INTEGER,
+                mtime REAL,
+                metadata_json TEXT
+            )
+            """
+        )
+        try:
+            conn.execute("SELECT is_directory FROM file_catalog LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE file_catalog ADD COLUMN is_directory INTEGER DEFAULT 0")
+        conn.execute(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS file_catalog_fts
+            USING fts5(filename, path, tokenize='unicode61')
+            """
+        )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS documents (
@@ -148,6 +181,245 @@ class SearchIndex:
         ).fetchone()
         return row is not None
 
+    def _upsert_file_catalog(
+        self,
+        conn: sqlite3.Connection,
+        path: Path,
+        stat: os.stat_result,
+        metadata: dict | None = None,
+        is_directory: bool | None = None,
+    ) -> int:
+        file_path = str(path)
+        filename = path.name
+        if is_directory is None:
+            is_directory = path.is_dir()
+        ext = "" if is_directory else path.suffix.lower().lstrip(".")
+        kind = "directory" if is_directory else classify_kind(path)
+        metadata_json = json.dumps(metadata) if metadata else None
+
+        row = conn.execute(
+            "SELECT id FROM file_catalog WHERE path = ?",
+            (file_path,),
+        ).fetchone()
+        if row:
+            file_id = row["id"]
+            conn.execute(
+                """
+                UPDATE file_catalog
+                SET filename = ?, ext = ?, kind = ?, is_directory = ?, size = ?, mtime = ?, metadata_json = ?
+                WHERE id = ?
+                """,
+                (filename, ext, kind, int(bool(is_directory)), stat.st_size, stat.st_mtime, metadata_json, file_id),
+            )
+        else:
+            cursor = conn.execute(
+                """
+                INSERT INTO file_catalog(path, filename, ext, kind, is_directory, size, mtime, metadata_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (file_path, filename, ext, kind, int(bool(is_directory)), stat.st_size, stat.st_mtime, metadata_json),
+            )
+            file_id = cursor.lastrowid
+
+        conn.execute("DELETE FROM file_catalog_fts WHERE rowid = ?", (file_id,))
+        conn.execute(
+            "INSERT INTO file_catalog_fts(rowid, filename, path) VALUES (?, ?, ?)",
+            (file_id, filename, file_path),
+        )
+        return int(file_id)
+
+    def _delete_file_catalog(self, conn: sqlite3.Connection, path: Path) -> None:
+        file_path = str(path)
+        row = conn.execute(
+            "SELECT id FROM file_catalog WHERE path = ?",
+            (file_path,),
+        ).fetchone()
+        if not row:
+            return
+        file_id = row["id"]
+        conn.execute("DELETE FROM file_catalog_fts WHERE rowid = ?", (file_id,))
+        conn.execute("DELETE FROM file_catalog WHERE id = ?", (file_id,))
+
+    def delete_file(self, path: Path) -> None:
+        if self._is_index_internal_path(path):
+            return
+        conn = self._connect()
+        vec_enabled = self._require_vec_extension(conn, "delete")
+        self._init_schema(conn, vec_enabled)
+        try:
+            self._delete_file_catalog(conn, path)
+            row = conn.execute(
+                "SELECT id FROM documents WHERE path = ?",
+                (str(path),),
+            ).fetchone()
+            if row:
+                self._delete_doc(conn, row["id"])
+            conn.commit()
+        finally:
+            conn.close()
+
+    def update_file_catalog(self, path: Path, with_metadata: bool = False) -> None:
+        if self._is_index_internal_path(path):
+            return
+        if not path.exists():
+            return
+        stat = path.stat()
+        is_directory = path.is_dir()
+        metadata = None
+        if with_metadata and not is_directory:
+            metadata = extract_metadata(path, stat.st_size)
+
+        conn = self._connect()
+        vec_enabled = self._require_vec_extension(conn, "file catalog update")
+        self._init_schema(conn, vec_enabled)
+        try:
+            self._upsert_file_catalog(conn, path, stat, metadata, is_directory=is_directory)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def embed_chunks_for_path(self, path: Path) -> None:
+        if self._is_index_internal_path(path):
+            return
+        conn = self._connect()
+        vec_enabled = self._require_vec_extension(conn, "embedding")
+        self._init_schema(conn, vec_enabled)
+
+        embedder = EmbeddingProvider(self.model_path, self.embedding_server_url)
+        vector_available = embedder.is_available() and self._table_exists(conn, "vec_chunks")
+        if not vector_available:
+            conn.close()
+            return
+
+        try:
+            row = conn.execute(
+                "SELECT id FROM documents WHERE path = ?",
+                (str(path),),
+            ).fetchone()
+            if not row:
+                return
+            doc_id = row["id"]
+            chunk_rows = conn.execute(
+                "SELECT id, text FROM chunks WHERE doc_id = ? ORDER BY id",
+                (doc_id,),
+            ).fetchall()
+            if not chunk_rows:
+                return
+
+            conn.execute("DELETE FROM vec_chunks WHERE doc_id = ?", (doc_id,))
+
+            chunk_ids: list[int] = []
+            embed_texts: list[str] = []
+            for chunk in chunk_rows:
+                chunk_ids.append(chunk["id"])
+                embed_texts.append(
+                    embedder.format_document(
+                        chunk["text"][:EMBEDDING_MAX_CHARS],
+                        title=path.name,
+                    )
+                )
+
+            embeddings = embedder.embed_texts(embed_texts)
+            for chunk_id, embedding in zip(chunk_ids, embeddings, strict=False):
+                conn.execute(
+                    "INSERT INTO vec_chunks(chunk_id, embedding, doc_id) VALUES (?, ?, ?)",
+                    (chunk_id, json.dumps(embedding), doc_id),
+                )
+
+            conn.commit()
+        finally:
+            conn.close()
+
+    def index_text(self, path: Path, embed: bool = False) -> bool:
+        if not path.exists() or not path.is_file():
+            return False
+        if self._is_index_internal_path(path):
+            return False
+
+        conn = self._connect()
+        vec_enabled = self._require_vec_extension(conn, "index_text")
+        self._init_schema(conn, vec_enabled)
+        embedder = EmbeddingProvider(self.model_path, self.embedding_server_url) if vec_enabled else None
+        vector_available = (
+            vec_enabled
+            and embedder is not None
+            and embedder.is_available()
+            and self._table_exists(conn, "vec_chunks")
+        )
+
+        try:
+            stat = path.stat()
+            self._upsert_file_catalog(conn, path, stat, None)
+            row = conn.execute(
+                "SELECT id, mtime, size FROM documents WHERE path = ?",
+                (str(path),),
+            ).fetchone()
+            if row and row["mtime"] == stat.st_mtime and row["size"] == stat.st_size:
+                conn.commit()
+                return False
+
+            if row:
+                self._delete_doc(conn, row["id"])
+
+            text = extract_text(path)
+            if not text.strip():
+                conn.commit()
+                return False
+
+            language = self._detect_language(text)
+            doc_type = path.suffix.lower().lstrip(".")
+            cursor = conn.execute(
+                "INSERT INTO documents(path, filename, mtime, size, type, language) VALUES (?, ?, ?, ?, ?, ?)",
+                (str(path), path.name, stat.st_mtime, stat.st_size, doc_type, language),
+            )
+            doc_id = cursor.lastrowid
+
+            chunks = self._chunk_text(text)
+            chunk_ids: list[int] = []
+            chunk_texts: list[str] = []
+            embed_texts: list[str] = []
+            for chunk_text, start_line, end_line in chunks:
+                cur = conn.execute(
+                    "INSERT INTO chunks(doc_id, text, start_line, end_line) VALUES (?, ?, ?, ?)",
+                    (doc_id, chunk_text, start_line, end_line),
+                )
+                chunk_id = cur.lastrowid
+                conn.execute(
+                    "INSERT INTO chunks_fts(rowid, text) VALUES (?, ?)",
+                    (chunk_id, tokenize_for_fts(chunk_text)),
+                )
+                if vector_available and embed:
+                    chunk_ids.append(chunk_id)
+                    chunk_texts.append(chunk_text)
+                    embed_texts.append(
+                        embedder.format_document(
+                            chunk_text[:EMBEDDING_MAX_CHARS],
+                            title=path.name,
+                        )
+                    )
+
+            if vector_available and embed and chunk_texts:
+                try:
+                    embeddings = embedder.embed_texts(embed_texts)
+                except Exception as exc:
+                    logger.warning("Embedding failed for %s: %s", path, exc)
+                    embeddings = []
+
+                for chunk_id, embedding in zip(chunk_ids, embeddings, strict=False):
+                    conn.execute(
+                        "INSERT INTO vec_chunks(chunk_id, embedding, doc_id) VALUES (?, ?, ?)",
+                        (chunk_id, json.dumps(embedding), doc_id),
+                    )
+
+            conn.commit()
+            return True
+        except ExtractionError as exc:
+            logger.warning("Skipping %s: %s", path, exc)
+            conn.commit()
+            return False
+        finally:
+            conn.close()
+
     def _build_path_filter(
         self,
         path_prefix: str | None,
@@ -192,22 +464,38 @@ class SearchIndex:
             path = Path(raw)
             if not path.is_absolute():
                 path = self.workdir / path
+            if self._is_index_internal_path(path):
+                continue
             if path.exists() and path.is_file():
                 resolved.append(path)
         return resolved
 
-    def _scan_workdir(self) -> list[Path]:
-        files: list[Path] = []
+    def _scan_workdir(self, include_dirs: bool = False) -> list[Path]:
+        entries: list[Path] = []
         for root, dirs, filenames in os.walk(self.workdir):
+            root_path = Path(root)
+            if self._is_index_internal_path(root_path):
+                dirs[:] = []
+                continue
             # Exclude hidden directories except .opencowork
             dirs[:] = [d for d in dirs if d not in IGNORE_DIRS and (not d.startswith(".") or d == ".opencowork")]
+            if include_dirs:
+                for name in dirs:
+                    entries.append(Path(root) / name)
             for name in filenames:
-                files.append(Path(root) / name)
-        return files
+                entries.append(Path(root) / name)
+        return entries
 
     def _is_hidden_path(self, path: Path) -> bool:
         # Allow .opencowork directory, skip other hidden paths
         return any(part.startswith(".") and part != ".opencowork" for part in path.parts)
+
+    def _is_index_internal_path(self, path: Path) -> bool:
+        try:
+            path.resolve().relative_to(self.index_root)
+            return True
+        except ValueError:
+            return False
 
     def _detect_language(self, text: str) -> str:
         for ch in text:
@@ -270,15 +558,31 @@ class SearchIndex:
             self.db_path.unlink()
 
         conn = self._connect()
-        vec_enabled = self._load_vec_extension(conn)
+        vec_enabled = self._require_vec_extension(conn, "indexing")
         self._init_schema(conn, vec_enabled)
 
         embedder = EmbeddingProvider(self.model_path, self.embedding_server_url) if vec_enabled else None
         vector_available = vec_enabled and embedder is not None and embedder.is_available()
 
         try:
+            if paths is None:
+                for entry in self._scan_workdir(include_dirs=True):
+                    if not entry.exists() or not entry.is_dir():
+                        continue
+                    if self._is_hidden_path(entry):
+                        continue
+                    try:
+                        stat = entry.stat()
+                        self._upsert_file_catalog(conn, entry, stat, None, is_directory=True)
+                    except OSError:
+                        continue
+                conn.commit()
+
             for path in self._resolve_paths(paths):
                 if not path.exists() or not path.is_file():
+                    stats.skipped += 1
+                    continue
+                if self._is_index_internal_path(path):
                     stats.skipped += 1
                     continue
                 if self._is_hidden_path(path):
@@ -287,10 +591,13 @@ class SearchIndex:
 
                 try:
                     stat = path.stat()
+                    # Always upsert file catalog entry (metadata can be added later)
+                    self._upsert_file_catalog(conn, path, stat, None)
                     row = conn.execute(
                         "SELECT id, mtime, size FROM documents WHERE path = ?", (str(path),)
                     ).fetchone()
                     if row and row["mtime"] == stat.st_mtime and row["size"] == stat.st_size:
+                        conn.commit()
                         stats.skipped += 1
                         continue
 
@@ -299,6 +606,7 @@ class SearchIndex:
 
                     text = extract_text(path)
                     if not text.strip():
+                        conn.commit()
                         stats.skipped += 1
                         continue
 
@@ -351,6 +659,7 @@ class SearchIndex:
                     stats.indexed += 1
                 except ExtractionError as exc:
                     logger.warning("Skipping %s: %s", path, exc)
+                    conn.commit()
                     stats.skipped += 1
                 except Exception as exc:
                     logger.exception("Indexing failed for %s: %s", path, exc)

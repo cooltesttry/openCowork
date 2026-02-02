@@ -1,3 +1,9 @@
+export interface FormatOption {
+  label: string;
+  value: string;
+  extension: string;
+}
+
 export interface FilePickerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -6,8 +12,11 @@ export interface FilePickerDialogProps {
   title?: string;
   defaultPath?: string;
   fileFilter?: FileFilter[];
-  onSelect: (path: string) => void;
+  onSelect: (path: string, format?: string) => void;
   onCancel?: () => void;
+  formatOptions?: FormatOption[];
+  defaultFormat?: string;
+  customShortcut?: { name: string; path: string; icon: string };
 }
 
 export interface FileFilter {

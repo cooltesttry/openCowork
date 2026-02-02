@@ -1,6 +1,9 @@
 import os
 import shutil
 import subprocess
+import base64
+import mimetypes
+import io
 from pathlib import Path
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form, WebSocket, WebSocketDisconnect
@@ -40,6 +43,10 @@ class OpenFileRequest(BaseModel):
 class SaveFileRequest(BaseModel):
     path: str
     content: str
+
+class WriteBase64Request(BaseModel):
+    path: str
+    base64_data: str
 
 
 def get_safe_path(base_dir: str, relative_path: str) -> Path:
@@ -255,7 +262,7 @@ async def get_file_content(request: Request, path: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 @router.get("/raw")
 async def get_raw_file(request: Request, path: str):
@@ -268,6 +275,36 @@ async def get_raw_file(request: Request, path: str):
         raise HTTPException(status_code=404, detail="File not found.")
         
     return FileResponse(target_path)
+
+
+@router.get("/thumbnail")
+async def get_thumbnail(request: Request, path: str, size: int = 256):
+    settings = request.app.state.settings
+    workdir = settings.default_workdir
+
+    target_path = resolve_file_path(workdir, path)
+
+    if not target_path.exists() or not target_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found.")
+
+    try:
+        from PIL import Image
+        try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+        except Exception:
+            pass
+    except Exception:
+        raise HTTPException(status_code=500, detail="Pillow not installed for thumbnails.")
+
+    try:
+        with Image.open(target_path) as img:
+            img.thumbnail((size, size))
+            buf = io.BytesIO()
+            img.convert("RGBA").save(buf, format="PNG")
+            return Response(content=buf.getvalue(), media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 import mimetypes
@@ -804,6 +841,84 @@ async def create_directory_absolute(request: Request, body: CreateFileRequest):
     try:
         target_path.mkdir(parents=True, exist_ok=False)
         return {"status": "success", "path": str(target_path)}
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/read-base64")
+async def read_file_base64(request: Request, path: str):
+    """
+    Read a file and return its contents as a base64 data URL.
+    Used by image editor to load images for reference.
+    """
+    workdir = request.app.state.settings.agent.default_workdir or os.getcwd()
+
+    try:
+        target_path = resolve_file_path(workdir, path)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid path: {str(e)}")
+
+    if not target_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if not target_path.is_file():
+        raise HTTPException(status_code=400, detail="Path is not a file")
+
+    try:
+        # Read file and encode as base64
+        with open(target_path, "rb") as f:
+            file_bytes = f.read()
+
+        b64_str = base64.b64encode(file_bytes).decode("utf-8")
+
+        # Determine MIME type
+        mime_type, _ = mimetypes.guess_type(str(target_path))
+        if not mime_type:
+            # Default to octet-stream for unknown types
+            mime_type = "application/octet-stream"
+
+        data_url = f"data:{mime_type};base64,{b64_str}"
+
+        return {"status": "success", "data_url": data_url, "mime_type": mime_type}
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/write-base64")
+async def write_file_base64(request: Request, body: WriteBase64Request):
+    """
+    Write base64 data to a file.
+    Used by image editor to save images.
+    """
+    workdir = request.app.state.settings.agent.default_workdir or os.getcwd()
+
+    try:
+        target_path = resolve_file_path(workdir, body.path)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid path: {str(e)}")
+
+    try:
+        # Decode base64 data
+        file_bytes = base64.b64decode(body.base64_data)
+
+        # Ensure parent directory exists
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write to file
+        with open(target_path, "wb") as f:
+            f.write(file_bytes)
+
+        return {"status": "success", "path": str(target_path)}
+    except base64.binascii.Error:
+        raise HTTPException(status_code=400, detail="Invalid base64 data")
     except PermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except Exception as e:

@@ -52,9 +52,13 @@ class FileChangeHandler(FileSystemEventHandler):
     def _should_ignore(self, path: str) -> bool:
         """Check if the path should be ignored."""
         path_obj = Path(path)
+        parts = path_obj.parts
+        for idx, part in enumerate(parts[:-1]):
+            if part == ".opencowork" and parts[idx + 1] == "search":
+                return True
         
         # Check if any part of the path is in ignored dirs
-        for part in path_obj.parts:
+        for part in parts:
             if part in IGNORED_DIRS:
                 return True
         

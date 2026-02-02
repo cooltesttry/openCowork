@@ -43,6 +43,7 @@ export default function SearchLabPage() {
     const [useVector, setUseVector] = useState(true);
     const [useFts, setUseFts] = useState(true);
     const [useFilename, setUseFilename] = useState(false);
+    const [excludeOpenCowork, setExcludeOpenCowork] = useState(true);
     const [rerank, setRerank] = useState<"rrf" | "bm25" | "alpha">("rrf");
     const [alpha, setAlpha] = useState(0.75);
     const [loading, setLoading] = useState(false);
@@ -95,6 +96,16 @@ export default function SearchLabPage() {
             rerank,
             alpha,
         };
+
+        if (workdir) {
+            payload.workdir = workdir;
+        }
+
+        if (excludeOpenCowork) {
+            payload.exclude_paths = [".opencowork"];
+        } else {
+            payload.exclude_paths = [".opencowork/search"];
+        }
 
         if (pathPrefix.trim()) {
             payload.path_prefix = pathPrefix.trim();
@@ -234,6 +245,10 @@ export default function SearchLabPage() {
                                     onCheckedChange={setUseFilename}
                                     disabled={!isFileMode}
                                 />
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                                <span className="text-sm text-muted-foreground">排除 .opencowork</span>
+                                <Switch checked={excludeOpenCowork} onCheckedChange={setExcludeOpenCowork} />
                             </div>
                         </div>
                         <div className="flex items-center justify-end pt-4">

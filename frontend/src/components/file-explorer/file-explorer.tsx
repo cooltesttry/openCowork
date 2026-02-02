@@ -1,13 +1,64 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { DndContext, DragEndEvent, DragStartEvent, DragMoveEvent, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { FileTreeItem } from "./file-tree";
 import { FileEntry } from "./types";
-import { Loader2, RefreshCw, File, Folder, AtSign, Pencil, Trash2, FolderPlus, FilePlus, Copy, ExternalLink } from "lucide-react";
+import { Loader2, RefreshCw, File, Folder, AtSign, Pencil, Trash2, FolderPlus, FilePlus, Copy, ExternalLink, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { FilePreviewPopup } from "./file-preview-popup";
 import { fileWatcherClient, FileWatchEvent } from "@/lib/file-watcher";
+import { useWorkspace } from "@/lib/workspace-store";
+
+type CategoryType = "images" | "documents" | "video" | "audio" | "code";
+type ViewFilter = "all" | CategoryType;
+type SortField = "name" | "modified";
+type SortDirection = "asc" | "desc";
+
+const SORT_CYCLE: { field: SortField; direction: SortDirection; label: string }[] = [
+    { field: "name", direction: "asc", label: "Name ↑" },
+    { field: "name", direction: "desc", label: "Name ↓" },
+    { field: "modified", direction: "asc", label: "Date ↑" },
+    { field: "modified", direction: "desc", label: "Date ↓" },
+];
+
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "tif", "tiff", "heic", "heif"]);
+const VIDEO_EXTS = new Set(["mp4", "mov", "mkv", "avi", "webm", "m4v", "mpg", "mpeg"]);
+const AUDIO_EXTS = new Set(["mp3", "wav", "flac", "m4a", "aac", "ogg", "opus"]);
+const DOC_EXTS = new Set([
+    "md", "markdown", "mdx",
+    "doc", "docx", "docs", "rtf", "odt",
+    "xls", "xlsx", "csv", "tsv", "ods",
+    "ppt", "pptx", "odp",
+    "pdf", "txt"
+]);
+const CODE_EXTS = new Set([
+    "js", "jsx", "ts", "tsx", "py", "java", "c", "cpp", "h", "hpp", "go", "rs", "php",
+    "rb", "sh", "bash", "zsh", "yaml", "yml", "xml", "sql", "ini", "conf", "env",
+    "toml", "json", "css", "scss", "less", "html", "htm", "vue", "svelte"
+]);
+
+const getExtension = (filename: string) => {
+    const parts = filename.split(".");
+    if (parts.length <= 1) return "";
+    return parts.pop()!.toLowerCase();
+};
+
+const hasHiddenDir = (path: string) => {
+    const parts = path.split("/");
+    return parts.slice(0, -1).some((segment) => segment.startsWith(".") && segment.length > 1);
+};
+
+const getCategoryForFile = (filename: string): CategoryType | null => {
+    const ext = getExtension(filename);
+    if (!ext) return null;
+    if (IMAGE_EXTS.has(ext)) return "images";
+    if (VIDEO_EXTS.has(ext)) return "video";
+    if (AUDIO_EXTS.has(ext)) return "audio";
+    if (DOC_EXTS.has(ext)) return "documents";
+    if (CODE_EXTS.has(ext)) return "code";
+    return null;
+};
 
 const isCodeFile = (filename: string) => {
     const ext = filename.split('.').pop()?.toLowerCase();
@@ -30,9 +81,25 @@ interface FileExplorerProps {
 }
 
 export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFile, isPreviewPanelActive, workspaceId }: FileExplorerProps) {
-    const [rootFiles, setRootFiles] = useState<FileEntry[]>([]);
+    const { currentWorkspace } = useWorkspace();
+    const [flatFiles, setFlatFiles] = useState<FileEntry[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+    const [sortIndex, setSortIndex] = useState(0);
+    const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchResults, setSearchResults] = useState<Array<{
+        path: string;
+        name: string;
+        snippet?: string;
+        score: number;
+        source: "semantic" | "filename" | "merged";
+        start_line?: number | null;
+        end_line?: number | null;
+    }>>([]);
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [searchError, setSearchError] = useState<string | null>(null);
+    const searchRequestRef = React.useRef(0);
 
     // Custom Overlay Refs
     const customOverlayRef = React.useRef<HTMLDivElement>(null);
@@ -86,8 +153,7 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFil
             // So frontend needs to rebuild the tree.
 
             const files: FileEntry[] = (data.files as FileEntry[]) || [];
-            const tree = buildTree(files);
-            setRootFiles(tree);
+            setFlatFiles(files);
         } catch (err) {
             console.error(err);
         } finally {
@@ -122,6 +188,28 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFil
         };
     }, [fetchFiles]);
 
+    const sortMode = SORT_CYCLE[sortIndex];
+
+    const compareEntries = (a: FileEntry, b: FileEntry) => {
+        if (a.is_directory !== b.is_directory) {
+            return a.is_directory ? -1 : 1;
+        }
+
+        const nameCompare = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+        let cmp = 0;
+        if (sortMode.field === "name") {
+            cmp = nameCompare;
+        } else {
+            const timeA = a.modified_at ?? 0;
+            const timeB = b.modified_at ?? 0;
+            cmp = timeA - timeB;
+        }
+
+        if (cmp === 0) cmp = nameCompare;
+        if (sortMode.direction === "desc") cmp *= -1;
+        return cmp;
+    };
+
     // Helper to build tree from flat paths
     const buildTree = (flatFiles: FileEntry[]): FileEntry[] => {
         const root: FileEntry[] = [];
@@ -149,32 +237,303 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFil
                     map[parentPath].children = map[parentPath].children || [];
                     map[parentPath].children!.push(entry);
                 } else {
-                    // Parent missing (maybe ignored?), push to root or ignore? 
-                    // For now push to root if parent not found is risky, usually means partial scan.
-                    // Or maybe the path includes the root dir name?
-                    // Backend: rel_path = str(item.relative_to(base_path))
-                    // So top level items have no slashes.
                     root.push(entry);
                 }
             }
         });
 
-        // Sort each level
-        const sortFn = (a: FileEntry, b: FileEntry) => {
-            if (a.is_directory === b.is_directory) return a.name.localeCompare(b.name);
-            return a.is_directory ? -1 : 1;
+        const computeDirectoryModified = (entry: FileEntry): number => {
+            if (!entry.is_directory) return entry.modified_at ?? 0;
+            let maxModified = 0;
+            if (entry.children && entry.children.length > 0) {
+                entry.children.forEach((child) => {
+                    maxModified = Math.max(maxModified, computeDirectoryModified(child));
+                });
+            }
+            if (entry.modified_at === undefined || entry.modified_at === null) {
+                entry.modified_at = maxModified;
+            }
+            return entry.modified_at ?? maxModified;
         };
 
         const sortRecursive = (entries: FileEntry[]) => {
-            entries.sort(sortFn);
+            entries.sort(compareEntries);
             entries.forEach(e => {
                 if (e.children) sortRecursive(e.children);
             });
         };
 
+        root.forEach((entry) => computeDirectoryModified(entry));
         sortRecursive(root);
         return root;
     };
+
+    const treeFiles = useMemo(() => buildTree(flatFiles), [flatFiles, sortMode]);
+
+    const categoryFiles = useMemo(() => {
+        if (viewFilter === "all") return [];
+        const filtered = flatFiles.filter((entry) => {
+            if (entry.is_directory) return false;
+            if (hasHiddenDir(entry.path)) return false;
+            return getCategoryForFile(entry.name) === viewFilter;
+        });
+
+        return filtered.sort((a, b) => {
+            const nameCompare = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+            let cmp = 0;
+            if (sortMode.field === "name") {
+                cmp = nameCompare;
+            } else {
+                const timeA = a.modified_at ?? 0;
+                const timeB = b.modified_at ?? 0;
+                cmp = timeA - timeB;
+            }
+            if (cmp === 0) cmp = nameCompare;
+            if (sortMode.direction === "desc") cmp *= -1;
+            return cmp;
+        });
+    }, [flatFiles, viewFilter, sortMode]);
+
+    const viewMode = viewFilter === "all" ? "tree" : "category";
+    const showImageGrid = viewMode === "category" && viewFilter === "images";
+
+    const fileMap = useMemo(() => {
+        const map = new Map<string, FileEntry>();
+        flatFiles.forEach((entry) => {
+            map.set(entry.path, entry);
+        });
+        return map;
+    }, [flatFiles]);
+
+    const getEntriesForFilter = useCallback((filter: ViewFilter) => {
+        if (filter === "all") {
+            return flatFiles.filter((entry) => !entry.is_directory);
+        }
+        return flatFiles.filter((entry) => {
+            if (entry.is_directory) return false;
+            return getCategoryForFile(entry.name) === filter;
+        });
+    }, [flatFiles]);
+
+    const searchTokens = useMemo(() => {
+        return searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    }, [searchQuery]);
+
+    const computeFilenameScore = (entry: FileEntry, tokens: string[]) => {
+        if (!tokens.length) return null;
+        const haystack = entry.name.toLowerCase();
+        let score = 0;
+        for (const token of tokens) {
+            const idx = haystack.indexOf(token);
+            if (idx < 0) return null;
+            score += token.length / Math.max(haystack.length, 1);
+            if (idx === 0) score += 0.1;
+        }
+        return score;
+    };
+
+    const filenameSearchEntries = useMemo(() => {
+        if (!searchTokens.length) return [];
+        const candidates = getEntriesForFilter(viewFilter);
+        const scored = candidates
+            .map((entry) => {
+                const score = computeFilenameScore(entry, searchTokens);
+                return score === null ? null : { entry, score };
+            })
+            .filter((item): item is { entry: FileEntry; score: number } => item !== null);
+        scored.sort((a, b) => b.score - a.score || a.entry.name.localeCompare(b.entry.name));
+        return scored.map((item) => item.entry);
+    }, [searchTokens, getEntriesForFilter, viewFilter]);
+
+    const isSearchActive = searchTokens.length > 0;
+    const isFilenameOnlySearch = isSearchActive && (viewFilter === "images" || viewFilter === "video" || viewFilter === "audio");
+    const isSemanticSearch = isSearchActive && (viewFilter === "all" || viewFilter === "documents" || viewFilter === "code");
+
+    const normalizeResultPath = useCallback(
+        (path: string) => {
+            if (!currentWorkspace?.path) return path;
+            const root = currentWorkspace.path.replace(/\/+$/, "");
+            if (path === root) return "";
+            if (path.startsWith(root + "/")) {
+                return path.slice(root.length + 1);
+            }
+            return path;
+        },
+        [currentWorkspace?.path]
+    );
+
+    useEffect(() => {
+        if (!isSearchActive) {
+            setSearchResults([]);
+            setSearchError(null);
+            setSearchLoading(false);
+            return;
+        }
+
+        if (isFilenameOnlySearch) {
+            const results = filenameSearchEntries.map((entry, index) => ({
+                path: entry.path,
+                name: entry.name,
+                snippet: undefined,
+                score: 1 / (60 + index + 1),
+                source: "filename" as const,
+            }));
+            setSearchResults(results);
+            setSearchError(null);
+            setSearchLoading(false);
+            return;
+        }
+
+        if (!isSemanticSearch) {
+            setSearchResults([]);
+            setSearchError(null);
+            setSearchLoading(false);
+            return;
+        }
+
+        const requestId = ++searchRequestRef.current;
+        setSearchLoading(true);
+        setSearchError(null);
+
+        const runSearch = async () => {
+            try {
+                const res = await fetch("http://localhost:8000/api/search/query", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        workdir: currentWorkspace?.path,
+                        query: searchQuery.trim(),
+                        limit: 30,
+                        vector_k: 60,
+                        use_vector: true,
+                        use_fts: true,
+                        mode: "files",
+                        rerank: "alpha",
+                        alpha: 0.5,
+                        exclude_paths: [".opencowork"],
+                    }),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || "Search failed");
+                }
+
+                const data = await res.json();
+                if (searchRequestRef.current !== requestId) return;
+
+                let semanticResults: {
+                    path: string;
+                    snippet?: string;
+                    start_line?: number | null;
+                    end_line?: number | null;
+                }[] = data.results || [];
+
+                semanticResults = semanticResults.map((item) => ({
+                    ...item,
+                    path: normalizeResultPath(item.path),
+                }));
+
+                if (viewFilter === "documents" || viewFilter === "code") {
+                    const allowed = viewFilter === "documents" ? DOC_EXTS : CODE_EXTS;
+                    semanticResults = semanticResults.filter((item) => {
+                        const ext = getExtension(item.path);
+                        return ext ? allowed.has(ext) : false;
+                    });
+                }
+
+                const semanticRanked = semanticResults.map((item, index) => ({
+                    path: item.path,
+                    name: item.path.split("/").pop() || item.path,
+                    snippet: item.snippet,
+                    start_line: item.start_line ?? null,
+                    end_line: item.end_line ?? null,
+                    score: 1 / (60 + index + 1),
+                    source: "semantic" as const,
+                }));
+
+                let merged: {
+                    path: string;
+                    name: string;
+                    snippet?: string;
+                    score: number;
+                    source: "semantic" | "filename" | "merged";
+                    start_line?: number | null;
+                    end_line?: number | null;
+                }[] = semanticRanked;
+
+                if (viewFilter === "all" || viewFilter === "documents" || viewFilter === "code") {
+                    const filenameCandidates = getEntriesForFilter(viewFilter === "all" ? "all" : viewFilter);
+                    const filenameScored = filenameCandidates
+                        .map((entry) => {
+                            const score = computeFilenameScore(entry, searchTokens);
+                            return score === null ? null : { entry, score };
+                        })
+                        .filter((item): item is { entry: FileEntry; score: number } => item !== null);
+                    filenameScored.sort((a, b) => b.score - a.score || a.entry.name.localeCompare(b.entry.name));
+
+                    const filenameRanked = filenameScored.map((item, index) => ({
+                        path: item.entry.path,
+                        name: item.entry.name,
+                        score: 1 / (60 + index + 1),
+                        source: "filename" as const,
+                    }));
+
+                    const mergedMap = new Map<string, { path: string; name: string; snippet?: string; score: number; source: "semantic" | "filename" | "merged"; start_line?: number | null; end_line?: number | null }>();
+                    semanticRanked.forEach((item) => {
+                        const key = normalizeResultPath(item.path);
+                        mergedMap.set(key, { ...item, path: key });
+                    });
+                    filenameRanked.forEach((item) => {
+                        const key = normalizeResultPath(item.path);
+                        const existing = mergedMap.get(key);
+                        if (existing) {
+                            mergedMap.set(key, {
+                                ...existing,
+                                score: existing.score + item.score,
+                                source: "merged",
+                            });
+                        } else {
+                            mergedMap.set(key, {
+                                path: key,
+                                name: item.name,
+                                snippet: undefined,
+                                score: item.score,
+                                source: "filename",
+                            });
+                        }
+                    });
+
+                    merged = Array.from(mergedMap.values()).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+                }
+
+                setSearchResults(merged);
+                setSearchError(null);
+            } catch (err) {
+                if (searchRequestRef.current !== requestId) return;
+                const message = err instanceof Error ? err.message : "Search failed";
+                setSearchError(message);
+                setSearchResults([]);
+            } finally {
+                if (searchRequestRef.current === requestId) {
+                    setSearchLoading(false);
+                }
+            }
+        };
+
+        const timer = setTimeout(runSearch, 250);
+        return () => clearTimeout(timer);
+    }, [
+        isSearchActive,
+        isFilenameOnlySearch,
+        isSemanticSearch,
+        filenameSearchEntries,
+        viewFilter,
+        searchQuery,
+        searchTokens,
+        currentWorkspace?.path,
+        getEntriesForFilter,
+    ]);
 
     const handleToggleExpand = (path: string) => {
         const newSet = new Set(expandedPaths);
@@ -794,117 +1153,271 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFil
             onDrop={handleExternalDrop}
         >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-                <span>Explorer</span>
-                <button onClick={fetchFiles} className="hover:bg-zinc-200 dark:hover:bg-zinc-800 p-1 rounded">
-                    <RefreshCw size={14} />
-                </button>
+            <div className="flex items-center justify-between px-3 py-2 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                <select
+                    value={viewFilter}
+                    onChange={(e) => setViewFilter(e.target.value as ViewFilter)}
+                    className="h-6 px-2 rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-[11px] font-medium text-zinc-700 dark:text-zinc-200"
+                >
+                    <option value="all">All</option>
+                    <option value="documents">Documents</option>
+                    <option value="images">Images</option>
+                    <option value="video">Video</option>
+                    <option value="audio">Audio</option>
+                    <option value="code">Code</option>
+                </select>
+                <div className="flex items-center gap-1.5">
+                    <button
+                        onClick={() => setSortIndex((prev) => (prev + 1) % SORT_CYCLE.length)}
+                        className="h-6 px-2 rounded text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 leading-none"
+                        title="Toggle sort"
+                    >
+                        {sortMode.label}
+                    </button>
+                    <button onClick={fetchFiles} className="hover:bg-zinc-200 dark:hover:bg-zinc-800 p-1 rounded">
+                        <RefreshCw size={14} />
+                    </button>
+                </div>
+            </div>
+            <div className="px-3 pb-2">
+                <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400" />
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search..."
+                        className="w-full h-7 pl-7 pr-8 text-xs bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
+                    />
+                    {searchLoading && (
+                        <Loader2 className="absolute right-7 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400 animate-spin" />
+                    )}
+                    {searchQuery && (
+                        <button
+                            onClick={() => setSearchQuery("")}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-500"
+                            title="Clear"
+                        >
+                            <X size={12} />
+                        </button>
+                    )}
+                </div>
             </div>
 
-            {/* Tree */}
-            {isLoading && rootFiles.length === 0 ? (
+            {/* Content */}
+            {isLoading && (viewMode === "tree" ? treeFiles.length === 0 : categoryFiles.length === 0) ? (
                 <div className="flex-1 overflow-auto py-2">
                     <div className="flex items-center justify-center p-4 text-zinc-400">
                         <Loader2 className="animate-spin mr-2" size={16} /> Loading...
                     </div>
                 </div>
             ) : (
-                <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragStart={(event: DragStartEvent) => {
-                        const entry = event.active.data?.current as FileEntry || null;
-                        setActiveItem(entry);
-
-                        // Capture initial positions
-                        const node = document.getElementById(entry.path);
-                        if (node) {
-                            const rect = node.getBoundingClientRect();
-                            dragStartRectRef.current = { left: rect.left, top: rect.top };
-
-                            // Initialize position immediately to avoid flicker
-                            if (containerRef.current && customOverlayRef.current) {
-                                const container = containerRef.current.getBoundingClientRect();
-                                const x = rect.left - container.left;
-                                const y = rect.top - container.top;
-                                customOverlayRef.current.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-                            }
-                        }
-                    }}
-                    onDragMove={(event: DragMoveEvent) => {
-                        if (!containerRef.current || !customOverlayRef.current || !dragStartRectRef.current) return;
-
-                        const { delta } = event;
-                        const container = containerRef.current.getBoundingClientRect();
-                        const start = dragStartRectRef.current;
-
-                        // Current Viewport Position = Start + Delta
-                        const currentLeft = start.left + delta.x;
-                        const currentTop = start.top + delta.y;
-
-                        // Relative Position = Current Viewport - Container Viewport
-                        const x = currentLeft - container.left;
-                        const y = currentTop - container.top;
-
-                        customOverlayRef.current.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-                    }}
-                    onDragEnd={(event) => {
-                        setActiveItem(null);
-                        dragStartRectRef.current = null;
-                        onDragEnd(event);
-                    }}
-                >
+                isSearchActive && isSemanticSearch ? (
                     <div className="flex-1 overflow-auto py-2">
-                        {rootFiles.map(entry => (
-                            <FileTreeItem
-                                key={entry.path}
-                                entry={entry}
-                                onSelect={handleSelect}
-                                expandedPaths={expandedPaths}
-                                onToggleExpand={handleToggleExpand}
-                                onContextMenu={handleContextMenu}
-                                onExternalFileDrop={async (files, targetPath) => {
-                                    // Explicitly reset global drag state because the child component calls stopPropagation(),
-                                    // which prevents the global 'drop' listener from firing.
-                                    dragCounterRef.current = 0;
-                                    setIsDraggingExternal(false);
-
-                                    for (let i = 0; i < files.length; i++) {
-                                        await uploadFile(files[i], targetPath);
-                                    }
-                                }}
-                                onMention={(path) => onMentionFile?.(path)}
-                                onShowMenu={handleContextMenu}
-                                editingPath={editingPath}
-                                editingName={editingName}
-                                onEditingNameChange={setEditingName}
-                                onEditingSubmit={handleRename}
-                                onEditingCancel={cancelRename}
-                                onEditingSelectionStart={editingSelectionStart}
-                                onEditingSelectionEnd={editingSelectionEnd}
-                                onDoubleClick={(entry) => handleOpen(entry)}
-                            />
-                        ))}
-                    </div>
-
-                    {/* Custom Manual Drag Overlay - Rendered in DOM but positioned manually */}
-                    <div
-                        ref={customOverlayRef}
-                        className={`absolute top-0 left-0 z-50 pointer-events-none ${activeItem ? '' : 'hidden'}`}
-                        style={{ willChange: 'transform' }} // Optimization
-                    >
-                        {activeItem ? (
-                            <div className="flex items-center gap-2 px-2 py-1 bg-white dark:bg-zinc-800 rounded-sm shadow-xl border border-blue-500 text-sm opacity-90">
-                                {activeItem.is_directory ? (
-                                    <Folder size={16} className="text-zinc-500" />
-                                ) : (
-                                    <File size={16} className="text-zinc-500" />
-                                )}
-                                <span className="text-zinc-700 dark:text-zinc-300">{activeItem.name}</span>
+                        {searchError && (
+                            <div className="mx-3 mb-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-md px-2 py-1">
+                                {searchError}
                             </div>
-                        ) : null}
+                        )}
+                        {!searchLoading && searchResults.length === 0 && !searchError && (
+                            <div className="flex items-center justify-center p-4 text-zinc-400 text-xs">
+                                No results
+                            </div>
+                        )}
+                        {searchResults.length > 0 && (
+                            <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                                {searchResults.map((result) => {
+                                    const entry = fileMap.get(result.path) || {
+                                        name: result.name,
+                                        path: result.path,
+                                        is_directory: false,
+                                    };
+                                    return (
+                                        <div
+                                            key={result.path}
+                                            className="px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
+                                            onClick={(e) => handleSelect(entry, e)}
+                                            onDoubleClick={() => handleOpen(entry)}
+                                        >
+                                            <div className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                                                {result.name}
+                                            </div>
+                                            {result.snippet && (
+                                                <div className="text-[11px] text-zinc-600 dark:text-zinc-300 line-clamp-2 mt-0.5">
+                                                    {result.snippet.slice(0, 160)}
+                                                </div>
+                                            )}
+                                            <div className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate font-mono mt-0.5">
+                                                {result.path}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
-                </DndContext>
+                ) : showImageGrid && (!isSearchActive || viewFilter === "images") ? (
+                    <div className="flex-1 overflow-auto py-2 px-2">
+                        {isSearchActive && filenameSearchEntries.length === 0 ? (
+                            <div className="flex items-center justify-center p-4 text-zinc-400 text-xs">
+                                No results
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-3 gap-2">
+                                {(isSearchActive ? filenameSearchEntries : categoryFiles).map(entry => {
+                                    const ext = getExtension(entry.name);
+                                    const isSvg = ext === "svg";
+                                    const imageSrc = isSvg
+                                        ? `http://localhost:8000/api/files/raw?path=${encodeURIComponent(entry.path)}`
+                                        : `http://localhost:8000/api/files/thumbnail?path=${encodeURIComponent(entry.path)}&size=256`;
+                                    return (
+                                        <div
+                                            key={entry.path}
+                                            className="group rounded-md overflow-hidden border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 cursor-pointer"
+                                            onClick={(e) => handleSelect(entry, e)}
+                                            onDoubleClick={() => handleOpen(entry)}
+                                        >
+                                            <div className="aspect-square overflow-hidden bg-zinc-100 dark:bg-zinc-800">
+                                                <img
+                                                    src={imageSrc}
+                                                    alt={entry.name}
+                                                    className="w-full h-full object-cover"
+                                                    loading="lazy"
+                                                />
+                                            </div>
+                                            <div className="px-2 py-1 text-[11px] text-zinc-600 dark:text-zinc-300 truncate">
+                                                {entry.name}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                ) : viewMode === "category" ? (
+                    <div className="flex-1 overflow-auto py-2">
+                        {(isSearchActive ? filenameSearchEntries : categoryFiles).length === 0 ? (
+                            <div className="flex items-center justify-center p-4 text-zinc-400 text-xs">
+                                No results
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                                {(isSearchActive ? filenameSearchEntries : categoryFiles).map((entry) => (
+                                    <div
+                                        key={entry.path}
+                                        className="px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
+                                        onClick={(e) => handleSelect(entry, e)}
+                                        onDoubleClick={() => handleOpen(entry)}
+                                    >
+                                        <div className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                                            {entry.name}
+                                        </div>
+                                        <div className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate font-mono mt-0.5">
+                                            {entry.path}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragStart={(event: DragStartEvent) => {
+                            const entry = event.active.data?.current as FileEntry || null;
+                            setActiveItem(entry);
+
+                            // Capture initial positions
+                            const node = document.getElementById(entry.path);
+                            if (node) {
+                                const rect = node.getBoundingClientRect();
+                                dragStartRectRef.current = { left: rect.left, top: rect.top };
+
+                                // Initialize position immediately to avoid flicker
+                                if (containerRef.current && customOverlayRef.current) {
+                                    const container = containerRef.current.getBoundingClientRect();
+                                    const x = rect.left - container.left;
+                                    const y = rect.top - container.top;
+                                    customOverlayRef.current.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+                                }
+                            }
+                        }}
+                        onDragMove={(event: DragMoveEvent) => {
+                            if (!containerRef.current || !customOverlayRef.current || !dragStartRectRef.current) return;
+
+                            const { delta } = event;
+                            const container = containerRef.current.getBoundingClientRect();
+                            const start = dragStartRectRef.current;
+
+                            // Current Viewport Position = Start + Delta
+                            const currentLeft = start.left + delta.x;
+                            const currentTop = start.top + delta.y;
+
+                            // Relative Position = Current Viewport - Container Viewport
+                            const x = currentLeft - container.left;
+                            const y = currentTop - container.top;
+
+                            customOverlayRef.current.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+                        }}
+                        onDragEnd={(event) => {
+                            setActiveItem(null);
+                            dragStartRectRef.current = null;
+                            onDragEnd(event);
+                        }}
+                    >
+                        <div className="flex-1 overflow-auto py-2">
+                            {treeFiles.map(entry => (
+                                <FileTreeItem
+                                    key={entry.path}
+                                    entry={entry}
+                                    onSelect={handleSelect}
+                                    expandedPaths={expandedPaths}
+                                    onToggleExpand={handleToggleExpand}
+                                    onContextMenu={handleContextMenu}
+                                    onExternalFileDrop={async (files, targetPath) => {
+                                        // Explicitly reset global drag state because the child component calls stopPropagation(),
+                                        // which prevents the global 'drop' listener from firing.
+                                        dragCounterRef.current = 0;
+                                        setIsDraggingExternal(false);
+
+                                        for (let i = 0; i < files.length; i++) {
+                                            await uploadFile(files[i], targetPath);
+                                        }
+                                    }}
+                                    onMention={(path) => onMentionFile?.(path)}
+                                    onShowMenu={handleContextMenu}
+                                    editingPath={editingPath}
+                                    editingName={editingName}
+                                    onEditingNameChange={setEditingName}
+                                    onEditingSubmit={handleRename}
+                                    onEditingCancel={cancelRename}
+                                    onEditingSelectionStart={editingSelectionStart}
+                                    onEditingSelectionEnd={editingSelectionEnd}
+                                    onDoubleClick={(entry) => handleOpen(entry)}
+                                />
+                            ))}
+                        </div>
+
+                        {/* Custom Manual Drag Overlay - Rendered in DOM but positioned manually */}
+                        <div
+                            ref={customOverlayRef}
+                            className={`absolute top-0 left-0 z-50 pointer-events-none ${activeItem ? '' : 'hidden'}`}
+                            style={{ willChange: 'transform' }} // Optimization
+                        >
+                            {activeItem ? (
+                                <div className="flex items-center gap-2 px-2 py-1 bg-white dark:bg-zinc-800 rounded-sm shadow-xl border border-blue-500 text-sm opacity-90">
+                                    {activeItem.is_directory ? (
+                                        <Folder size={16} className="text-zinc-500" />
+                                    ) : (
+                                        <File size={16} className="text-zinc-500" />
+                                    )}
+                                    <span className="text-zinc-700 dark:text-zinc-300">{activeItem.name}</span>
+                                </div>
+                            ) : null}
+                        </div>
+                    </DndContext>
+                )
             )}
 
 

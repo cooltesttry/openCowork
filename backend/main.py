@@ -3,6 +3,7 @@ FastAPI application entry point.
 """
 import json
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
@@ -11,7 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import agent, config, sessions, files, terminal, agents, super_agent, workspace, search
+from routers import agent, config, sessions, files, terminal, agents, super_agent, workspace, search, imagegen
 from models.settings import AppSettings
 from core.session_manager import session_manager
 from core.task_runner import task_runner
@@ -89,6 +90,10 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Import file watcher service
     from core.file_watcher import file_watcher_service
+    from core.search.index_service import search_index_service
+    from core.workspace_storage import WorkspaceManager
+
+    logging.info(f"[Lifespan] Startup begin (pid={os.getpid()})")
 
     # Load settings on startup
     app.state.settings = load_settings()
@@ -115,19 +120,49 @@ async def lifespan(app: FastAPI):
     # Start task runner for background task execution
     await task_runner.start()
 
-    # Start file watcher if workdir is configured
-    if app.state.settings.default_workdir:
-        await file_watcher_service.start(app.state.settings.default_workdir)
-        logging.info(f"[Lifespan] File watcher started for: {app.state.settings.default_workdir}")
+    disable_file_watcher = os.getenv("OPENCOWORK_DISABLE_FILE_WATCHER", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+    # Start file watchers for all known workspaces
+    config_path = Path(__file__).parent.parent / "storage" / "config.json"
+    manager = WorkspaceManager(config_path)
+    app.state.workspace_manager = manager
+
+    workdirs = [ws.get("path") for ws in manager.get_recent_workspaces() if ws.get("path")]
+    if app.state.settings.default_workdir and app.state.settings.default_workdir not in workdirs:
+        workdirs.append(app.state.settings.default_workdir)
+
+    if disable_file_watcher:
+        logging.info("[Lifespan] File watcher disabled via OPENCOWORK_DISABLE_FILE_WATCHER")
+    else:
+        if workdirs:
+            await file_watcher_service.start(workdirs)
+            logging.info(f"[Lifespan] File watcher started for {len(workdirs)} workspaces")
+        else:
+            logging.info("[Lifespan] No workspaces found for file watcher")
+
+    await search_index_service.start()
+    if workdirs:
+        await search_index_service.register_workspaces(workdirs)
     
     yield
 
+    logging.info(f"[Lifespan] Shutdown begin (pid={os.getpid()})")
+
     # Cleanup on shutdown
-    await file_watcher_service.stop()
+    if not disable_file_watcher:
+        await file_watcher_service.stop()
+    await search_index_service.stop()
     await task_runner.stop()
     await session_manager.stop()
     # Note: Settings are NOT auto-saved on shutdown.
     # Only explicit user saves should persist to config.json.
+
+    logging.info(f"[Lifespan] Shutdown complete (pid={os.getpid()})")
 
 
 # Create FastAPI app
@@ -136,15 +171,6 @@ app = FastAPI(
     description="A client for Claude Agent SDK with Web UI",
     version="0.1.0",
     lifespan=lifespan,
-)
-
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 # Include routers
@@ -157,6 +183,16 @@ app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(super_agent.router, prefix="/api/super-agent", tags=["super-agent"])
 app.include_router(workspace.router, prefix="/api/workspace", tags=["workspace"])
 app.include_router(search.router, prefix="/api", tags=["search"])
+app.include_router(imagegen.router, prefix="/api/imagegen", tags=["imagegen"])
+
+# Configure CORS - must be after include_router to work correctly
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")

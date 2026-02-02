@@ -9,6 +9,7 @@ import {
   Image,
   Music,
   Video,
+  Folder,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -22,21 +23,31 @@ const iconMap: Record<string, LucideIcon> = {
   image: Image,
   music: Music,
   video: Video,
+  folder: Folder,
 };
 
 interface SidebarProps {
   directories: CommonDirectory[];
   currentPath: string;
   onNavigate: (path: string) => void;
+  customShortcut?: { name: string; path: string; icon: string };
 }
 
-export function Sidebar({ directories, currentPath, onNavigate }: SidebarProps) {
+export function Sidebar({ directories, currentPath, onNavigate, customShortcut }: SidebarProps) {
+  // Combine custom shortcut with common directories
+  const allDirs = React.useMemo(() => {
+    if (customShortcut) {
+      return [customShortcut, ...directories];
+    }
+    return directories;
+  }, [directories, customShortcut]);
+
   return (
     <div className="w-40 shrink-0 border-r border-border bg-muted/30 p-2 space-y-1">
       <div className="text-xs font-medium text-muted-foreground px-2 py-1 uppercase tracking-wide">
         Favorites
       </div>
-      {directories.map((dir) => {
+      {allDirs.map((dir) => {
         const Icon = iconMap[dir.icon] || FileText;
         const isActive = currentPath === dir.path;
 
