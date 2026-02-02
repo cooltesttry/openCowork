@@ -67822,3 +67822,29 @@ AttributeError: 'AppSettings' object has no attribute 'agent'
 2026-02-02 08:43:17 - uvicorn.error - DEBUG - % received keepalive pong
 2026-02-02 08:43:27 - uvicorn.error - DEBUG - < TEXT 'ping' [4 bytes]
 2026-02-02 08:43:27 - uvicorn.error - DEBUG - > TEXT '{"type":"pong"}' [15 bytes]
+2026-02-02 08:43:34 - uvicorn.error - DEBUG - % sending keepalive ping
+2026-02-02 08:43:34 - uvicorn.error - DEBUG - > PING 7e cb e7 0a [binary, 4 bytes]
+2026-02-02 08:43:34 - uvicorn.error - DEBUG - < PONG 7e cb e7 0a [binary, 4 bytes]
+2026-02-02 08:43:34 - uvicorn.error - DEBUG - % received keepalive pong
+2026-02-02 08:43:34 - uvicorn.error - DEBUG - % sending keepalive ping
+2026-02-02 08:43:34 - uvicorn.error - DEBUG - > PING b5 7e 53 e6 [binary, 4 bytes]
+2026-02-02 08:43:34 - uvicorn.error - DEBUG - < PONG b5 7e 53 e6 [binary, 4 bytes]
+2026-02-02 08:43:34 - uvicorn.error - DEBUG - % received keepalive pong
+2026-02-02 08:43:37 - uvicorn.error - DEBUG - % sending keepalive ping
+2026-02-02 08:43:37 - uvicorn.error - DEBUG - > PING de 4f 4b 78 [binary, 4 bytes]
+2026-02-02 08:43:37 - uvicorn.error - DEBUG - < PONG de 4f 4b 78 [binary, 4 bytes]
+2026-02-02 08:43:37 - uvicorn.error - DEBUG - % received keepalive pong
+2026-02-02 08:43:54 - uvicorn.error - DEBUG - % sending keepalive ping
+2026-02-02 08:43:54 - uvicorn.error - DEBUG - > PING cb 26 ef d2 [binary, 4 bytes]
+2026-02-02 08:43:54 - uvicorn.error - DEBUG - < PONG cb 26 ef d2 [binary, 4 bytes]
+2026-02-02 08:43:54 - uvicorn.error - DEBUG - % received keepalive pong
+2026-02-02 08:43:54 - uvicorn.error - DEBUG - % sending keepalive ping
+2026-02-02 08:43:54 - uvicorn.error - DEBUG - > PING 60 13 ef cb [binary, 4 bytes]
+2026-02-02 08:43:54 - uvicorn.error - DEBUG - < PONG 60 13 ef cb [binary, 4 bytes]
+2026-02-02 08:43:54 - uvicorn.error - DEBUG - % received keepalive pong
+2026-02-02 08:43:57 - uvicorn.error - DEBUG - % sending keepalive ping
+2026-02-02 08:43:57 - uvicorn.error - DEBUG - > PING 95 2f 44 16 [binary, 4 bytes]
+2026-02-02 08:43:57 - uvicorn.error - DEBUG - < PONG 95 2f 44 16 [binary, 4 bytes]
+2026-02-02 08:43:57 - uvicorn.error - DEBUG - % received keepalive pong
+2026-02-02 08:43:57 - uvicorn.error - DEBUG - < TEXT 'ping' [4 bytes]
+2026-02-02 08:43:57 - uvicorn.error - DEBUG - > TEXT '{"type":"pong"}' [15 bytes]
