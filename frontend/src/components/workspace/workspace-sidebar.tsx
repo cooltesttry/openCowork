@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Session } from "@/lib/types";
+import { useEffect, useRef, useState } from "react";
 import { SessionStatus } from "@/lib/store";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
     Plus,
@@ -18,6 +18,7 @@ import {
     FolderOpen,
     FolderIcon,
     ChevronDown,
+    Search,
 } from "lucide-react";
 
 // ==================== Types ====================
@@ -87,6 +88,83 @@ export function WorkspaceSidebar({
     const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
     const [fadingOutSessionId, setFadingOutSessionId] = useState<string | null>(null);
     const [workspaceSelectorOpen, setWorkspaceSelectorOpen] = useState(false);
+    const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+    const [sessionQuery, setSessionQuery] = useState("");
+    const [sessionResults, setSessionResults] = useState<Array<{ path: string; snippet: string }>>([]);
+    const [sessionSearchLoading, setSessionSearchLoading] = useState(false);
+    const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+    useEffect(() => {
+        if (sessionSearchOpen) {
+            setTimeout(() => searchInputRef.current?.focus(), 0);
+        } else {
+            setSessionQuery("");
+            setSessionResults([]);
+        }
+    }, [sessionSearchOpen]);
+
+    useEffect(() => {
+        setSessionSearchOpen(false);
+        setSessionQuery("");
+        setSessionResults([]);
+    }, [currentWorkspace?.id]);
+
+    useEffect(() => {
+        if (!sessionSearchOpen) return;
+        const query = sessionQuery.trim();
+        if (!query) {
+            setSessionResults([]);
+            return;
+        }
+        if (!currentWorkspace?.path) {
+            setSessionResults([]);
+            return;
+        }
+
+        let cancelled = false;
+        const controller = new AbortController();
+        setSessionSearchLoading(true);
+
+        const timer = setTimeout(async () => {
+            try {
+                const response = await fetch("http://localhost:8000/api/search/query", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    signal: controller.signal,
+                    body: JSON.stringify({
+                        workdir: currentWorkspace.path,
+                        query,
+                        mode: "files",
+                        limit: 50,
+                        use_vector: true,
+                        use_fts: true,
+                        include_paths: [".opencowork/sessions"],
+                    }),
+                });
+                if (!response.ok) {
+                    throw new Error(`Search failed: ${response.statusText}`);
+                }
+                const data = await response.json();
+                if (!cancelled) {
+                    setSessionResults(data.results || []);
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setSessionResults([]);
+                }
+            } finally {
+                if (!cancelled) {
+                    setSessionSearchLoading(false);
+                }
+            }
+        }, 250);
+
+        return () => {
+            cancelled = true;
+            controller.abort();
+            clearTimeout(timer);
+        };
+    }, [sessionQuery, sessionSearchOpen, currentWorkspace?.path]);
 
     // Helper to get status icon for a session
     const getStatusIcon = (sessionId: string) => {
@@ -128,6 +206,11 @@ export function WorkspaceSidebar({
         setDeletingSessionId(null);
     };
 
+    const extractSessionId = (path: string) => {
+        const base = path.split("/").pop() || path;
+        return base.endsWith(".json") ? base.slice(0, -5) : base;
+    };
+
     return (
         <aside
             className="h-full bg-card border-r flex flex-col shrink-0"
@@ -144,15 +227,26 @@ export function WorkspaceSidebar({
                     {/* Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
                         <h2 className="font-semibold text-sm">Workspaces</h2>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={onToggle}
-                            className="h-8 w-8"
-                            title="Collapse sidebar"
-                        >
-                            <PanelLeftClose className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setSessionSearchOpen((prev) => !prev)}
+                                className="h-8 w-8"
+                                title="Search sessions"
+                            >
+                                <Search className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={onToggle}
+                                className="h-8 w-8"
+                                title="Collapse sidebar"
+                            >
+                                <PanelLeftClose className="h-4 w-4" />
+                            </Button>
+                        </div>
                     </div>
 
                     {/* Workspace Selector */}
@@ -230,6 +324,29 @@ export function WorkspaceSidebar({
                             ) : (
                                 <>
                                     <div className="sticky top-0 z-10 -mx-2 px-2 pt-1 pb-1 bg-card">
+                                        {sessionSearchOpen && (
+                                            <div className="mb-2 flex items-center gap-2">
+                                                <div className="relative">
+                                                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                                    <Input
+                                                        ref={searchInputRef}
+                                                        value={sessionQuery}
+                                                        onChange={(e) => setSessionQuery(e.target.value)}
+                                                        placeholder="Search sessions..."
+                                                        className="h-8 pl-7 pr-2 text-sm"
+                                                    />
+                                                </div>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => setSessionSearchOpen(false)}
+                                                    className="h-8 w-8"
+                                                    title="Close search"
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        )}
                                         <div
                                             onClick={onNewSession}
                                             className={cn(
@@ -245,7 +362,47 @@ export function WorkspaceSidebar({
                                             </div>
                                         </div>
                                     </div>
-                                    {sessions.length === 0 ? (
+                                    {sessionSearchOpen ? (
+                                        sessionSearchLoading ? (
+                                            <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                                                Searching...
+                                            </div>
+                                        ) : sessionResults.length === 0 ? (
+                                            <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                                                No matching sessions
+                                            </div>
+                                        ) : (
+                                            sessionResults.map((result) => {
+                                                const sessionId = extractSessionId(result.path);
+                                                const session = sessions.find((s) => s.id === sessionId);
+                                                const title = session?.title || "New Chat";
+                                                return (
+                                                    <div
+                                                        key={result.path}
+                                                        onClick={() => onSelectSession(sessionId)}
+                                                        className={cn(
+                                                            "group relative flex items-start gap-1.5 px-2.5 py-1.5 rounded-md cursor-pointer",
+                                                            currentSessionId === sessionId
+                                                                ? "bg-primary/10 text-primary"
+                                                                : "hover:bg-muted"
+                                                        )}
+                                                    >
+                                                        {getStatusIcon(sessionId)}
+                                                        <div className="flex-1 min-w-0 overflow-hidden">
+                                                            <div className="text-sm truncate">
+                                                                {title}
+                                                            </div>
+                                                            {result.snippet ? (
+                                                                <div className="text-xs text-muted-foreground line-clamp-2">
+                                                                    {result.snippet}
+                                                                </div>
+                                                            ) : null}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )
+                                    ) : sessions.length === 0 ? (
                                         <div className="px-3 py-8 text-center text-sm text-muted-foreground">
                                             No conversations yet
                                         </div>

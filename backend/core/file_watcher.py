@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Set, Dict, Any, Iterable
+from typing import Set, Dict, Any, Iterable, Awaitable, Callable
 from dataclasses import dataclass, field
 
 from watchdog.observers import Observer
@@ -27,16 +27,21 @@ class FileChangeEvent:
     action: str  # created, deleted, modified, moved
     path: str  # relative path
     is_directory: bool
+    workdir: str
+    dest_path: str | None = None
     timestamp: float = field(default_factory=time.time)
     
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload: Dict[str, Any] = {
             "type": "file_change",
             "action": self.action,
             "path": self.path,
             "is_directory": self.is_directory,
             "timestamp": self.timestamp
         }
+        if self.dest_path:
+            payload["dest_path"] = self.dest_path
+        return payload
 
 
 class FileChangeHandler(FileSystemEventHandler):
@@ -75,17 +80,22 @@ class FileChangeHandler(FileSystemEventHandler):
         except ValueError:
             return path
     
-    def _handle_event(self, event: FileSystemEvent, action: str):
+    def _handle_event(self, event: FileSystemEvent, action: str, dest_path: str | None = None):
         """Common handler for all event types."""
         if self._should_ignore(event.src_path):
             return
         
         relative_path = self._get_relative_path(event.src_path)
+        relative_dest = None
+        if dest_path and not self._should_ignore(dest_path):
+            relative_dest = self._get_relative_path(dest_path)
         
         change_event = FileChangeEvent(
             action=action,
             path=relative_path,
-            is_directory=event.is_directory
+            is_directory=event.is_directory,
+            workdir=str(self.workdir),
+            dest_path=relative_dest,
         )
         
         # Schedule the async broadcast
@@ -107,7 +117,8 @@ class FileChangeHandler(FileSystemEventHandler):
         self._handle_event(event, "modified")
     
     def on_moved(self, event: FileSystemEvent):
-        self._handle_event(event, "moved")
+        dest_path = getattr(event, "dest_path", None)
+        self._handle_event(event, "moved", dest_path=dest_path)
 
 
 class FileWatcherService:
@@ -122,6 +133,7 @@ class FileWatcherService:
         self.workdirs: list[str] = []
         self.loop: asyncio.AbstractEventLoop | None = None
         self._started = False
+        self._event_handlers: Set[Callable[[FileChangeEvent], Awaitable[None]]] = set()
         
         # Debounce settings
         self._event_queue: list[FileChangeEvent] = []
@@ -192,6 +204,14 @@ class FileWatcherService:
         """Unregister a WebSocket client."""
         self.clients.discard(ws)
         logger.info(f"[FileWatcher] Client unregistered. Total clients: {len(self.clients)}")
+
+    def register_handler(self, handler: Callable[[FileChangeEvent], Awaitable[None]]) -> None:
+        """Register an async handler for file change events."""
+        self._event_handlers.add(handler)
+
+    def unregister_handler(self, handler: Callable[[FileChangeEvent], Awaitable[None]]) -> None:
+        """Unregister an async handler."""
+        self._event_handlers.discard(handler)
     
     async def queue_event(self, event: FileChangeEvent):
         """Queue an event for debounced broadcast."""
@@ -215,13 +235,25 @@ class FileWatcherService:
         events = self._event_queue.copy()
         self._event_queue.clear()
         
-        # Deduplicate events (keep last event for each path)
+        # Deduplicate events with priority so created isn't overwritten by modified.
+        # Priority: deleted > moved > created > modified
+        priority = {"modified": 0, "created": 1, "moved": 2, "deleted": 3}
         seen_paths: Dict[str, FileChangeEvent] = {}
         for event in events:
-            seen_paths[event.path] = event
+            existing = seen_paths.get(event.path)
+            if not existing:
+                seen_paths[event.path] = event
+                continue
+            if priority.get(event.action, 0) > priority.get(existing.action, 0):
+                seen_paths[event.path] = event
+            else:
+                # Same or lower priority: keep existing (e.g., keep created over modified)
+                continue
         
         unique_events = list(seen_paths.values())
         
+        await self._dispatch_handlers(unique_events)
+
         if len(unique_events) == 1:
             # Single event - send as file_change
             await self.broadcast(unique_events[0].to_dict())
@@ -232,6 +264,21 @@ class FileWatcherService:
                 "changes": [e.to_dict() for e in unique_events],
                 "timestamp": time.time()
             })
+
+    async def _dispatch_handlers(self, events: list[FileChangeEvent]) -> None:
+        if not self._event_handlers or not events:
+            return
+        handlers = list(self._event_handlers)
+        tasks = []
+        for event in events:
+            for handler in handlers:
+                tasks.append(asyncio.create_task(handler(event)))
+        if not tasks:
+            return
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning("[FileWatcher] Handler error: %s", result)
     
     async def broadcast(self, data: Dict[str, Any]):
         """Broadcast event to all connected clients."""

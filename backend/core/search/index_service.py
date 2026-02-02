@@ -30,6 +30,7 @@ class SearchIndexService:
         self._event_debounce = 0.6
         self._modified_quiet_window = 60.0
         self._modified_tasks: Dict[tuple[str, str], asyncio.Task] = {}
+        self._embedding_delay_tasks: Dict[tuple[str, str], asyncio.Task] = {}
 
         self._metadata_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
         self._embedding_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
@@ -52,6 +53,9 @@ class SearchIndexService:
         for task in list(self._modified_tasks.values()):
             task.cancel()
         self._modified_tasks.clear()
+        for task in list(self._embedding_delay_tasks.values()):
+            task.cancel()
+        self._embedding_delay_tasks.clear()
         if self._metadata_task:
             self._metadata_task.cancel()
             self._metadata_task = None
@@ -84,17 +88,25 @@ class SearchIndexService:
 
     async def enqueue_event(self, event: IndexEvent) -> None:
         if event.action == "modified":
+            self._cancel_embedding_delay(event.workdir, event.path)
             await self._schedule_modified(event)
             return
 
         self._cancel_modified(event.workdir, event.path)
+        self._cancel_embedding_delay(event.workdir, event.path)
         if event.dest_path:
             self._cancel_modified(event.workdir, event.dest_path)
+            self._cancel_embedding_delay(event.workdir, event.dest_path)
 
         await self._enqueue_pending(event)
 
     def _cancel_modified(self, workdir: str, path: str) -> None:
         task = self._modified_tasks.pop((workdir, path), None)
+        if task:
+            task.cancel()
+
+    def _cancel_embedding_delay(self, workdir: str, path: str) -> None:
+        task = self._embedding_delay_tasks.pop((workdir, path), None)
         if task:
             task.cancel()
 
@@ -112,6 +124,21 @@ class SearchIndexService:
                 self._modified_tasks.pop(key, None)
 
         self._modified_tasks[key] = asyncio.create_task(delayed())
+
+    async def _schedule_embedding_delay(self, workdir: str, rel_path: str) -> None:
+        key = (workdir, rel_path)
+        self._cancel_embedding_delay(workdir, rel_path)
+
+        async def delayed() -> None:
+            try:
+                await asyncio.sleep(self._modified_quiet_window)
+                await self._embedding_queue.put((workdir, rel_path))
+            except asyncio.CancelledError:
+                return
+            finally:
+                self._embedding_delay_tasks.pop(key, None)
+
+        self._embedding_delay_tasks[key] = asyncio.create_task(delayed())
 
     async def _enqueue_pending(self, event: IndexEvent) -> None:
         async with self._lock:
@@ -173,7 +200,10 @@ class SearchIndexService:
             await self._metadata_queue.put((workdir, rel_path))
 
             if self._should_index_text(target):
-                await self._embedding_queue.put((workdir, rel_path))
+                if event.action == "created":
+                    await self._schedule_embedding_delay(workdir, rel_path)
+                else:
+                    await self._embedding_queue.put((workdir, rel_path))
 
     def _should_index_text(self, path: Path) -> bool:
         ext = path.suffix.lower()

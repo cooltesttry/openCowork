@@ -89,8 +89,8 @@ def save_settings(settings: AppSettings) -> None:
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Import file watcher service
-    from core.file_watcher import file_watcher_service
-    from core.search.index_service import search_index_service
+    from core.file_watcher import file_watcher_service, FileChangeEvent
+    from core.search.index_service import search_index_service, IndexEvent
     from core.workspace_storage import WorkspaceManager
 
     logging.info(f"[Lifespan] Startup begin (pid={os.getpid()})")
@@ -127,6 +127,17 @@ async def lifespan(app: FastAPI):
         "on",
     )
 
+    async def handle_file_change(event: FileChangeEvent) -> None:
+        await search_index_service.enqueue_event(
+            IndexEvent(
+                action=event.action,
+                path=event.path,
+                dest_path=event.dest_path,
+                is_directory=event.is_directory,
+                workdir=event.workdir,
+            )
+        )
+
     # Start file watchers for all known workspaces
     config_path = Path(__file__).parent.parent / "storage" / "config.json"
     manager = WorkspaceManager(config_path)
@@ -140,6 +151,7 @@ async def lifespan(app: FastAPI):
         logging.info("[Lifespan] File watcher disabled via OPENCOWORK_DISABLE_FILE_WATCHER")
     else:
         if workdirs:
+            file_watcher_service.register_handler(handle_file_change)
             await file_watcher_service.start(workdirs)
             logging.info(f"[Lifespan] File watcher started for {len(workdirs)} workspaces")
         else:
@@ -155,6 +167,7 @@ async def lifespan(app: FastAPI):
 
     # Cleanup on shutdown
     if not disable_file_watcher:
+        file_watcher_service.unregister_handler(handle_file_change)
         await file_watcher_service.stop()
     await search_index_service.stop()
     await task_runner.stop()
