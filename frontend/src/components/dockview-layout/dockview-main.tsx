@@ -4,7 +4,6 @@ import { DockviewReact, DockviewReadyEvent, DockviewApi } from 'dockview';
 import 'dockview/dist/styles/dockview.css';
 import { useRef, useEffect, useCallback } from 'react';
 import { useChat } from '@/lib/store';
-import { DocksideToolbars, DOCKSIDE_TOOLBAR_WIDTH } from './toolbar/side-toolbars';
 import { WorkspacePanelContent } from './panels/workspace-panel';
 import { ChatPanelContent } from './panels/chat-panel';
 import { ToolsPanelContent } from './panels/tools-panel';
@@ -36,12 +35,19 @@ const components = {
 
 const SESSION_PANEL_WIDTH = 238;
 const TOOLS_PANEL_WIDTH = 310;
+const COLLAPSED_PANEL_WIDTH = 44;
 
 export function DockviewMain() {
     const apiRef = useRef<DockviewApi | null>(null);
     const handlePreviewFileRef = useRef<((path: string, name: string) => void) | null>(null);
     const handlePreviewHTMLRef = useRef<((htmlContent: string) => void) | null>(null);
-    const { isSidebarOpen, isSessionSidebarOpen, setIsSessionSidebarOpen, setPreviewHTMLCallback } = useChat();
+    const {
+        isSidebarOpen,
+        setIsSidebarOpen,
+        isSessionSidebarOpen,
+        setIsSessionSidebarOpen,
+        setPreviewHTMLCallback,
+    } = useChat();
 
     // Use shared chat logic hook
     const chatLogic = useChatLogic();
@@ -53,6 +59,15 @@ export function DockviewMain() {
 
     // Ref for Dockview container
     const containerRef = useRef<HTMLDivElement>(null);
+
+    const relayout = useCallback(() => {
+        if (!apiRef.current || !containerRef.current) return;
+        apiRef.current.layout(
+            containerRef.current.clientWidth,
+            containerRef.current.clientHeight,
+            true,
+        );
+    }, []);
 
     const handleNewSession = useCallback(() => {
         chatLogicRef.current?.handleNewSession();
@@ -464,50 +479,64 @@ export function DockviewMain() {
         }
 
         // Panel 3: Workspaces (Left)
-        if (isSessionSidebarOpen) {
-            const workspacesPanel = api.addPanel({
-                id: 'workspaces-panel',
-                component: 'workspaces',
-                title: 'Workspaces',
-                position: { referencePanel: 'chat-panel', direction: 'left' },
-                initialWidth: SESSION_PANEL_WIDTH,
-                minimumWidth: SESSION_PANEL_WIDTH,
-                maximumWidth: SESSION_PANEL_WIDTH,
-                params: {
-                    onNewSession: handleNewSession,
-                    onSelectSession: handleSelectSession,
-                    onDeleteSession: handleDeleteSession,
-                    onToggle: () => setIsSessionSidebarOpen(false),
-                }
-            });
-            if (workspacesPanel?.group?.header) {
-                workspacesPanel.group.header.hidden = true;
+        const workspaceWidth = isSessionSidebarOpen ? SESSION_PANEL_WIDTH : COLLAPSED_PANEL_WIDTH;
+        const workspacesPanel = api.addPanel({
+            id: 'workspaces-panel',
+            component: 'workspaces',
+            title: 'Workspaces',
+            position: { referencePanel: 'chat-panel', direction: 'left' },
+            initialWidth: workspaceWidth,
+            minimumWidth: workspaceWidth,
+            maximumWidth: workspaceWidth,
+            params: {
+                onNewSession: handleNewSession,
+                onSelectSession: handleSelectSession,
+                onDeleteSession: handleDeleteSession,
+                onToggle: () => setIsSessionSidebarOpen(!isSessionSidebarOpen),
+                isOpen: isSessionSidebarOpen,
             }
+        });
+        if (workspacesPanel?.group?.api) {
+            workspacesPanel.group.api.setConstraints({
+                minimumWidth: workspaceWidth,
+                maximumWidth: workspaceWidth,
+            });
+            workspacesPanel.group.api.setSize({ width: workspaceWidth });
+        }
+        if (workspacesPanel?.group?.header) {
+            workspacesPanel.group.header.hidden = true;
         }
 
-        // Panel 4: Tools (Right) - Positioned right of the Canvas group
-        if (isSidebarOpen) {
-            // If editor panel exists, position right of it. key is 'editor-panel'
-            const referencePanel = api.getPanel('editor-panel') || 'chat-panel';
-            const toolsPanel = api.addPanel({
-                id: 'tools-panel',
-                component: 'tools',
-                title: 'Tools',
-                position: { referencePanel: referencePanel, direction: 'right' },
-                initialWidth: TOOLS_PANEL_WIDTH,
-                minimumWidth: TOOLS_PANEL_WIDTH,
-                maximumWidth: TOOLS_PANEL_WIDTH,
-                params: {
-                    onMentionFile: handleMentionFile,
-                    onOpenFile: handleOpenFile,
-                    onSelectFile: handleFileSelect,
-                    onOpenImage: handleOpenInImageEditor,
-                    isPreviewPanelActive: isPreviewPanelActive
-                }
-            });
-            if (toolsPanel?.group?.header) {
-                toolsPanel.group.header.hidden = true;
+        // Panel 4: Tools (Right) - Always present, collapsible to icon bar
+        const toolsWidth = isSidebarOpen ? TOOLS_PANEL_WIDTH : COLLAPSED_PANEL_WIDTH;
+        const referencePanel = api.getPanel('editor-panel') || 'chat-panel';
+        const toolsPanel = api.addPanel({
+            id: 'tools-panel',
+            component: 'tools',
+            title: 'Tools',
+            position: { referencePanel: referencePanel, direction: 'right' },
+            initialWidth: toolsWidth,
+            minimumWidth: toolsWidth,
+            maximumWidth: toolsWidth,
+            params: {
+                onMentionFile: handleMentionFile,
+                onOpenFile: handleOpenFile,
+                onSelectFile: handleFileSelect,
+                onOpenImage: handleOpenInImageEditor,
+                isPreviewPanelActive: isPreviewPanelActive,
+                onToggle: () => setIsSidebarOpen(!isSidebarOpen),
+                isOpen: isSidebarOpen,
             }
+        });
+        if (toolsPanel?.group?.api) {
+            toolsPanel.group.api.setConstraints({
+                minimumWidth: toolsWidth,
+                maximumWidth: toolsWidth,
+            });
+            toolsPanel.group.api.setSize({ width: toolsWidth });
+        }
+        if (toolsPanel?.group?.header) {
+            toolsPanel.group.header.hidden = true;
         }
 
         // After all panels are added, set Chat and Editor to split 50/50
@@ -535,36 +564,62 @@ export function DockviewMain() {
 
         const toolsPanel = apiRef.current.getPanel('tools-panel');
 
-        if (isSidebarOpen && !toolsPanel) {
+        if (!toolsPanel) {
             // Anchor to editor-panel if it exists (Canvas), otherwise chat-panel
             const editorPanel = apiRef.current.getPanel('editor-panel');
             const referencePanel = editorPanel || apiRef.current.getPanel('chat-panel');
 
             if (referencePanel) {
+                const targetWidth = isSidebarOpen ? TOOLS_PANEL_WIDTH : COLLAPSED_PANEL_WIDTH;
                 const newToolsPanel = apiRef.current.addPanel({
                     id: 'tools-panel',
                     component: 'tools',
                     title: 'Tools',
                     position: { referencePanel: referencePanel, direction: 'right' },
-                    initialWidth: TOOLS_PANEL_WIDTH,
-                    minimumWidth: TOOLS_PANEL_WIDTH,
-                    maximumWidth: TOOLS_PANEL_WIDTH,
+                    initialWidth: targetWidth,
+                    minimumWidth: targetWidth,
+                    maximumWidth: targetWidth,
                     params: {
                         onMentionFile: handleMentionFile,
                         onOpenFile: handleOpenFile,
                         onSelectFile: handleFileSelect,
                         onOpenImage: handleOpenInImageEditor,
-                        isPreviewPanelActive: isPreviewPanelActive
+                        isPreviewPanelActive: isPreviewPanelActive,
+                        onToggle: () => setIsSidebarOpen(!isSidebarOpen),
+                        isOpen: isSidebarOpen,
                     }
                 });
+                if (newToolsPanel?.group?.api) {
+                    newToolsPanel.group.api.setConstraints({
+                        minimumWidth: targetWidth,
+                        maximumWidth: targetWidth,
+                    });
+                    newToolsPanel.group.api.setSize({ width: targetWidth });
+                }
                 if (newToolsPanel?.group?.header) {
                     newToolsPanel.group.header.hidden = true;
                 }
+                relayout();
             }
-        } else if (!isSidebarOpen && toolsPanel) {
-            toolsPanel.api.close();
+        } else {
+            const targetWidth = isSidebarOpen ? TOOLS_PANEL_WIDTH : COLLAPSED_PANEL_WIDTH;
+            toolsPanel.group.api.setConstraints({
+                minimumWidth: targetWidth,
+                maximumWidth: targetWidth,
+            });
+            toolsPanel.group.api.setSize({ width: targetWidth });
+            toolsPanel.api.updateParameters({
+                onMentionFile: handleMentionFile,
+                onOpenFile: handleOpenFile,
+                onSelectFile: handleFileSelect,
+                onOpenImage: handleOpenInImageEditor,
+                isPreviewPanelActive: isPreviewPanelActive,
+                onToggle: () => setIsSidebarOpen(!isSidebarOpen),
+                isOpen: isSidebarOpen,
+            });
+            relayout();
         }
-    }, [isSidebarOpen, handleMentionFile, handleOpenFile, handleFileSelect, handleOpenInImageEditor, isPreviewPanelActive]);
+    }, [isSidebarOpen, handleMentionFile, handleOpenFile, handleFileSelect, handleOpenInImageEditor, isPreviewPanelActive, setIsSidebarOpen, relayout]);
 
     // Handle toggle of workspaces panel
     useEffect(() => {
@@ -572,29 +627,52 @@ export function DockviewMain() {
 
         const workspacesPanel = apiRef.current.getPanel('workspaces-panel');
 
-        if (isSessionSidebarOpen && !workspacesPanel) {
+        if (!workspacesPanel) {
+            const targetWidth = isSessionSidebarOpen ? SESSION_PANEL_WIDTH : COLLAPSED_PANEL_WIDTH;
             const newWorkspacesPanel = apiRef.current.addPanel({
                 id: 'workspaces-panel',
                 component: 'workspaces',
                 title: 'Workspaces',
                 position: { referencePanel: 'chat-panel', direction: 'left' },
-                initialWidth: SESSION_PANEL_WIDTH,
-                minimumWidth: SESSION_PANEL_WIDTH,
-                maximumWidth: SESSION_PANEL_WIDTH,
+                initialWidth: targetWidth,
+                minimumWidth: targetWidth,
+                maximumWidth: targetWidth,
                 params: {
                     onNewSession: handleNewSession,
                     onSelectSession: handleSelectSession,
                     onDeleteSession: handleDeleteSession,
-                    onToggle: () => setIsSessionSidebarOpen(false),
+                    onToggle: () => setIsSessionSidebarOpen(!isSessionSidebarOpen),
+                    isOpen: isSessionSidebarOpen,
                 }
             });
+            if (newWorkspacesPanel?.group?.api) {
+                newWorkspacesPanel.group.api.setConstraints({
+                    minimumWidth: targetWidth,
+                    maximumWidth: targetWidth,
+                });
+                newWorkspacesPanel.group.api.setSize({ width: targetWidth });
+            }
             if (newWorkspacesPanel?.group?.header) {
                 newWorkspacesPanel.group.header.hidden = true;
             }
-        } else if (!isSessionSidebarOpen && workspacesPanel) {
-            workspacesPanel.api.close();
+            relayout();
+        } else {
+            const targetWidth = isSessionSidebarOpen ? SESSION_PANEL_WIDTH : COLLAPSED_PANEL_WIDTH;
+            workspacesPanel.group.api.setConstraints({
+                minimumWidth: targetWidth,
+                maximumWidth: targetWidth,
+            });
+            workspacesPanel.group.api.setSize({ width: targetWidth });
+            workspacesPanel.api.updateParameters({
+                onNewSession: handleNewSession,
+                onSelectSession: handleSelectSession,
+                onDeleteSession: handleDeleteSession,
+                onToggle: () => setIsSessionSidebarOpen(!isSessionSidebarOpen),
+                isOpen: isSessionSidebarOpen,
+            });
+            relayout();
         }
-    }, [isSessionSidebarOpen, handleNewSession, handleSelectSession, handleDeleteSession, setIsSessionSidebarOpen]);
+    }, [isSessionSidebarOpen, handleNewSession, handleSelectSession, handleDeleteSession, setIsSessionSidebarOpen, relayout]);
 
     useEffect(() => {
         const panel = apiRef.current?.getPanel('chat-panel');
@@ -613,8 +691,8 @@ export function DockviewMain() {
                 ref={containerRef}
                 className="flex-1 min-h-0 overflow-hidden"
                 style={{
-                    paddingLeft: isSessionSidebarOpen ? 0 : DOCKSIDE_TOOLBAR_WIDTH,
-                    paddingRight: isSidebarOpen ? 0 : DOCKSIDE_TOOLBAR_WIDTH,
+                    paddingLeft: 0,
+                    paddingRight: 0,
                     transition: "padding 200ms ease-out",
                 }}
             >
@@ -640,6 +718,14 @@ export function DockviewMain() {
               --dv-inactivegroup-visiblepanel-tab-color: var(--muted-foreground);
               --dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
             }
+
+            /* Smooth programmatic resize for sidebars */
+            .dockview-theme-light .dv-split-view-container .dv-view,
+            .dockview-theme-dark .dv-split-view-container .dv-view,
+            .dockview-theme-light .dv-split-view-container .dv-sash,
+            .dockview-theme-dark .dv-split-view-container .dv-sash {
+              transition: transform 0.18s ease-out;
+            }
           `}</style>
                     <DockviewReact
                         components={components}
@@ -648,7 +734,6 @@ export function DockviewMain() {
                     />
                 </div>
             </div>
-            <DocksideToolbars toolsPanelWidth={TOOLS_PANEL_WIDTH} />
             <FloatingAudioPlayer />
             <Toaster />
         </div>

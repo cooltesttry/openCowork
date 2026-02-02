@@ -109,7 +109,7 @@ export function SessionSidebar({
 
                     {/* Session List - Native scrolling */}
                     <div
-                        className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-1"
+                        className="flex-1 overflow-y-auto overflow-x-hidden px-2"
                         style={{ maxWidth: SIDEBAR_WIDTH }}
                     >
                         <div className="space-y-0">
@@ -119,18 +119,20 @@ export function SessionSidebar({
                                 </div>
                             ) : (
                                 <>
-                                    <div
-                                        onClick={onNewSession}
-                                        className={cn(
-                                            "group relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-md cursor-pointer",
-                                            currentSessionId === null
-                                                ? "bg-primary/10 text-primary"
-                                                : "hover:bg-muted"
-                                        )}
-                                    >
-                                        <Plus className="h-3.5 w-3.5 shrink-0 opacity-60" />
-                                        <div className="flex-1 min-w-0 overflow-hidden transition-all duration-150 group-hover:pr-7">
-                                            <div className="text-sm truncate">New Chat</div>
+                                    <div className="sticky top-0 z-10 -mx-2 px-2 pt-1 pb-1 bg-card">
+                                        <div
+                                            onClick={onNewSession}
+                                            className={cn(
+                                                "group relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-md cursor-pointer",
+                                                currentSessionId === null
+                                                    ? "bg-primary/10 text-primary"
+                                                    : "hover:bg-muted"
+                                            )}
+                                        >
+                                            <Plus className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                                            <div className="flex-1 min-w-0 overflow-hidden transition-all duration-150 group-hover:pr-7">
+                                                <div className="text-sm truncate">New Chat</div>
+                                            </div>
                                         </div>
                                     </div>
                                     {sessions.length === 0 ? (

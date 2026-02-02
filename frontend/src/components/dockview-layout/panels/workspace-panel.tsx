@@ -13,6 +13,7 @@ interface WorkspacePanelContentProps {
         onSelectSession?: (id: string) => void;
         onDeleteSession?: (id: string) => void;
         onToggle?: () => void;
+        isOpen?: boolean;
     };
 }
 
@@ -105,7 +106,7 @@ export function WorkspacePanelContent({ params }: WorkspacePanelContentProps) {
                 onNewSession={handleNewSession}
                 onSelectSession={handleSelectSession}
                 onDeleteSession={handleDeleteSession}
-                isOpen={true}
+                isOpen={params?.isOpen ?? true}
                 onToggle={params?.onToggle || (() => {})}
                 getSessionStatus={getSessionStatus}
             />

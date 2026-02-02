@@ -10,6 +10,7 @@ import {
     MessageSquare,
     Trash2,
     PanelLeftClose,
+    PanelLeftOpen,
     X,
     Loader2,
     CircleDot,
@@ -62,6 +63,7 @@ interface WorkspaceSidebarProps {
 }
 
 const SIDEBAR_WIDTH = 238;
+const COLLAPSED_WIDTH = 44;
 
 // ==================== Main Component ====================
 
@@ -130,18 +132,15 @@ export function WorkspaceSidebar({
         <aside
             className="h-full bg-card border-r flex flex-col shrink-0"
             style={{
-                width: isOpen ? SIDEBAR_WIDTH : 0,
-                minWidth: isOpen ? SIDEBAR_WIDTH : 0,
-                maxWidth: isOpen ? SIDEBAR_WIDTH : 0,
+                width: isOpen ? SIDEBAR_WIDTH : COLLAPSED_WIDTH,
+                minWidth: isOpen ? SIDEBAR_WIDTH : COLLAPSED_WIDTH,
+                maxWidth: isOpen ? SIDEBAR_WIDTH : COLLAPSED_WIDTH,
                 transition: "width 200ms ease-out, min-width 200ms ease-out, max-width 200ms ease-out",
                 overflow: "hidden",
             }}
         >
-            {isOpen && (
-                <div
-                    className="flex flex-col h-full"
-                    style={{ width: SIDEBAR_WIDTH, minWidth: SIDEBAR_WIDTH, maxWidth: SIDEBAR_WIDTH }}
-                >
+            {isOpen ? (
+                <div className="flex flex-col h-full" style={{ width: SIDEBAR_WIDTH }}>
                     {/* Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
                         <h2 className="font-semibold text-sm">Workspaces</h2>
@@ -216,7 +215,7 @@ export function WorkspaceSidebar({
 
                     {/* Session List */}
                     <div
-                        className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-1"
+                        className="flex-1 overflow-y-auto overflow-x-hidden px-2"
                         style={{ maxWidth: SIDEBAR_WIDTH }}
                     >
                         <div className="space-y-0">
@@ -230,18 +229,20 @@ export function WorkspaceSidebar({
                                 </div>
                             ) : (
                                 <>
-                                    <div
-                                        onClick={onNewSession}
-                                        className={cn(
-                                            "group relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-md cursor-pointer",
-                                            currentSessionId === null
-                                                ? "bg-primary/10 text-primary"
-                                                : "hover:bg-muted"
-                                        )}
-                                    >
-                                        <Plus className="h-3.5 w-3.5 shrink-0 opacity-60" />
-                                        <div className="flex-1 min-w-0 overflow-hidden transition-all duration-150 group-hover:pr-7">
-                                            <div className="text-sm truncate">New Chat</div>
+                                    <div className="sticky top-0 z-10 -mx-2 px-2 pt-1 pb-1 bg-card">
+                                        <div
+                                            onClick={onNewSession}
+                                            className={cn(
+                                                "group relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-md cursor-pointer",
+                                                currentSessionId === null
+                                                    ? "bg-primary/10 text-primary"
+                                                    : "hover:bg-muted"
+                                            )}
+                                        >
+                                            <Plus className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                                            <div className="flex-1 min-w-0 overflow-hidden transition-all duration-150 group-hover:pr-7">
+                                                <div className="text-sm truncate">New Chat</div>
+                                            </div>
                                         </div>
                                     </div>
                                     {sessions.length === 0 ? (
@@ -322,6 +323,18 @@ export function WorkspaceSidebar({
                             Open Folder...
                         </Button>
                     </div>
+                </div>
+            ) : (
+                <div className="flex h-full flex-col items-center justify-start pt-3">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={onToggle}
+                        className="h-8 w-8"
+                        title="Expand sidebar"
+                    >
+                        <PanelLeftOpen className="h-4 w-4" />
+                    </Button>
                 </div>
             )}
         </aside>

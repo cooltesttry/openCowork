@@ -1,6 +1,6 @@
 "use client";
 
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { PanelRightClose, PanelRightOpen } from "lucide-react";
 
 import { useChat } from "@/lib/store";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -20,23 +20,6 @@ export function DocksideToolbars({ toolsPanelWidth }: { toolsPanelWidth: number 
 
     return (
         <>
-            {/* Left toolbar */}
-            <aside
-                className={`fixed left-0 top-0 z-40 flex h-full flex-col items-center border-r bg-card/90 backdrop-blur transition-[opacity,transform] duration-200 ease-out ${isSessionSidebarOpen ? "pointer-events-none opacity-0 -translate-x-2" : "opacity-100 translate-x-0"}`}
-                style={{ width: DOCKSIDE_TOOLBAR_WIDTH }}
-            >
-                <div className="flex flex-col items-center gap-2 py-3">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setIsSessionSidebarOpen(true)}
-                        title="展开会话列表"
-                    >
-                        <PanelLeftOpen className="h-5 w-5" />
-                    </Button>
-                </div>
-            </aside>
-
             {/* Right toolbar / header */}
             <aside
                 className={`fixed right-0 top-0 z-40 overflow-hidden border-l bg-card/90 backdrop-blur transition-[width,height] duration-200 ease-out ${isSidebarOpen ? "border-b" : ""}`}
