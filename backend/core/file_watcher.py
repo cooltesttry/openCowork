@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Set, Dict, Any
+from typing import Set, Dict, Any, Iterable
 from dataclasses import dataclass, field
 
 from watchdog.observers import Observer
@@ -119,7 +119,7 @@ class FileWatcherService:
     def __init__(self):
         self.observer: Observer | None = None
         self.clients: Set[WebSocket] = set()
-        self.workdir: str | None = None
+        self.workdirs: list[str] = []
         self.loop: asyncio.AbstractEventLoop | None = None
         self._started = False
         
@@ -128,28 +128,43 @@ class FileWatcherService:
         self._debounce_task: asyncio.Task | None = None
         self._debounce_delay = 0.5  # 500ms debounce
     
-    async def start(self, workdir: str):
-        """Start monitoring the specified directory."""
+    async def start(self, workdir: str | Iterable[str]):
+        """Start monitoring one or more directories."""
         if self._started:
             logger.warning("[FileWatcher] Already started, stopping first")
             await self.stop()
-        
-        self.workdir = str(Path(workdir).resolve())
+
         self.loop = asyncio.get_event_loop()
-        
-        if not Path(self.workdir).exists():
-            logger.error(f"[FileWatcher] Workdir does not exist: {self.workdir}")
+
+        workdirs = [workdir] if isinstance(workdir, (str, Path)) else list(workdir)
+        resolved: list[str] = []
+        for entry in workdirs:
+            try:
+                path = str(Path(entry).resolve())
+            except Exception:
+                logger.warning(f"[FileWatcher] Invalid workdir entry: {entry}")
+                continue
+            if not Path(path).exists():
+                logger.error(f"[FileWatcher] Workdir does not exist: {path}")
+                continue
+            resolved.append(path)
+
+        if not resolved:
+            logger.error("[FileWatcher] No valid workdirs to monitor")
             return
-        
+
+        self.workdirs = resolved
+
         # Create watchdog observer
         self.observer = Observer()
-        handler = FileChangeHandler(self, self.workdir)
-        
-        self.observer.schedule(handler, self.workdir, recursive=True)
+        for root in self.workdirs:
+            handler = FileChangeHandler(self, root)
+            self.observer.schedule(handler, root, recursive=True)
+
         self.observer.start()
         self._started = True
-        
-        logger.info(f"[FileWatcher] Started monitoring: {self.workdir}")
+
+        logger.info(f"[FileWatcher] Started monitoring {len(self.workdirs)} workspaces")
     
     async def stop(self):
         """Stop monitoring."""
@@ -164,6 +179,7 @@ class FileWatcherService:
         
         self._started = False
         self._event_queue.clear()
+        self.workdirs = []
         
         logger.info("[FileWatcher] Stopped")
     
