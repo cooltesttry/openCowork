@@ -4,12 +4,13 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { DndContext, DragEndEvent, DragStartEvent, DragMoveEvent, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { FileTreeItem } from "./file-tree";
 import { FileEntry } from "./types";
-import { Loader2, RefreshCw, File, Folder, AtSign, Pencil, Trash2, FolderPlus, FilePlus, Copy, ExternalLink, Search, X } from "lucide-react";
+import { Loader2, RefreshCw, File, Folder, AtSign, Pencil, Trash2, FolderPlus, FilePlus, Copy, ExternalLink, Search, X, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { FilePreviewPopup } from "./file-preview-popup";
 import { fileWatcherClient, FileWatchEvent } from "@/lib/file-watcher";
 import { useWorkspace } from "@/lib/workspace-store";
 import { enqueueAudio } from "@/lib/audio-player";
+import { FileIcon } from "./file-icons";
 
 type CategoryType = "images" | "documents" | "video" | "audio" | "code";
 type ViewFilter = "all" | CategoryType;
@@ -1317,19 +1318,46 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFil
                                 No results
                             </div>
                         ) : (
-                            <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                            <div className="flex flex-col">
                                 {(isSearchActive ? filenameSearchEntries : categoryFiles).map((entry) => (
                                     <div
                                         key={entry.path}
-                                        className="px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
+                                        className="group relative flex items-center py-1 px-2 rounded-sm cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800"
                                         onClick={(e) => handleSelect(entry, e)}
                                         onDoubleClick={() => handleOpen(entry)}
+                                        onContextMenu={(e) => handleContextMenu(e, entry)}
                                     >
-                                        <div className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                                        <span className="mr-1.5 shrink-0 text-zinc-500 dark:text-zinc-400">
+                                            {entry.is_directory ? (
+                                                <Folder size={16} />
+                                            ) : (
+                                                <FileIcon filename={entry.name} size={16} />
+                                            )}
+                                        </span>
+                                        <span className="truncate text-sm text-zinc-700 dark:text-zinc-300">
                                             {entry.name}
-                                        </div>
-                                        <div className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate font-mono mt-0.5">
-                                            {entry.path}
+                                        </span>
+                                        <div className="opacity-0 group-hover:opacity-100 shrink-0 flex items-center gap-0.5 ml-1">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onMentionFile?.(entry.path);
+                                                }}
+                                                className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded text-zinc-500 hover:text-blue-500"
+                                                title="Add to input (@)"
+                                            >
+                                                <AtSign size={14} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleContextMenu(e, entry);
+                                                }}
+                                                className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded text-zinc-500"
+                                                title="More options"
+                                            >
+                                                <MoreHorizontal size={14} />
+                                            </button>
                                         </div>
                                     </div>
                                 ))}

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ListMusic, Pause, Play, Repeat, Shuffle, SkipBack, SkipForward, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ListMusic, Pause, Play, Repeat, Shuffle, SkipBack, SkipForward, Volume2, X } from "lucide-react";
 
 import { AudioTrack, onAudioEnqueue } from "@/lib/audio-player";
 
@@ -15,8 +15,8 @@ const buildTrackUrl = (path: string) => {
 
 const WaveBars = ({ active }: { active: boolean }) => {
     return (
-        <div className="flex h-full w-full items-center justify-center">
-            <div className="flex items-end justify-center gap-0.5">
+        <div className="relative h-10 w-10">
+            <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-end justify-center gap-0.5">
                 <span className={`block w-1 rounded-full bg-current ${active ? "audio-wave-1" : ""}`} style={{ height: 6 }} />
                 <span className={`block w-1 rounded-full bg-current ${active ? "audio-wave-2" : ""}`} style={{ height: 10 }} />
                 <span className={`block w-1 rounded-full bg-current ${active ? "audio-wave-3" : ""}`} style={{ height: 7 }} />
@@ -60,6 +60,7 @@ export function FloatingAudioPlayer() {
     const [showPlaylist, setShowPlaylist] = useState(false);
     const [isShuffle, setIsShuffle] = useState(false);
     const [isLoop, setIsLoop] = useState(false);
+    const playlistHideTimerRef = useRef<number | null>(null);
 
     const queueRef = useRef(queue);
     const currentIndexRef = useRef(currentIndex);
@@ -166,7 +167,7 @@ export function FloatingAudioPlayer() {
     const currentTrack = queue[currentIndex];
     const showPrevNext = queue.length > 1;
     const controlsCount = (showPrevNext ? 2 : 0) + 2; // close + playlist
-    const expandedWidth = BASE_SIZE + controlsCount * (CONTROL_SIZE + CONTROL_GAP);
+    const expandedWidth = BASE_SIZE + controlsCount * (CONTROL_SIZE + CONTROL_GAP) + CONTROL_GAP;
     const isExpanded = isHover || showPlaylist;
 
     const handlePlayPause = () => {
@@ -259,14 +260,14 @@ export function FloatingAudioPlayer() {
         return (
             <div className="flex items-center gap-2">
                 <button
-                    className={`h-7 w-7 rounded-full border text-xs ${isShuffle ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
+                    className={`h-7 w-7 rounded-full text-xs ${isShuffle ? "text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"}`}
                     onClick={() => setIsShuffle((prev) => !prev)}
                     title="Shuffle"
                 >
                     <Shuffle className="h-3.5 w-3.5 mx-auto" />
                 </button>
                 <button
-                    className={`h-7 w-7 rounded-full border text-xs ${isLoop ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
+                    className={`h-7 w-7 rounded-full text-xs ${isLoop ? "text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"}`}
                     onClick={() => setIsLoop((prev) => !prev)}
                     title="Loop"
                 >
@@ -280,6 +281,17 @@ export function FloatingAudioPlayer() {
         return null;
     }
 
+    const resetPlaylistAutoHide = () => {
+        if (playlistHideTimerRef.current) {
+            window.clearTimeout(playlistHideTimerRef.current);
+        }
+        if (showPlaylist) {
+            playlistHideTimerRef.current = window.setTimeout(() => {
+                setShowPlaylist(false);
+            }, 5000);
+        }
+    };
+
     return (
         <div
             className="fixed bottom-4 right-4 z-50"
@@ -288,7 +300,11 @@ export function FloatingAudioPlayer() {
         >
             <div className="relative">
                 {showPlaylist && (
-                    <div className="absolute bottom-full right-0 mb-3 w-72 rounded-xl border border-border bg-card/95 p-3 shadow-xl">
+                    <div
+                        className="absolute bottom-full right-0 mb-3 w-72 rounded-xl border border-border bg-card/95 p-3 shadow-xl"
+                        onMouseMove={resetPlaylistAutoHide}
+                        onMouseDown={resetPlaylistAutoHide}
+                    >
                         <div className="flex items-center justify-between pb-2">
                             <div className="text-xs font-medium text-muted-foreground">Playlist ({queue.length})</div>
                             {playlistControls}
@@ -297,34 +313,36 @@ export function FloatingAudioPlayer() {
                             {queue.map((track, index) => (
                                 <div
                                     key={`${track.path}-${index}`}
-                                    className={`flex items-center gap-2 rounded-md px-2 py-1 text-xs ${index === currentIndex ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent/40"}`}
+                                    className={`flex items-center gap-2 rounded-md px-2 py-1 text-xs ${index === currentIndex ? "text-foreground" : "text-foreground hover:bg-accent/40"}`}
                                 >
-                                    <button
-                                        className="flex-1 truncate text-left"
-                                        onClick={() => handleSelectTrack(index)}
-                                    >
+                                    {index === currentIndex ? (
+                                        <Volume2 className="h-3.5 w-3.5 shrink-0 text-primary" />
+                                    ) : (
+                                        <span className="h-3.5 w-3.5 shrink-0" />
+                                    )}
+                                    <button className="flex-1 truncate text-left" onClick={() => handleSelectTrack(index)}>
                                         {track.name}
                                     </button>
                                     <button
-                                        className="h-6 w-6 rounded-md border border-border text-muted-foreground hover:text-foreground"
+                                        className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/40"
                                         onClick={() => moveTrack(index, index - 1)}
                                         title="Move up"
                                     >
                                         <ArrowUp className="h-3.5 w-3.5 mx-auto" />
                                     </button>
                                     <button
-                                        className="h-6 w-6 rounded-md border border-border text-muted-foreground hover:text-foreground"
+                                        className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/40"
                                         onClick={() => moveTrack(index, index + 1)}
                                         title="Move down"
                                     >
                                         <ArrowDown className="h-3.5 w-3.5 mx-auto" />
                                     </button>
                                     <button
-                                        className="h-6 w-6 rounded-md border border-border text-muted-foreground hover:text-destructive"
+                                        className="h-6 w-6 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                         onClick={() => handleRemoveTrack(index)}
                                         title="Remove"
                                     >
-                                        <Trash2 className="h-3.5 w-3.5 mx-auto" />
+                                        <X className="h-3.5 w-3.5 mx-auto" />
                                     </button>
                                 </div>
                             ))}
@@ -336,7 +354,7 @@ export function FloatingAudioPlayer() {
                     style={{ width: isExpanded ? expandedWidth : BASE_SIZE, height: BASE_SIZE }}
                 >
                     <div className="flex h-full items-center justify-end gap-1.5">
-                        <div className={`flex items-center gap-1.5 transition-opacity ${isExpanded ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+                        <div className={`flex items-center gap-1.5 pl-1.5 transition-opacity ${isExpanded ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
                             <button
                                 className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
                                 onClick={handleClose}
@@ -364,14 +382,17 @@ export function FloatingAudioPlayer() {
                             )}
                             <button
                                 className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
-                                onClick={() => setShowPlaylist((prev) => !prev)}
+                                onClick={() => {
+                                    setShowPlaylist((prev) => !prev);
+                                    resetPlaylistAutoHide();
+                                }}
                                 title="Playlist"
                             >
                                 <ListMusic className="h-3.5 w-3.5" />
                             </button>
                         </div>
                         <button
-                            className="flex h-10 w-10 items-center justify-center rounded-full text-foreground"
+                            className="flex h-10 w-10 items-center justify-center rounded-full p-0 text-foreground"
                             onClick={handlePlayPause}
                             title={isPlaying ? "Pause" : "Play"}
                         >
@@ -383,11 +404,6 @@ export function FloatingAudioPlayer() {
                         </button>
                     </div>
                 </div>
-                {currentTrack && (
-                    <div className={`pointer-events-none absolute -top-7 right-0 text-[11px] text-muted-foreground transition-opacity ${isExpanded ? "opacity-0" : "opacity-100"}`}>
-                        <span className="max-w-[180px] truncate">{currentTrack.name}</span>
-                    </div>
-                )}
             </div>
         </div>
     );
