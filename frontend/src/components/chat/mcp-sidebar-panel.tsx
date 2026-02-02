@@ -37,9 +37,10 @@ interface McpSidebarPanelProps {
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
     onOpenImage?: (path: string) => void;
     isPreviewPanelActive?: () => boolean;
+    externalViewFilter?: "all" | "images" | "documents" | "video" | "audio" | "code";
 }
 
-export function McpSidebarPanel({ onMentionFile, onOpenFile, onSelectFile, onOpenImage, isPreviewPanelActive }: McpSidebarPanelProps) {
+export function McpSidebarPanel({ onMentionFile, onOpenFile, onSelectFile, onOpenImage, isPreviewPanelActive, externalViewFilter }: McpSidebarPanelProps) {
     const { currentWorkspace } = useWorkspace();
     const [servers, setServers] = useState<MCPServer[]>([]);
     const [searchConfig, setSearchConfig] = useState<SearchConfig | null>(null);
@@ -492,6 +493,7 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onSelectFile, onOpe
                         onOpenImage={onOpenImage}
                         isPreviewPanelActive={isPreviewPanelActive}
                         workspaceId={currentWorkspace?.id}
+                        externalViewFilter={externalViewFilter}
                     />
                 </Tabs.Content>
             </Tabs.Root>

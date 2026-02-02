@@ -17,6 +17,7 @@ interface ToolsPanelContentProps {
         isPreviewPanelActive?: () => boolean;
         onToggle?: () => void;
         isOpen?: boolean;
+        externalViewFilter?: "all" | "images" | "documents" | "video" | "audio" | "code";
     };
 }
 
@@ -76,6 +77,7 @@ export function ToolsPanelContent({ params }: ToolsPanelContentProps) {
                     onSelectFile={params?.onSelectFile}
                     onOpenImage={params?.onOpenImage}
                     isPreviewPanelActive={params?.isPreviewPanelActive}
+                    externalViewFilter={params?.externalViewFilter}
                 />
             </div>
         </div>

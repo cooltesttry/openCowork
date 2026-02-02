@@ -81,9 +81,11 @@ interface FileExplorerProps {
     isPreviewPanelActive?: () => boolean;
     /** Workspace ID - when this changes, files are refetched */
     workspaceId?: string | null;
+    /** External control for viewFilter - when provided, syncs to internal state */
+    externalViewFilter?: ViewFilter;
 }
 
-export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFile, onOpenImage, isPreviewPanelActive, workspaceId }: FileExplorerProps) {
+export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFile, onOpenImage, isPreviewPanelActive, workspaceId, externalViewFilter }: FileExplorerProps) {
     const { currentWorkspace } = useWorkspace();
     const [flatFiles, setFlatFiles] = useState<FileEntry[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -177,6 +179,13 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFil
             fetchFiles();
         }
     }, [workspaceId, fetchFiles]);
+
+    // Sync internal viewFilter when external viewFilter changes
+    useEffect(() => {
+        if (externalViewFilter !== undefined) {
+            setViewFilter(externalViewFilter);
+        }
+    }, [externalViewFilter]);
 
     // File watcher integration - auto-refresh on file system changes
     useEffect(() => {

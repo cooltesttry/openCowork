@@ -2,7 +2,7 @@
 
 import { DockviewReact, DockviewReadyEvent, DockviewApi } from 'dockview';
 import 'dockview/dist/styles/dockview.css';
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { useChat } from '@/lib/store';
 import { WorkspacePanelContent } from './panels/workspace-panel';
 import { ChatPanelContent } from './panels/chat-panel';
@@ -48,6 +48,9 @@ export function DockviewMain() {
         setIsSessionSidebarOpen,
         setPreviewHTMLCallback,
     } = useChat();
+
+    // State for controlling FileExplorer's viewFilter from ImageEditor
+    const [fileExplorerViewFilter, setFileExplorerViewFilter] = useState<"all" | "images" | "documents" | "video" | "audio" | "code">("all");
 
     // Use shared chat logic hook
     const chatLogic = useChatLogic();
@@ -161,6 +164,7 @@ export function DockviewMain() {
                     position: { referencePanel: referencePanel, direction: editorPanel ? 'within' : 'right' },
                     params: {
                         addImage: imagePath,
+                        onReferenceBarToggle: handleReferenceBarToggle,
                     }
                 });
             }
@@ -169,12 +173,22 @@ export function DockviewMain() {
             imageEditorPanel.update({
                 params: {
                     addImage: imagePath,
+                    onReferenceBarToggle: handleReferenceBarToggle,
                 }
             });
         }
 
         // Activate the panel
         imageEditorPanel?.api.setActive();
+    }, []);
+
+    // Handle reference bar toggle in ImageEditor - switch FileExplorer to images mode
+    const handleReferenceBarToggle = useCallback((expanded: boolean) => {
+        if (expanded) {
+            // Switch file list to images mode when reference bar is expanded
+            setFileExplorerViewFilter("images");
+        }
+        // Note: Don't auto-switch back to "all" when collapsed, let user choose manually
     }, []);
 
     // Handle opening a file in editor from Preview panel
@@ -472,6 +486,9 @@ export function DockviewMain() {
                 component: 'image-editor',
                 title: 'Image Editor',
                 position: { referencePanel: editorPanel, direction: 'within' },
+                params: {
+                    onReferenceBarToggle: handleReferenceBarToggle,
+                }
             });
 
             // Activate the Editor tab by default
@@ -526,6 +543,7 @@ export function DockviewMain() {
                 isPreviewPanelActive: isPreviewPanelActive,
                 onToggle: () => setIsSidebarOpen(!isSidebarOpen),
                 isOpen: isSidebarOpen,
+                externalViewFilter: fileExplorerViewFilter,
             }
         });
         if (toolsPanel?.group?.api) {
@@ -587,6 +605,7 @@ export function DockviewMain() {
                         isPreviewPanelActive: isPreviewPanelActive,
                         onToggle: () => setIsSidebarOpen(!isSidebarOpen),
                         isOpen: isSidebarOpen,
+                        externalViewFilter: fileExplorerViewFilter,
                     }
                 });
                 if (newToolsPanel?.group?.api) {
@@ -616,10 +635,11 @@ export function DockviewMain() {
                 isPreviewPanelActive: isPreviewPanelActive,
                 onToggle: () => setIsSidebarOpen(!isSidebarOpen),
                 isOpen: isSidebarOpen,
+                externalViewFilter: fileExplorerViewFilter,
             });
             relayout();
         }
-    }, [isSidebarOpen, handleMentionFile, handleOpenFile, handleFileSelect, handleOpenInImageEditor, isPreviewPanelActive, setIsSidebarOpen, relayout]);
+    }, [isSidebarOpen, handleMentionFile, handleOpenFile, handleFileSelect, handleOpenInImageEditor, isPreviewPanelActive, setIsSidebarOpen, relayout, fileExplorerViewFilter]);
 
     // Handle toggle of workspaces panel
     useEffect(() => {
