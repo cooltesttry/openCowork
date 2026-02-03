@@ -1,23 +1,14 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useState } from "react";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-} from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Settings } from "lucide-react";
-import { ModelConfig } from "@/components/settings/model-config";
-import { McpConfig } from "@/components/settings/mcp-config";
-import { SearchConfig } from "@/components/settings/search-config";
-import { AgentConfig } from "@/components/settings/agent-config";
+import { SettingsShell } from "@/components/settings/settings-shell";
 
 interface SettingsDialogProps {
-    trigger?: React.ReactNode;
+    trigger?: ReactNode;
 }
 
 export function SettingsDialog({ trigger }: SettingsDialogProps) {
@@ -32,39 +23,12 @@ export function SettingsDialog({ trigger }: SettingsDialogProps) {
                     <Settings className="h-5 w-5" />
                 </Button>
             )}
-            <DialogContent className="w-screen h-screen max-w-none max-h-none rounded-none m-0 p-6 flex flex-col">
-                <DialogHeader>
+            <DialogContent className="h-screen !w-screen !max-w-none max-h-none sm:!max-w-none rounded-none m-0 !p-0 !gap-0">
+                <DialogHeader className="sr-only">
                     <DialogTitle>Settings</DialogTitle>
-                    <DialogDescription>
-                        Manage your agent configuration
-                    </DialogDescription>
                 </DialogHeader>
-
-                <div className="flex-1 overflow-auto">
-                    <Tabs defaultValue="model" className="space-y-4">
-                        <TabsList>
-                            <TabsTrigger value="model">Model API</TabsTrigger>
-                            <TabsTrigger value="agent">Agent</TabsTrigger>
-                            <TabsTrigger value="mcp">MCP Servers</TabsTrigger>
-                            <TabsTrigger value="search">Search</TabsTrigger>
-                        </TabsList>
-
-                        <TabsContent value="model">
-                            <ModelConfig />
-                        </TabsContent>
-
-                        <TabsContent value="agent">
-                            <AgentConfig />
-                        </TabsContent>
-
-                        <TabsContent value="mcp">
-                            <McpConfig />
-                        </TabsContent>
-
-                        <TabsContent value="search">
-                            <SearchConfig />
-                        </TabsContent>
-                    </Tabs>
+                <div className="h-full w-full overflow-hidden bg-background">
+                    <SettingsShell />
                 </div>
             </DialogContent>
         </Dialog>
