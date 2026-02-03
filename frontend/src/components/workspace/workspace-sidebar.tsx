@@ -17,7 +17,6 @@ import {
     AlertCircle,
     FolderOpen,
     FolderIcon,
-    ChevronDown,
     Search,
 } from "lucide-react";
 
@@ -65,6 +64,8 @@ interface WorkspaceSidebarProps {
 
 const SIDEBAR_WIDTH = 238;
 const COLLAPSED_WIDTH = 44;
+const WORKSPACE_ROW_HEIGHT = 30;
+const WORKSPACE_LIST_MAX_VISIBLE = 8;
 
 // ==================== Main Component ====================
 
@@ -87,12 +88,15 @@ export function WorkspaceSidebar({
 }: WorkspaceSidebarProps) {
     const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
     const [fadingOutSessionId, setFadingOutSessionId] = useState<string | null>(null);
-    const [workspaceSelectorOpen, setWorkspaceSelectorOpen] = useState(false);
     const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
     const [sessionQuery, setSessionQuery] = useState("");
     const [sessionResults, setSessionResults] = useState<Array<{ path: string; snippet: string }>>([]);
     const [sessionSearchLoading, setSessionSearchLoading] = useState(false);
     const searchInputRef = useRef<HTMLInputElement | null>(null);
+    const sortedWorkspaces = [...workspaces]
+        .filter((ws) => ws.id !== currentWorkspace?.id)
+        .sort((a, b) => (b.last_accessed_at || 0) - (a.last_accessed_at || 0));
+    const workspaceListMaxHeight = WORKSPACE_ROW_HEIGHT * WORKSPACE_LIST_MAX_VISIBLE;
 
     useEffect(() => {
         if (sessionSearchOpen) {
@@ -226,7 +230,7 @@ export function WorkspaceSidebar({
                 <div className="flex flex-col h-full" style={{ width: SIDEBAR_WIDTH }}>
                     {/* Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
-                        <h2 className="font-semibold text-sm">Workspaces</h2>
+                        <h2 className="font-semibold text-sm">Workspace</h2>
                         <div className="flex items-center gap-1">
                             <Button
                                 variant="ghost"
@@ -257,47 +261,13 @@ export function WorkspaceSidebar({
                                 Loading...
                             </div>
                         ) : currentWorkspace ? (
-                            <div className="relative">
-                                <button
-                                    onClick={() => setWorkspaceSelectorOpen(!workspaceSelectorOpen)}
-                                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md bg-accent/50 hover:bg-accent transition-colors text-left"
-                                >
-                                    <FolderIcon className="h-4 w-4 shrink-0 text-blue-500" />
-                                    <span className="flex-1 text-sm font-medium truncate">
+                            <div className="flex items-center gap-2 px-2 h-[30px] border-l-2 border-blue-500">
+                                <FolderIcon className="h-4 w-4 shrink-0 text-blue-500" />
+                                <div className="min-w-0">
+                                    <div className="text-sm font-medium truncate">
                                         {currentWorkspace.name}
-                                    </span>
-                                    <ChevronDown className={cn(
-                                        "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                                        workspaceSelectorOpen && "rotate-180"
-                                    )} />
-                                </button>
-
-                                {/* Workspace Dropdown */}
-                                {workspaceSelectorOpen && workspaces.length > 0 && (
-                                    <div className="absolute top-full left-0 right-0 mt-1 py-1 bg-popover border rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
-                                        {workspaces.map((ws) => (
-                                            <button
-                                                key={ws.id}
-                                                onClick={() => {
-                                                    if (ws.id !== currentWorkspace.id) {
-                                                        onSwitchWorkspace(ws.id);
-                                                    }
-                                                    setWorkspaceSelectorOpen(false);
-                                                }}
-                                                className={cn(
-                                                    "w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent transition-colors text-left",
-                                                    ws.id === currentWorkspace.id && "bg-accent/50"
-                                                )}
-                                            >
-                                                <FolderIcon className={cn(
-                                                    "h-4 w-4 shrink-0",
-                                                    ws.id === currentWorkspace.id ? "text-blue-500" : "text-muted-foreground"
-                                                )} />
-                                                <span className="flex-1 truncate">{ws.name}</span>
-                                            </button>
-                                        ))}
                                     </div>
-                                )}
+                                </div>
                             </div>
                         ) : (
                             <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
@@ -309,7 +279,7 @@ export function WorkspaceSidebar({
 
                     {/* Session List */}
                     <div
-                        className="flex-1 overflow-y-auto overflow-x-hidden px-2"
+                        className="flex-1 overflow-y-auto overflow-x-hidden px-2 bg-card"
                         style={{ maxWidth: SIDEBAR_WIDTH }}
                     >
                         <div className="space-y-0">
@@ -469,16 +439,53 @@ export function WorkspaceSidebar({
                         </div>
                     </div>
 
-                    {/* Open Folder Button */}
-                    <div className="p-3 border-t shrink-0">
-                        <Button
-                            variant="outline"
-                            className="w-full justify-start gap-2"
-                            onClick={onOpenFolder}
-                        >
-                            <FolderOpen className="h-4 w-4" />
-                            Open Folder...
-                        </Button>
+                    {/* Workspace List */}
+                    <div className="border-t bg-muted/40 shrink-0">
+                        <div className="px-3 pt-3 pb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                            Workspaces
+                        </div>
+                        <div className="px-2 pb-2">
+                            {isWorkspacesLoading ? (
+                                <div className="flex items-center gap-2 px-2.5 py-2 text-sm text-muted-foreground">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Loading...
+                                </div>
+                            ) : sortedWorkspaces.length === 0 ? (
+                                <div className="px-2.5 py-2 text-sm text-muted-foreground">
+                                    No workspaces yet
+                                </div>
+                            ) : (
+                                <div
+                                    className="overflow-y-auto"
+                                    style={{ maxHeight: workspaceListMaxHeight }}
+                                >
+                                    {sortedWorkspaces.map((ws) => {
+                                        return (
+                                            <button
+                                                key={ws.id}
+                                                onClick={() => onSwitchWorkspace(ws.id)}
+                                                className={cn(
+                                                    "group flex items-center gap-2 px-2.5 text-sm text-left w-full h-[30px] border-l-2 transition-colors",
+                                                    "border-transparent text-muted-foreground hover:text-foreground hover:bg-background/60"
+                                                )}
+                                            >
+                                                <FolderIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                                <span className="flex-1 truncate">{ws.name}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                        <div className="px-2 pb-2">
+                            <button
+                                onClick={onOpenFolder}
+                                className="w-full flex items-center gap-2 px-2.5 h-[30px] text-sm text-muted-foreground hover:text-foreground hover:bg-background/60 border-l-2 border-transparent transition-colors text-left"
+                            >
+                                <FolderOpen className="h-4 w-4 shrink-0" />
+                                Add Workspace
+                            </button>
+                        </div>
                     </div>
                 </div>
             ) : (
