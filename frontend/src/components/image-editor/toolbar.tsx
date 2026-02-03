@@ -758,12 +758,11 @@ export function Toolbar({ state, actions, onSave, onGenerateAI, isGenerating, on
               <TooltipTrigger asChild>
                 <Button
                   variant="default"
-                  size="sm"
+                  size="icon-sm"
                   onClick={onSave}
                   disabled={!state.hasContent}
                 >
-                  <Save className="h-4 w-4 mr-1" />
-                  Save
+                  <Save className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>

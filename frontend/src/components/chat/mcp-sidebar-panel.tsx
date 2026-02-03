@@ -35,13 +35,14 @@ interface ImageGenConfig {
 interface McpSidebarPanelProps {
     onMentionFile?: (path: string) => void;
     onOpenFile?: (path: string) => void;
+    onOpenInPanel?: (entry: { path: string; name: string; is_directory: boolean; size?: number | null; modified_at?: number | null }, options?: { initialMode?: 'editor' | 'preview' | 'image' }) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     isPreviewPanelActive?: () => boolean;
     externalViewFilter?: "all" | "images" | "documents" | "video" | "audio" | "code";
 }
 
-export function McpSidebarPanel({ onMentionFile, onOpenFile, onSelectFile, onOpenImage, isPreviewPanelActive, externalViewFilter }: McpSidebarPanelProps) {
+export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSelectFile, onOpenImage, isPreviewPanelActive, externalViewFilter }: McpSidebarPanelProps) {
     const { currentWorkspace } = useWorkspace();
     const [servers, setServers] = useState<MCPServer[]>([]);
     const [searchConfig, setSearchConfig] = useState<SearchConfig | null>(null);
@@ -490,6 +491,7 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onSelectFile, onOpe
                         className="h-full border-0 bg-transparent"
                         onMentionFile={onMentionFile}
                         onOpenFile={onOpenFile}
+                        onOpenInPanel={onOpenInPanel}
                         onSelectFile={onSelectFile}
                         onOpenImage={onOpenImage}
                         isPreviewPanelActive={isPreviewPanelActive}

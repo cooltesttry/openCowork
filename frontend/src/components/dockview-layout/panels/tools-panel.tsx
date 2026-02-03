@@ -13,6 +13,7 @@ interface ToolsPanelContentProps {
     params?: {
         onMentionFile?: (path: string) => void;
         onOpenFile?: (path: string) => void;
+        onOpenInPanel?: (entry: { path: string; name: string; is_directory: boolean; size?: number | null; modified_at?: number | null }, options?: { initialMode?: 'editor' | 'preview' | 'image' }) => void;
         onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
         onOpenImage?: (path: string, options?: OpenImageOptions) => void;
         isPreviewPanelActive?: () => boolean;
@@ -75,6 +76,7 @@ export function ToolsPanelContent({ params }: ToolsPanelContentProps) {
                 <McpSidebarPanel
                     onMentionFile={params?.onMentionFile}
                     onOpenFile={params?.onOpenFile}
+                    onOpenInPanel={params?.onOpenInPanel}
                     onSelectFile={params?.onSelectFile}
                     onOpenImage={params?.onOpenImage}
                     isPreviewPanelActive={params?.isPreviewPanelActive}

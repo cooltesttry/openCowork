@@ -77,6 +77,7 @@ interface FileExplorerProps {
     className?: string;
     onMentionFile?: (path: string) => void;
     onOpenFile?: (path: string) => void;
+    onOpenInPanel?: (entry: FileEntry, options?: { initialMode?: 'editor' | 'preview' | 'image' }) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     isPreviewPanelActive?: () => boolean;
@@ -86,7 +87,7 @@ interface FileExplorerProps {
     externalViewFilter?: ViewFilter;
 }
 
-export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFile, onOpenImage, isPreviewPanelActive, workspaceId, externalViewFilter }: FileExplorerProps) {
+export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPanel, onSelectFile, onOpenImage, isPreviewPanelActive, workspaceId, externalViewFilter }: FileExplorerProps) {
     const { currentWorkspace } = useWorkspace();
     const [flatFiles, setFlatFiles] = useState<FileEntry[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -1490,7 +1491,15 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onSelectFil
                         <button
                             className="w-full text-left px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center gap-2"
                             onClick={() => {
-                                handleOpen(contextMenu.entry);
+                                const ext = getExtension(contextMenu.entry.name);
+                                const isAudio = AUDIO_EXTS.has(ext);
+                                if (contextMenu.entry.is_directory || isAudio) {
+                                    handleOpen(contextMenu.entry);
+                                } else if (onOpenInPanel) {
+                                    onOpenInPanel(contextMenu.entry);
+                                } else {
+                                    handleOpen(contextMenu.entry);
+                                }
                                 setContextMenu(null);
                             }}
                         >

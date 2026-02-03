@@ -24,6 +24,8 @@ interface FilePreviewPanelProps extends IDockviewPanelProps {
     params: {
         docs?: { uri: string; fileType?: string; fileName?: string; size?: number; modified_at?: number; htmlContent?: string }[];
         onOpenInEditor?: (filePath: string, fileName: string) => void;
+        hideHeader?: boolean;
+        contentOverride?: string;
     };
 }
 
@@ -71,11 +73,14 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
 
     const currentDoc = docs[0];
     const fileName = currentDoc?.fileName || '';
+    const contentOverride = params?.contentOverride;
+    const hasContentOverride = typeof contentOverride === 'string';
 
     // Determine file categories (same logic as popup)
     const isImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
     const isVideo = /\.(mp4|mov|webm|mkv)$/i.test(fileName);
     const isHtml = /\.(html|htm)$/i.test(fileName);
+    const isMarkdown = /\.(md|markdown)$/i.test(fileName);
     // Office files that need MarkItDown extraction (local files only)
     const isOfficeFile = /\.(docx|pptx|xlsx|xls)$/i.test(fileName);
     // PDF, CSV, RTF, MD can still use DocViewer
@@ -83,7 +88,7 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
 
     // For text files that are NOT in the above categories, try to fetch content
     // HTML files are rendered in an iframe, so they don't need content fetching
-    const shouldFetchContent = !isImage && !isVideo && !isDocViewerType && !isHtml && !isOfficeFile;
+    const shouldFetchContent = !hasContentOverride && !isImage && !isVideo && !isDocViewerType && !isHtml && !isOfficeFile;
 
     // Check if file is editable (text-based files that can be edited in Monaco)
     const isEditable = /\.(txt|js|jsx|ts|tsx|py|json|html|htm|css|scss|less|md|markdown|xml|yaml|yml|toml|ini|cfg|conf|sh|bash|zsh|sql|go|rs|java|c|cpp|h|hpp|rb|php|swift|kt|scala|lua|r|vue|svelte|astro)$/i.test(fileName);
@@ -212,7 +217,7 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
     return (
         <Container className="flex flex-col h-full">
             {/* Header - hide when displaying inline HTML content */}
-            {!isInlineHtml && (
+            {!params?.hideHeader && !isInlineHtml && (
                 <div className="flex items-center justify-between px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
                         <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 truncate">
@@ -277,12 +282,13 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
                         )}
                     </div>
                 ) : isHtml ? (() => {
-                    // If inline htmlContent is provided, use srcdoc for direct rendering
-                    if (currentDoc.htmlContent) {
+                    // If inline htmlContent or override content is provided, use srcdoc for direct rendering
+                    const inlineHtml = hasContentOverride ? contentOverride : currentDoc.htmlContent;
+                    if (inlineHtml) {
                         return (
                             <div className="h-full">
                                 <iframe
-                                    srcDoc={currentDoc.htmlContent}
+                                    srcDoc={inlineHtml}
                                     title={fileName}
                                     className="w-full h-full border-0 bg-white"
                                     sandbox="allow-scripts"
@@ -355,7 +361,7 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
                             </article>
                         ) : null}
                     </>
-                ) : isDocViewerType ? (
+                ) : isDocViewerType && !(isMarkdown && hasContentOverride) ? (
                     <div className="h-full overflow-auto">
                         <DocViewer
                             documents={docs}
@@ -385,6 +391,32 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
                             <div className="flex items-center justify-center h-full text-zinc-400">
                                 Loading...
                             </div>
+                        ) : hasContentOverride ? (
+                            isMarkdown ? (
+                                <article className="
+                                    prose dark:prose-invert max-w-none
+                                    prose-headings:text-zinc-800 dark:prose-headings:text-zinc-200
+                                    prose-p:text-zinc-700 dark:prose-p:text-zinc-300
+                                    prose-strong:text-zinc-800 dark:prose-strong:text-zinc-200
+                                    prose-pre:bg-zinc-200 dark:prose-pre:bg-zinc-800
+                                    prose-pre:text-zinc-800 dark:prose-pre:text-zinc-200
+                                    prose-code:bg-zinc-200 dark:prose-code:bg-zinc-700
+                                    prose-code:text-zinc-800 dark:prose-code:text-zinc-200
+                                    prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-normal
+                                    prose-code:before:content-none prose-code:after:content-none
+                                    prose-table:border-collapse
+                                    prose-th:border prose-th:border-zinc-300 dark:prose-th:border-zinc-600 prose-th:p-2 prose-th:bg-zinc-100 dark:prose-th:bg-zinc-800
+                                    prose-td:border prose-td:border-zinc-300 dark:prose-td:border-zinc-600 prose-td:p-2
+                                ">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {contentOverride}
+                                    </ReactMarkdown>
+                                </article>
+                            ) : (
+                                <pre className="text-xs font-mono text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words">
+                                    {contentOverride}
+                                </pre>
+                            )
                         ) : error ? (
                             <div className="flex flex-col items-center justify-center h-full text-zinc-500 text-sm text-center">
                                 <div className="p-6 rounded-2xl bg-zinc-200 dark:bg-zinc-800 shadow-sm mb-4">

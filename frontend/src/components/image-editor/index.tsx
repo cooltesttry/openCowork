@@ -25,13 +25,14 @@ function getAspectPrompt(ratio: string): string {
   return prompts[ratio] || 'square format';
 }
 
-export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, onHasContentChange, workspacePath, onReferenceBarToggle }: ImageEditorProps) {
+export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, onHasContentChange, onExportRequest, autoFitToken, workspacePath, onReferenceBarToggle }: ImageEditorProps) {
   const [canvas, setCanvas] = useState<FabricCanvas | null>(null);
   const { state, actions } = useEditor(canvas);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const initialImageLoadedRef = useRef(false);
   const addImagePathRef = useRef<string | null>(null);
+  const pendingAutoFitRef = useRef(false);
 
   // Apply filter tool
   useFilterTool({
@@ -47,6 +48,19 @@ export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, 
   useEffect(() => {
     onHasContentChange?.(state.hasContent);
   }, [state.hasContent, onHasContentChange]);
+
+  // Register export callback for preview
+  useEffect(() => {
+    if (!onExportRequest) return;
+    onExportRequest(() => actions.exportImage('png', 1));
+  }, [onExportRequest, actions]);
+
+  // Request a one-time auto-fit when visibility changes
+  useEffect(() => {
+    if (autoFitToken === undefined) return;
+    pendingAutoFitRef.current = true;
+    actions.autoFitZoom();
+  }, [autoFitToken, actions]);
 
   // Handle initial image load - initialization mode
   useEffect(() => {
@@ -279,6 +293,10 @@ export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, 
 
   const handleContainerResize = useCallback((width: number, height: number) => {
     actions.setContainerSize(width, height);
+    if (pendingAutoFitRef.current && width > 0 && height > 0) {
+      pendingAutoFitRef.current = false;
+      requestAnimationFrame(() => actions.autoFitZoom());
+    }
   }, [actions]);
 
   const handleDrop = useCallback(async (files: FileList) => {

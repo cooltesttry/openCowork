@@ -10,7 +10,7 @@ import { ToolsPanelContent } from './panels/tools-panel';
 import { EditorPanel } from '../panels/editor-panel';
 import { TerminalPanel } from '../panels/terminal-panel';
 import { FilePreviewPanel } from '../panels/file-preview-panel';
-import { SearchPanel } from '../panels/search-panel';
+import { FilePanel } from '../panels/file-panel';
 import { AgentsPanel } from '../panels/agents-panel';
 import { SuperAgentPanel } from '../agent/super-agent-panel';
 import { ImageEditorPanel } from './panels/image-editor-panel';
@@ -20,6 +20,7 @@ import { useChatLogic } from './useChatLogic';
 import { Toaster, toast } from 'sonner';
 import type { SecurityMode } from '@/components/chat/input-area';
 import type { OpenImageOptions } from '@/components/image-editor/types';
+import type { FilePanelMode } from '../panels/file-panel';
 
 const components = {
     workspaces: WorkspacePanelContent,
@@ -28,7 +29,7 @@ const components = {
     editor: EditorPanel,
     terminal: TerminalPanel,
     files: FilePreviewPanel,
-    search: SearchPanel,
+    filepanel: FilePanel,
     agents: AgentsPanel,
     superagent: SuperAgentPanel,
     'image-editor': ImageEditorPanel,
@@ -40,7 +41,7 @@ const COLLAPSED_PANEL_WIDTH = 44;
 
 export function DockviewMain() {
     const apiRef = useRef<DockviewApi | null>(null);
-    const handlePreviewFileRef = useRef<((path: string, name: string) => void) | null>(null);
+    const handlePreviewFileRef = useRef<((path: string, name: string, content?: string) => void) | null>(null);
     const handlePreviewHTMLRef = useRef<((htmlContent: string) => void) | null>(null);
     const {
         isSidebarOpen,
@@ -145,6 +146,50 @@ export function DockviewMain() {
         }
     }, []);
 
+    const handleOpenFilePanel = useCallback((
+        entry: { path: string; name: string; is_directory: boolean; size?: number | null; modified_at?: number | null },
+        options?: { initialMode?: FilePanelMode }
+    ) => {
+        if (!apiRef.current) return;
+        if (entry.is_directory) return;
+
+        // If a file panel for this path already exists, activate it
+        for (const panel of apiRef.current.panels) {
+            const panelParams = (panel as { params?: { path?: string } }).params;
+            if (panelParams?.path === entry.path) {
+                if (options?.initialMode) {
+                    panel.api.updateParameters({
+                        initialMode: options.initialMode,
+                    });
+                }
+                panel.api.setActive();
+                return;
+            }
+        }
+
+        const editorPanel = apiRef.current.getPanel('editor-panel');
+        const chatPanel = apiRef.current.getPanel('chat-panel');
+        const referencePanel = editorPanel || chatPanel;
+        if (!referencePanel) return;
+
+        const panelId = `file-panel-${Date.now()}`;
+        const newPanel = apiRef.current.addPanel({
+            id: panelId,
+            component: 'filepanel',
+            title: entry.name,
+            position: { referencePanel, direction: editorPanel ? 'within' : 'right' },
+            params: {
+                path: entry.path,
+                name: entry.name,
+                size: entry.size ?? undefined,
+                modified_at: entry.modified_at ?? undefined,
+                initialMode: options?.initialMode,
+            },
+        });
+
+        newPanel?.api.setActive();
+    }, []);
+
     // Handle opening an image in ImageEditor panel
     const handleOpenInImageEditor = useCallback((imagePath: string, options?: OpenImageOptions) => {
         if (!apiRef.current) return;
@@ -235,9 +280,9 @@ export function DockviewMain() {
                     params: {
                         content: data.content,
                         filename: filePath,
-                        onPreviewFile: (path: string, name: string) => {
+                        onPreviewFile: (path: string, name: string, content?: string) => {
                             // Forward to handlePreviewFile - will use the ref pattern
-                            handlePreviewFileRef.current?.(path, name);
+                            handlePreviewFileRef.current?.(path, name, content);
                         },
                     }
                 });
@@ -298,7 +343,7 @@ export function DockviewMain() {
     }, [handleOpenInEditor]);
 
     // Handle previewing a file from Editor panel
-    const handlePreviewFile = useCallback((filePath: string, fileName: string) => {
+    const handlePreviewFile = useCallback((filePath: string, fileName: string, contentOverride?: string) => {
         // Use same logic as handleFileSelect
         if (!apiRef.current) return;
 
@@ -336,6 +381,7 @@ export function DockviewMain() {
                         }
                     ],
                     onOpenInEditor: handleOpenInEditor,
+                    contentOverride: contentOverride,
                 }
             });
             filesPanel.api.setActive();
@@ -464,17 +510,6 @@ export function DockviewMain() {
                 }
             });
             api.addPanel({
-                id: 'search-panel',
-                component: 'search',
-                title: 'Search',
-                position: { referencePanel: editorPanel, direction: 'within' },
-                params: {
-                    onSelectFile: (path: string, name: string) => {
-                        handlePreviewFileRef.current?.(path, name);
-                    },
-                }
-            });
-            api.addPanel({
                 id: 'agents-panel',
                 component: 'agents',
                 title: 'Agents',
@@ -543,6 +578,7 @@ export function DockviewMain() {
             params: {
                 onMentionFile: handleMentionFile,
                 onOpenFile: handleOpenFile,
+                onOpenInPanel: handleOpenFilePanel,
                 onSelectFile: handleFileSelect,
                 onOpenImage: handleOpenInImageEditor,
                 isPreviewPanelActive: isPreviewPanelActive,
@@ -605,6 +641,7 @@ export function DockviewMain() {
                     params: {
                         onMentionFile: handleMentionFile,
                         onOpenFile: handleOpenFile,
+                        onOpenInPanel: handleOpenFilePanel,
                         onSelectFile: handleFileSelect,
                         onOpenImage: handleOpenInImageEditor,
                         isPreviewPanelActive: isPreviewPanelActive,
@@ -635,6 +672,7 @@ export function DockviewMain() {
             toolsPanel.api.updateParameters({
                 onMentionFile: handleMentionFile,
                 onOpenFile: handleOpenFile,
+                onOpenInPanel: handleOpenFilePanel,
                 onSelectFile: handleFileSelect,
                 onOpenImage: handleOpenInImageEditor,
                 isPreviewPanelActive: isPreviewPanelActive,
@@ -644,7 +682,7 @@ export function DockviewMain() {
             });
             relayout();
         }
-    }, [isSidebarOpen, handleMentionFile, handleOpenFile, handleFileSelect, handleOpenInImageEditor, isPreviewPanelActive, setIsSidebarOpen, relayout, fileExplorerViewFilter]);
+    }, [isSidebarOpen, handleMentionFile, handleOpenFile, handleOpenFilePanel, handleFileSelect, handleOpenInImageEditor, isPreviewPanelActive, setIsSidebarOpen, relayout, fileExplorerViewFilter]);
 
     // Handle toggle of workspaces panel
     useEffect(() => {

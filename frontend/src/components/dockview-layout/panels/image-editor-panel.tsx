@@ -23,6 +23,8 @@ interface ImageEditorPanelProps {
     openInAITool?: boolean;
     onSave?: (dataUrl: string, filename: string) => Promise<void>;
     onHasContentChange?: (hasContent: boolean) => void;
+    onExportRequest?: (exporter: () => string | null) => void;
+    autoFitToken?: number;
     onReferenceBarToggle?: (expanded: boolean) => void;
   };
 }
@@ -38,6 +40,8 @@ export function ImageEditorPanel({ params }: ImageEditorPanelProps) {
         openInAITool={params?.openInAITool}
         onSave={params?.onSave}
         onHasContentChange={params?.onHasContentChange}
+        onExportRequest={params?.onExportRequest}
+        autoFitToken={params?.autoFitToken}
         workspacePath={currentWorkspace?.path}
         onReferenceBarToggle={params?.onReferenceBarToggle}
       />

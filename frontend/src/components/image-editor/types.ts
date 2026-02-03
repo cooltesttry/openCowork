@@ -95,6 +95,10 @@ export interface ImageEditorProps {
   openInAITool?: boolean;
   onSave?: (dataUrl: string, filename: string) => Promise<void>;
   onHasContentChange?: (hasContent: boolean) => void;
+  /** Register an export function for preview without persisting to disk */
+  onExportRequest?: (exporter: () => string | null) => void;
+  /** Trigger a one-off auto-fit zoom when the editor becomes visible */
+  autoFitToken?: number;
   /** Optional workspace path for save dialog shortcut */
   workspacePath?: string;
   /** Callback when reference bar is expanded/collapsed */
