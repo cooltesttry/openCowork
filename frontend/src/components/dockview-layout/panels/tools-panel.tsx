@@ -7,13 +7,14 @@ import { useChat } from '@/lib/store';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
 import { Button } from '@/components/ui/button';
+import type { OpenImageOptions } from '@/components/image-editor/types';
 
 interface ToolsPanelContentProps {
     params?: {
         onMentionFile?: (path: string) => void;
         onOpenFile?: (path: string) => void;
         onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
-        onOpenImage?: (path: string) => void;
+        onOpenImage?: (path: string, options?: OpenImageOptions) => void;
         isPreviewPanelActive?: () => boolean;
         onToggle?: () => void;
         isOpen?: boolean;

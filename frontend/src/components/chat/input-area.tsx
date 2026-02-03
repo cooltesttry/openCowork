@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SendIcon, Square, Paperclip, Slash, AtSign, ShieldCheck, ShieldAlert, ShieldOff, X } from "lucide-react";
 import { ModelSelector } from "./model-selector";
 import { cn } from "@/lib/utils";
+import { useChat } from "@/lib/store";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -19,7 +20,7 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { QuickPanel, SlashCommand, FileItem } from "./quick-panel";
-import { fetchWorkingDirectoryFiles, uploadAttachment, resolvePath } from "@/lib/api";
+import { fetchConfig, fetchWorkingDirectoryFiles, uploadAttachment, resolvePath } from "@/lib/api";
 
 // Security mode types matching backend permission_mode
 export type SecurityMode = 'default' | 'acceptEdits' | 'bypassPermissions';
@@ -87,9 +88,11 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
         files: filesProp,
         onFileSelect,
     }, ref) {
+        const { messages } = useChat();
         const [content, setContent] = useState("");
         const textareaRef = useRef<HTMLTextAreaElement>(null);
         const fileInputRef = useRef<HTMLInputElement>(null);
+        const [contextWindow, setContextWindow] = useState(200000);
 
         // File list state - fetched from API
         const [workingDirFiles, setWorkingDirFiles] = useState<FileItem[]>([]);
@@ -124,6 +127,36 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
             };
             loadFiles();
         }, []);
+
+        // Load context window size from config (default to 200k)
+        useEffect(() => {
+            const loadContextWindow = async () => {
+                try {
+                    const config = await fetchConfig<{ context_window?: number }>("/model");
+                    const value = Number(config?.context_window);
+                    if (Number.isFinite(value) && value > 0) {
+                        setContextWindow(value);
+                    }
+                } catch {
+                    // Keep default if config fetch fails
+                }
+            };
+            loadContextWindow();
+        }, []);
+
+        const sessionTotalTokens = useMemo(() => {
+            return messages.reduce((sum, msg) => {
+                if (msg.role !== "assistant") return sum;
+                const tokens = msg.usage?.total_tokens;
+                return sum + (typeof tokens === 'number' ? tokens : 0);
+            }, 0);
+        }, [messages]);
+
+        const contextPercent = useMemo(() => {
+            if (contextWindow <= 0) return 0;
+            const percent = Math.round((sessionTotalTokens / contextWindow) * 100);
+            return Math.min(100, Math.max(0, percent));
+        }, [sessionTotalTokens, contextWindow]);
 
         // Expose focus and addFileReference methods to parent
         useImperativeHandle(ref, () => ({
@@ -480,7 +513,7 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
 
 
                         {/* Bottom Section: Toolbar */}
-                        <div className="flex items-center justify-between px-2 pb-0 pt-0 rounded-b-xl">
+                        <div className="flex items-center px-2 pb-0 pt-0 rounded-b-xl">
                             {/* Left Actions */}
 
                             <div className="flex items-center gap-0">
@@ -571,8 +604,11 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
                                 <ModelSelector />
                             </div>
 
-                            {/* Right Actions: Security Only */}
-                            <div className="flex items-center gap-2">
+                            {/* Right Actions: Context % + Security */}
+                            <div className="ml-auto flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                    {contextPercent}%
+                                </span>
                                 {/* Security Mode */}
                                 <TooltipProvider>
                                     <Tooltip>

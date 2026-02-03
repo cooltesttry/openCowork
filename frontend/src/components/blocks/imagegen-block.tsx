@@ -1,11 +1,13 @@
 "use client";
 
 import { MessageBlock } from "@/lib/types";
-import { Image as ImageIcon, Loader2, AlertCircle, Download, ExternalLink } from "lucide-react";
+import { Image as ImageIcon, Loader2, AlertCircle, Download, Sparkles } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
+import type { OpenImageOptions } from "@/components/image-editor/types";
 
 interface ImageGenBlockProps {
     block: MessageBlock;
+    onOpenImage?: (path: string, options?: OpenImageOptions) => void;
 }
 
 interface ImageGenResult {
@@ -48,7 +50,7 @@ function parseImageGenResult(block: MessageBlock): ImageGenResult | null {
     return null;
 }
 
-export function ImageGenBlock({ block }: ImageGenBlockProps) {
+export function ImageGenBlock({ block, onOpenImage }: ImageGenBlockProps) {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
 
@@ -102,22 +104,27 @@ export function ImageGenBlock({ block }: ImageGenBlockProps) {
         }
     };
 
-    // Handle open with system default application
-    const handleOpenExternal = async () => {
-        if (result?.file_path) {
-            try {
-                const res = await fetch('http://localhost:8000/api/files/open', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: result.file_path }),
-                });
+    // Handle open in Image Editor (fallback to system default if handler not available)
+    const handleOpenInEditor = async () => {
+        if (!result?.file_path) return;
 
-                if (!res.ok) {
-                    console.error('Failed to open file:', await res.text());
-                }
-            } catch (err) {
-                console.error('Open file error:', err);
+        if (onOpenImage) {
+            onOpenImage(result.file_path, { tool: 'ai' });
+            return;
+        }
+
+        try {
+            const res = await fetch('http://localhost:8000/api/files/open', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: result.file_path }),
+            });
+
+            if (!res.ok) {
+                console.error('Failed to open file:', await res.text());
             }
+        } catch (err) {
+            console.error('Open file error:', err);
         }
     };
 
@@ -194,11 +201,11 @@ export function ImageGenBlock({ block }: ImageGenBlockProps) {
                             <Download className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
                         </button>
                         <button
-                            onClick={handleOpenExternal}
+                            onClick={handleOpenInEditor}
                             className="p-1.5 rounded-md hover:bg-violet-100 dark:hover:bg-violet-900/50 transition-colors"
-                            title="Open with default app"
+                            title="Open in Image Editor"
                         >
-                            <ExternalLink className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                            <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
                         </button>
                     </div>
                 </div>

@@ -4,6 +4,7 @@ import { User, FilePlus, FileEdit, FileText, Image as ImageIcon } from "lucide-r
 import { BlockList } from "@/components/blocks/block-renderer";
 import { TextBlock } from "@/components/blocks/text-block";
 import { useMemo } from "react";
+import type { OpenImageOptions } from "@/components/image-editor/types";
 
 interface FileOperation {
     type: 'Write' | 'Edit' | 'ImageGen';
@@ -23,6 +24,7 @@ interface MessageItemProps {
     onAskUserSubmit?: (requestId: string, answers: Record<string, string>) => void;
     onAskUserSkip?: (requestId: string) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
+    onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     onPreviewHTML?: (htmlContent: string) => void;
 }
 
@@ -49,7 +51,7 @@ function isPreviewableFile(path: string): boolean {
     return IMAGE_EXTENSIONS.includes(ext) || PREVIEWABLE_EXTENSIONS.includes(ext);
 }
 
-export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onSelectFile, onPreviewHTML }: MessageItemProps) {
+export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onSelectFile, onOpenImage, onPreviewHTML }: MessageItemProps) {
     const isUser = message.role === "user";
     const hasBlocks = message.blocks && message.blocks.length > 0;
 
@@ -192,16 +194,11 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
 
                 <div className="flex-1 min-w-0 max-w-full overflow-hidden">
                     {/* Status indicators - only for assistant messages */}
-                    {!isUser && (message.isStreaming || message.usage) && (
+                    {!isUser && message.isStreaming && (
                         <div className="flex items-center gap-2 mb-1">
                             {message.isStreaming && (
                                 <span className="inline-flex items-center gap-1">
                                     <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                                </span>
-                            )}
-                            {message.usage && (
-                                <span className="text-xs text-muted-foreground/60">
-                                    {message.usage.total_tokens.toLocaleString()} tokens
                                 </span>
                             )}
                         </div>
@@ -214,6 +211,7 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                             onPermissionResponse={onPermissionResponse}
                             onAskUserSubmit={onAskUserSubmit}
                             onAskUserSkip={onAskUserSkip}
+                            onOpenImage={onOpenImage}
                             onPreviewHTML={onPreviewHTML}
                         />
                     )}
@@ -287,6 +285,12 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                                     ))}
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {!isUser && message.usage && (
+                        <div className="mt-2 text-right text-xs text-muted-foreground/60">
+                            {message.usage.total_tokens.toLocaleString()} tokens
                         </div>
                     )}
 

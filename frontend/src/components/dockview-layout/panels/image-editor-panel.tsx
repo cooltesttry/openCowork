@@ -20,6 +20,7 @@ interface ImageEditorPanelProps {
   params: {
     initialImage?: string;
     addImage?: string;
+    openInAITool?: boolean;
     onSave?: (dataUrl: string, filename: string) => Promise<void>;
     onHasContentChange?: (hasContent: boolean) => void;
     onReferenceBarToggle?: (expanded: boolean) => void;
@@ -34,6 +35,7 @@ export function ImageEditorPanel({ params }: ImageEditorPanelProps) {
       <ImageEditor
         initialImage={params?.initialImage}
         addImagePath={params?.addImage}
+        openInAITool={params?.openInAITool}
         onSave={params?.onSave}
         onHasContentChange={params?.onHasContentChange}
         workspacePath={currentWorkspace?.path}

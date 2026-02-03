@@ -28,6 +28,7 @@ class ModelAPIConfig(BaseModel):
     model_name: str = "claude-sonnet-4-20250514"
     max_tokens: int = 0  # 0 = use SDK default
     max_thinking_tokens: int = 0  # 0 = disabled
+    context_window: int = 200000  # Default context window size for UI usage
     
     def get_active_endpoint(self) -> "ModelEndpoint | None":
         """Get the currently active endpoint configuration."""

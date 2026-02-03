@@ -19,6 +19,21 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 import { PanelRightClose, PanelRightOpen, Settings } from "lucide-react";
 
+const normalizeUsage = (usage: any): { input_tokens: number; output_tokens: number; total_tokens: number } | null => {
+    if (!usage || typeof usage !== "object") return null;
+    const inputTokens = Number(usage.input_tokens ?? 0);
+    const outputTokens = Number(usage.output_tokens ?? 0);
+    const totalTokens = Number(
+        typeof usage.total_tokens === "number" ? usage.total_tokens : inputTokens + outputTokens
+    );
+    if (!Number.isFinite(totalTokens)) return null;
+    return {
+        input_tokens: Number.isFinite(inputTokens) ? inputTokens : 0,
+        output_tokens: Number.isFinite(outputTokens) ? outputTokens : 0,
+        total_tokens: totalTokens,
+    };
+};
+
 export function ChatPanel() {
     const {
         messages, setMessages,
@@ -119,6 +134,7 @@ export function ChatPanel() {
                     content: m.content,
                     timestamp: m.timestamp * 1000,  // Convert to milliseconds
                     blocks,
+                    usage: normalizeUsage(m.usage) || undefined,
                 };
             });
             setMessages(msgs);
@@ -778,6 +794,7 @@ export function ChatPanel() {
                     }
 
                     case "done": {
+                        const usage = normalizeUsage((event as any)?.usage ?? (event as any)?.content?.usage);
                         setIsProcessing(false);
                         // Refresh session list to update title if it was auto-generated
                         loadSessions();
@@ -793,12 +810,12 @@ export function ChatPanel() {
                                     return {
                                         ...msg,
                                         blocks,
-                                        usage: event.usage,
+                                        ...(usage ? { usage } : {}),
                                         isStreaming: false
                                     };
                                 }
                                 if (msg.id === assistantMessageId) {
-                                    return { ...msg, usage: event.usage, isStreaming: false };
+                                    return { ...msg, ...(usage ? { usage } : {}), isStreaming: false };
                                 }
                                 return msg;
                             })

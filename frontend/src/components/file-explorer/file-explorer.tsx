@@ -11,6 +11,7 @@ import { fileWatcherClient, FileWatchEvent } from "@/lib/file-watcher";
 import { useWorkspace } from "@/lib/workspace-store";
 import { enqueueAudio } from "@/lib/audio-player";
 import { FileIcon } from "./file-icons";
+import type { OpenImageOptions } from "@/components/image-editor/types";
 
 type CategoryType = "images" | "documents" | "video" | "audio" | "code";
 type ViewFilter = "all" | CategoryType;
@@ -77,7 +78,7 @@ interface FileExplorerProps {
     onMentionFile?: (path: string) => void;
     onOpenFile?: (path: string) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
-    onOpenImage?: (path: string) => void;
+    onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     isPreviewPanelActive?: () => boolean;
     /** Workspace ID - when this changes, files are refetched */
     workspaceId?: string | null;

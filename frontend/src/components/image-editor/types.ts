@@ -2,6 +2,10 @@ import type { Canvas as FabricCanvas } from 'fabric';
 
 export type EditorTool = 'select' | 'crop' | 'brush' | 'text' | 'filter' | 'ai';
 
+export interface OpenImageOptions {
+  tool?: EditorTool;
+}
+
 export type FilterType =
   | 'none'
   | 'vintage'
@@ -88,6 +92,7 @@ export interface EditorActions {
 export interface ImageEditorProps {
   initialImage?: string;
   addImagePath?: string;
+  openInAITool?: boolean;
   onSave?: (dataUrl: string, filename: string) => Promise<void>;
   onHasContentChange?: (hasContent: boolean) => void;
   /** Optional workspace path for save dialog shortcut */

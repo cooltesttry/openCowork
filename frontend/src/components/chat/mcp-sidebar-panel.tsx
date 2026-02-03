@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import * as Tabs from "@radix-ui/react-tabs";
 import { FileExplorer } from "../file-explorer/file-explorer";
 import { useWorkspace } from "@/lib/workspace-store";
+import type { OpenImageOptions } from "@/components/image-editor/types";
 
 interface MCPServer {
     name: string;
@@ -35,7 +36,7 @@ interface McpSidebarPanelProps {
     onMentionFile?: (path: string) => void;
     onOpenFile?: (path: string) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
-    onOpenImage?: (path: string) => void;
+    onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     isPreviewPanelActive?: () => boolean;
     externalViewFilter?: "all" | "images" | "documents" | "video" | "audio" | "code";
 }

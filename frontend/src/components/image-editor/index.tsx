@@ -25,7 +25,7 @@ function getAspectPrompt(ratio: string): string {
   return prompts[ratio] || 'square format';
 }
 
-export function ImageEditor({ initialImage, addImagePath, onSave, onHasContentChange, workspacePath, onReferenceBarToggle }: ImageEditorProps) {
+export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, onHasContentChange, workspacePath, onReferenceBarToggle }: ImageEditorProps) {
   const [canvas, setCanvas] = useState<FabricCanvas | null>(null);
   const { state, actions } = useEditor(canvas);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -86,8 +86,12 @@ export function ImageEditor({ initialImage, addImagePath, onSave, onHasContentCh
         actions.loadImageAsCanvas(imageUrl);
         actions.setTool('ai');
       }
+
+      if (openInAITool) {
+        actions.setTool('ai');
+      }
     }
-  }, [canvas, addImagePath, actions, state.hasContent, state.isSelectingReference]);
+  }, [canvas, addImagePath, openInAITool, actions, state.hasContent, state.isSelectingReference]);
 
   // Keyboard shortcuts
   useEffect(() => {

@@ -19,6 +19,7 @@ import { FloatingAudioPlayer } from '@/components/audio/floating-audio-player';
 import { useChatLogic } from './useChatLogic';
 import { Toaster, toast } from 'sonner';
 import type { SecurityMode } from '@/components/chat/input-area';
+import type { OpenImageOptions } from '@/components/image-editor/types';
 
 const components = {
     workspaces: WorkspacePanelContent,
@@ -145,10 +146,11 @@ export function DockviewMain() {
     }, []);
 
     // Handle opening an image in ImageEditor panel
-    const handleOpenInImageEditor = useCallback((imagePath: string) => {
+    const handleOpenInImageEditor = useCallback((imagePath: string, options?: OpenImageOptions) => {
         if (!apiRef.current) return;
 
         let imageEditorPanel = apiRef.current.getPanel('image-editor-panel');
+        const openInAITool = options?.tool === 'ai';
 
         if (!imageEditorPanel) {
             // Panel doesn't exist, create it
@@ -164,6 +166,7 @@ export function DockviewMain() {
                     position: { referencePanel: referencePanel, direction: editorPanel ? 'within' : 'right' },
                     params: {
                         addImage: imagePath,
+                        openInAITool,
                         onReferenceBarToggle: handleReferenceBarToggle,
                     }
                 });
@@ -173,6 +176,7 @@ export function DockviewMain() {
             imageEditorPanel.update({
                 params: {
                     addImage: imagePath,
+                    openInAITool,
                     onReferenceBarToggle: handleReferenceBarToggle,
                 }
             });
@@ -420,6 +424,7 @@ export function DockviewMain() {
                 onSecurityModeChange: handleSecurityModeChange,
                 inputAreaRef: chatLogic.inputAreaRef,
                 onSelectFile: handleFileSelect,
+                onOpenImage: handleOpenInImageEditor,
                 onPreviewHTML: (htmlContent: string) => {
                     handlePreviewHTMLRef.current?.(htmlContent);
                 },

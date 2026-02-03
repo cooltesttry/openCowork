@@ -17,7 +17,7 @@ from core.user_input_handler import user_input_handler
 from core import session_storage
 from core.workspace_storage import WorkspaceStorage
 from models.settings import AppSettings
-from models.session import SessionMessage
+from models.session import SessionMessage, TokenUsage
 
 
 # Set up logging (configured centrally in main.py)
@@ -42,6 +42,25 @@ class UserResponse(BaseModel):
     type: str = "user_response"
     request_id: str
     answers: dict
+
+
+def _normalize_usage(usage: Optional[dict]) -> Optional[dict]:
+    if not isinstance(usage, dict):
+        return None
+    input_tokens = int(usage.get("input_tokens") or 0)
+    output_tokens = int(usage.get("output_tokens") or 0)
+    total_tokens = usage.get("total_tokens")
+    if total_tokens is None:
+        total_tokens = input_tokens + output_tokens
+    try:
+        total_tokens = int(total_tokens)
+    except Exception:
+        total_tokens = input_tokens + output_tokens
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
 
 
 @router.websocket("/ws/chat")
@@ -99,6 +118,7 @@ async def websocket_chat(websocket: WebSocket):
             event_count = 0
             assistant_content = ""  # Accumulate assistant response content
             assistant_blocks = []  # Accumulate blocks for structured rendering
+            final_usage: Optional[dict] = None
             
             logger.info(f"Starting agent stream for prompt: {message.content[:100]}... (session: {session.id})")
             
@@ -141,6 +161,12 @@ async def websocket_chat(websocket: WebSocket):
                     # Log important events at INFO level
                     if event_type in ["tool_use", "tool_result", "done", "error"]:
                         logger.info(f"Event #{event_count}: type={event_type}")
+
+                    if event_type == "done":
+                        usage = event_dict.get("usage")
+                        if not usage and isinstance(event_dict.get("content"), dict):
+                            usage = event_dict["content"].get("usage")
+                        final_usage = _normalize_usage(usage)
                     
                     await websocket.send_json(event_dict)
                 
@@ -150,6 +176,7 @@ async def websocket_chat(websocket: WebSocket):
                         role="assistant",
                         content=assistant_content,
                         blocks=assistant_blocks if assistant_blocks else None,
+                        usage=final_usage,
                     )
                     session.add_message(assistant_msg)
                     session_storage.save_session(session)
@@ -398,6 +425,7 @@ async def websocket_session(websocket: WebSocket):
             # Thinking content accumulator for streaming thinking events
             thinking_content = ""
             thinking_block_index = -1  # Index in all_blocks for updating thinking content
+            final_usage: Optional[dict] = None
             
             # Queue to receive messages from background listener
             message_queue: asyncio.Queue = asyncio.Queue()
@@ -579,6 +607,12 @@ async def websocket_session(websocket: WebSocket):
                     event_dict["metadata"]["session_id"] = storage_session.id
                     await websocket.send_json(event_dict)
 
+                    if event_type == "done":
+                        usage = event_dict.get("usage")
+                        if not usage and isinstance(event_dict.get("content"), dict):
+                            usage = event_dict["content"].get("usage")
+                        final_usage = _normalize_usage(usage)
+
                 # Use the ordered blocks list directly (already in event sequence)
                 assistant_blocks = all_blocks
 
@@ -594,6 +628,7 @@ async def websocket_session(websocket: WebSocket):
                         role="assistant",
                         content=assistant_content,
                         blocks=assistant_blocks if assistant_blocks else None,
+                        usage=final_usage,
                     )
                     storage_session.add_message(assistant_msg)
                     
@@ -761,6 +796,7 @@ async def websocket_multiplexed(websocket: WebSocket):
             last_text_streaming = None
             tool_blocks_in_order = []
             event_count = 0
+            final_usage: Optional[dict] = None
             # Streaming persistence state
             assistant_msg: Optional[SessionMessage] = None
             last_persist = time.monotonic()
@@ -768,7 +804,7 @@ async def websocket_multiplexed(websocket: WebSocket):
             persist_interval = 0.5
             persist_event_interval = 50
 
-            def persist_partial(force: bool = False) -> None:
+            def persist_partial(force: bool = False, usage: Optional[dict] = None) -> None:
                 nonlocal assistant_msg, last_persist, last_persist_event
                 if assistant_msg is None and not (assistant_content or all_blocks):
                     return
@@ -780,11 +816,14 @@ async def websocket_multiplexed(websocket: WebSocket):
                         role="assistant",
                         content=assistant_content,
                         blocks=all_blocks if all_blocks else None,
+                        usage=usage,
                     )
                     storage_session.add_message(assistant_msg)
                 else:
                     assistant_msg.content = assistant_content
                     assistant_msg.blocks = all_blocks if all_blocks else None
+                    if usage:
+                        assistant_msg.usage = TokenUsage.from_dict(usage)
                 storage_session.updated_at = time.time()
                 save_session_func(storage_session)
                 last_persist = now
@@ -804,6 +843,12 @@ async def websocket_multiplexed(websocket: WebSocket):
                         if isinstance(content, dict) and "sdk_session_id" in content:
                             storage_session.sdk_session_id = content["sdk_session_id"]
                             save_session_func(storage_session)
+
+                    if event_type == "done":
+                        usage = event_dict.get("usage")
+                        if not usage and isinstance(event_dict.get("content"), dict):
+                            usage = event_dict["content"].get("usage")
+                        final_usage = _normalize_usage(usage)
                     
                     # Streaming text events
                     if event_type == "text_start":
@@ -1019,7 +1064,7 @@ async def websocket_multiplexed(websocket: WebSocket):
                 # Save assistant response after completion
                 storage_session.last_model_name = effective_model
                 storage_session.last_endpoint_name = effective_endpoint or "(legacy)"
-                persist_partial(force=True)
+                persist_partial(force=True, usage=final_usage)
                 
                 logger.info(f"[Multiplexed] Task completed for session {session_id}")
                 
@@ -1146,5 +1191,3 @@ async def websocket_multiplexed(websocket: WebSocket):
         for session_id, task in subscriptions.items():
             task.cancel()
         logger.info("[Multiplexed] WebSocket closed, subscriptions cancelled")
-
-

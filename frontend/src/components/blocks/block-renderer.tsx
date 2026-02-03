@@ -9,16 +9,18 @@ import { TextBlock } from "./text-block";
 import { AskUserBlock } from "./ask-user-block";
 import { ImageGenBlock } from "./imagegen-block";
 import { AlertCircle } from "lucide-react";
+import type { OpenImageOptions } from "@/components/image-editor/types";
 
 interface BlockRendererProps {
     block: MessageBlock;
     onPermissionResponse?: (blockId: string, approved: boolean) => void;
     onAskUserSubmit?: (requestId: string, answers: Record<string, string>) => void;
     onAskUserSkip?: (requestId: string) => void;
+    onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     onPreviewHTML?: (htmlContent: string) => void;
 }
 
-export function BlockRenderer({ block, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onPreviewHTML }: BlockRendererProps) {
+export function BlockRenderer({ block, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onOpenImage, onPreviewHTML }: BlockRendererProps) {
     // Check if this is a permission request
     if (block.metadata?.requiresPermission && block.status === 'pending') {
         return (
@@ -77,7 +79,7 @@ export function BlockRenderer({ block, onPermissionResponse, onAskUserSubmit, on
             }
             // Render mcp__imagegen__generate_image tool as ImageGenBlock
             if (block.content?.name === 'mcp__imagegen__generate_image') {
-                return <ImageGenBlock block={block} />;
+                return <ImageGenBlock block={block} onOpenImage={onOpenImage} />;
             }
             return <ToolBlock block={block} />;
 
@@ -114,10 +116,11 @@ interface BlockListProps {
     onPermissionResponse?: (blockId: string, approved: boolean) => void;
     onAskUserSubmit?: (requestId: string, answers: Record<string, string>) => void;
     onAskUserSkip?: (requestId: string) => void;
+    onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     onPreviewHTML?: (htmlContent: string) => void;
 }
 
-export function BlockList({ blocks, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onPreviewHTML }: BlockListProps) {
+export function BlockList({ blocks, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onOpenImage, onPreviewHTML }: BlockListProps) {
     return (
         <div className="space-y-1 min-w-0 max-w-full overflow-hidden">
             {blocks.map((block, index) => (
@@ -127,10 +130,10 @@ export function BlockList({ blocks, onPermissionResponse, onAskUserSubmit, onAsk
                     onPermissionResponse={onPermissionResponse}
                     onAskUserSubmit={onAskUserSubmit}
                     onAskUserSkip={onAskUserSkip}
+                    onOpenImage={onOpenImage}
                     onPreviewHTML={onPreviewHTML}
                 />
             ))}
         </div>
     );
 }
-

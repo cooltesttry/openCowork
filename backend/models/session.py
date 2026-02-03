@@ -15,28 +15,61 @@ class SessionMessage:
     content: str
     timestamp: float
     blocks: Optional[list[dict]] = None  # For structured rendering (tool use, thinking, etc.)
+    usage: Optional["TokenUsage"] = None  # Per-turn token usage (assistant messages only)
     
     def to_dict(self) -> dict:
         return asdict(self)
     
     @classmethod
     def from_dict(cls, data: dict) -> "SessionMessage":
+        usage_data = data.get("usage")
+        usage = TokenUsage.from_dict(usage_data) if isinstance(usage_data, dict) else None
         return cls(
             id=data["id"],
             role=data["role"],
             content=data["content"],
             timestamp=data["timestamp"],
             blocks=data.get("blocks"),
+            usage=usage,
         )
     
     @classmethod
-    def create(cls, role: Literal["user", "assistant"], content: str, blocks: Optional[list[dict]] = None) -> "SessionMessage":
+    def create(
+        cls,
+        role: Literal["user", "assistant"],
+        content: str,
+        blocks: Optional[list[dict]] = None,
+        usage: Optional[dict] = None,
+    ) -> "SessionMessage":
+        usage_obj = TokenUsage.from_dict(usage) if isinstance(usage, dict) else None
         return cls(
             id=str(uuid.uuid4()),
             role=role,
             content=content,
             timestamp=time.time(),
             blocks=blocks,
+            usage=usage_obj,
+        )
+
+
+@dataclass
+class TokenUsage:
+    """Token usage for a single turn."""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TokenUsage":
+        input_tokens = int(data.get("input_tokens") or 0)
+        output_tokens = int(data.get("output_tokens") or 0)
+        total_tokens = data.get("total_tokens")
+        if total_tokens is None:
+            total_tokens = input_tokens + output_tokens
+        return cls(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=int(total_tokens),
         )
 
 

@@ -4,6 +4,7 @@ import { useChat } from '@/lib/store';
 import { MessageList } from '@/components/chat/message-list';
 import { InputArea, InputAreaRef, SecurityMode } from '@/components/chat/input-area';
 import { useRef } from 'react';
+import type { OpenImageOptions } from '@/components/image-editor/types';
 
 interface ChatPanelContentProps {
     params?: {
@@ -16,6 +17,7 @@ interface ChatPanelContentProps {
         onSecurityModeChange?: (mode: SecurityMode) => void;
         inputAreaRef?: React.RefObject<InputAreaRef>;
         onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
+        onOpenImage?: (path: string, options?: OpenImageOptions) => void;
         onPreviewHTML?: (htmlContent: string) => void;
     };
 }
@@ -51,6 +53,7 @@ export function ChatPanelContent({ params }: ChatPanelContentProps) {
                     onAskUserSubmit={params?.onAskUserSubmit || (() => { })}
                     onAskUserSkip={params?.onAskUserSkip || (() => { })}
                     onSelectFile={params?.onSelectFile}
+                    onOpenImage={params?.onOpenImage}
                     onPreviewHTML={params?.onPreviewHTML}
                 />
             </div>

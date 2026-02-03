@@ -17,6 +17,25 @@ import {
 } from '@/lib/event-processor';
 import type { EventProcessorState } from '@/lib/event-processor';
 
+const normalizeUsage = (usage: any): Message["usage"] | null => {
+    if (!usage || typeof usage !== "object") return null;
+    const inputTokens = Number(usage.input_tokens ?? 0);
+    const outputTokens = Number(usage.output_tokens ?? 0);
+    const totalTokens = Number(
+        typeof usage.total_tokens === "number" ? usage.total_tokens : inputTokens + outputTokens
+    );
+    if (!Number.isFinite(totalTokens)) return null;
+    return {
+        input_tokens: Number.isFinite(inputTokens) ? inputTokens : 0,
+        output_tokens: Number.isFinite(outputTokens) ? outputTokens : 0,
+        total_tokens: totalTokens,
+    };
+};
+
+const extractUsage = (event: StreamEvent): Message["usage"] | null => {
+    return normalizeUsage(event?.usage ?? (event as any)?.content?.usage);
+};
+
 /**
  * Shared hook containing all the business logic from ChatPanel
  * This allows it to be reused in both the old ChatPanel and new DockviewMain
@@ -167,6 +186,7 @@ export function useChatLogic() {
                     content: m.content,
                     timestamp: m.timestamp * 1000,
                     blocks,
+                    usage: normalizeUsage(m.usage) || undefined,
                 };
             });
             // console.log(`[loadSessionMessages] Loaded ${msgs.length} messages for: ${sessionId}`);
@@ -260,6 +280,7 @@ export function useChatLogic() {
 
         // Handle status events (done/error) for ALL sessions
         if (event.type === 'done') {
+            const usage = extractUsage(event);
             // console.log(`[handleGlobalEvent] Done event for ${sessionId}`);
             // console.log(`[handleGlobalEvent] isCurrentSession: ${isCurrentSession}`);
 
@@ -278,7 +299,13 @@ export function useChatLogic() {
                                 ? { ...block, status: 'success' as const }
                                 : block
                         );
-                        return { ...msg, id: finalizedId, blocks, isStreaming: false };
+                        return {
+                            ...msg,
+                            id: finalizedId,
+                            blocks,
+                            isStreaming: false,
+                            ...(usage ? { usage } : {}),
+                        };
                     }
                     if (msg.isStreaming && msg.blocks) {
                         const blocks = msg.blocks.map(block =>
