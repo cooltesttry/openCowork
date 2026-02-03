@@ -21,7 +21,13 @@ interface ChatPanelContentProps {
 }
 
 export function ChatPanelContent({ params }: ChatPanelContentProps) {
-    const { messages, currentSessionId, getSessionStatus } = useChat();
+    const {
+        messages,
+        currentSessionId,
+        getSessionStatus,
+        isAwaitingFirstToken,
+        awaitingFirstTokenSessionId,
+    } = useChat();
     const localInputRef = useRef<InputAreaRef>(null);
     const inputRef = params?.inputAreaRef || localInputRef;
 
@@ -30,11 +36,17 @@ export function ChatPanelContent({ params }: ChatPanelContentProps) {
         ? getSessionStatus(currentSessionId).status === 'running'
         : false;
 
+    const showProcessingPlaceholder = isAwaitingFirstToken && (
+        awaitingFirstTokenSessionId === currentSessionId ||
+        (currentSessionId === null && awaitingFirstTokenSessionId === null)
+    );
+
     return (
         <div className="flex flex-col h-full overflow-hidden">
             <div className="flex-1 min-h-0">
                 <MessageList
                     messages={messages}
+                    showProcessingPlaceholder={showProcessingPlaceholder}
                     onPermissionResponse={params?.onPermissionResponse || (() => { })}
                     onAskUserSubmit={params?.onAskUserSubmit || (() => { })}
                     onAskUserSkip={params?.onAskUserSkip || (() => { })}
@@ -56,4 +68,3 @@ export function ChatPanelContent({ params }: ChatPanelContentProps) {
         </div>
     );
 }
-

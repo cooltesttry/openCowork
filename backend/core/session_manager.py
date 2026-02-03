@@ -562,8 +562,15 @@ class SessionManager:
                 if session.is_started:
                     await session.client.__aexit__(None, None, None)
                 logger.info(f"[SessionManager] Closed session: {session_id}")
+            except RuntimeError as e:
+                if "cancel scope" in str(e):
+                    # Cross-task cleanup - this is expected when cleanup happens in a different
+                    # task than where the client was started (e.g., cleanup loop vs task_runner)
+                    logger.warning(f"[SessionManager] Cross-task cleanup for {session_id}: {e}")
+                else:
+                    logger.error(f"[SessionManager] Error closing session {session_id}: {e}")
             except Exception as e:
-                logger.error(f"[SessionManager] Error closing session {session_id}: {e}")
+                logger.warning(f"[SessionManager] Cleanup warning for {session_id}: {e}")
     
     async def _cleanup_loop(self):
         """Background task to cleanup idle sessions."""

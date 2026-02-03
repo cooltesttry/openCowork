@@ -18,6 +18,10 @@ interface ChatContextType {
     setSteps: React.Dispatch<React.SetStateAction<AgentStep[]>>;
     isProcessing: boolean;
     setIsProcessing: React.Dispatch<React.SetStateAction<boolean>>;
+    isAwaitingFirstToken: boolean;
+    setIsAwaitingFirstToken: React.Dispatch<React.SetStateAction<boolean>>;
+    awaitingFirstTokenSessionId: string | null;
+    setAwaitingFirstTokenSessionId: React.Dispatch<React.SetStateAction<string | null>>;
 
     // MCP Sidebar (right side)
     isSidebarOpen: boolean;
@@ -76,6 +80,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [steps, setSteps] = useState<AgentStep[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isAwaitingFirstToken, setIsAwaitingFirstToken] = useState(false);
+    const [awaitingFirstTokenSessionId, setAwaitingFirstTokenSessionId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
@@ -200,6 +206,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             messages, setMessages,
             steps, setSteps,
             isProcessing, setIsProcessing,
+            isAwaitingFirstToken, setIsAwaitingFirstToken,
+            awaitingFirstTokenSessionId, setAwaitingFirstTokenSessionId,
             isSidebarOpen, setIsSidebarOpen,
             sidebarWidth, setSidebarWidth,
             sessions, setSessions,

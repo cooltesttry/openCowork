@@ -110,24 +110,46 @@ async def generate_image(request: Request, body: GenerateImageRequest):
     settings = request.app.state.settings
     image_gen_config = settings.image_gen
 
-    if not image_gen_config.endpoint:
+    # Get endpoint name and model from image_gen config
+    endpoint_name = image_gen_config.selected_endpoint
+    model_name = image_gen_config.model_name
+
+    if not endpoint_name:
         raise HTTPException(status_code=400, detail="Image generation endpoint not configured")
-    if not image_gen_config.model:
+    if not model_name:
         raise HTTPException(status_code=400, detail="Image generation model not configured")
 
+    # Find the endpoint configuration in model.endpoints
+    endpoint_config = None
+    for ep in settings.model.endpoints:
+        if ep.name == endpoint_name:
+            endpoint_config = ep
+            break
+
+    if not endpoint_config or not endpoint_config.endpoint:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Endpoint '{endpoint_name}' not found or has no URL configured"
+        )
+
     # Get output directory
-    workdir = settings.agent.default_workdir or os.getcwd()
+    workdir = settings.default_workdir or os.getcwd()
 
     # Generate filename if not provided
     filename = body.filename or f"generated-{uuid.uuid4().hex[:8]}"
 
     # Build request headers
     headers = {"Content-Type": "application/json"}
-    if image_gen_config.api_key:
-        headers["Authorization"] = f"Bearer {image_gen_config.api_key}"
+    if endpoint_config.api_key:
+        headers["Authorization"] = f"Bearer {endpoint_config.api_key}"
+
+    # Build API URL - append /v1/chat/completions if needed (same logic as agent_client.py)
+    api_url = endpoint_config.endpoint
+    if not api_url.endswith("/chat/completions") and not api_url.endswith("/images/generations"):
+        api_url = api_url.rstrip("/") + "/v1/chat/completions"
 
     # Determine API format
-    is_chat_api = "/chat/completions" in image_gen_config.endpoint
+    is_chat_api = "/chat/completions" in api_url
 
     if is_chat_api:
         # Chat Completions format (Gemini style) - supports multiple images
@@ -146,14 +168,14 @@ async def generate_image(request: Request, body: GenerateImageRequest):
             messages = [{"role": "user", "content": body.prompt}]
 
         payload = {
-            "model": image_gen_config.model,
+            "model": model_name,
             "messages": messages,
             "max_tokens": 4096
         }
     else:
         # Standard OpenAI /v1/images/generations format
         payload = {
-            "model": image_gen_config.model,
+            "model": model_name,
             "prompt": body.prompt,
             "n": 1,
             "response_format": "b64_json"
@@ -167,7 +189,7 @@ async def generate_image(request: Request, body: GenerateImageRequest):
     # Make API request
     try:
         resp = requests.post(
-            image_gen_config.endpoint,
+            api_url,
             headers=headers,
             json=payload,
             timeout=180

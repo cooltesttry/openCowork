@@ -57,7 +57,8 @@ export function ImageGenBlock({ block }: ImageGenBlockProps) {
     const isSuccess = block.status === 'success' && !isError;
 
     // Parse result - always try to parse for preloading
-    const result = useMemo(() => parseImageGenResult(block), [block]);
+    // Use block.content and block.status as dependencies to detect in-place mutations
+    const result = useMemo(() => parseImageGenResult(block), [block.content, block.status]);
     const prompt = block.content?.input?.prompt || '';
 
     // Get image URL from backend

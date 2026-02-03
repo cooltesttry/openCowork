@@ -26,6 +26,8 @@ export function useChatLogic() {
         messages, setMessages,
         steps, setSteps,
         isProcessing, setIsProcessing,
+        setIsAwaitingFirstToken,
+        setAwaitingFirstTokenSessionId,
         sessions, setSessions,
         currentSessionId, setCurrentSessionId,
         isSessionsLoading, setIsSessionsLoading,
@@ -250,25 +252,44 @@ export function useChatLogic() {
             }
         }
 
+        // Clear UI placeholder as soon as we see real content for the current session
+        if (isCurrentSession && CONTENT_EVENT_TYPES.has(event.type as string)) {
+            setIsAwaitingFirstToken(false);
+            setAwaitingFirstTokenSessionId(null);
+        }
+
         // Handle status events (done/error) for ALL sessions
         if (event.type === 'done') {
             // console.log(`[handleGlobalEvent] Done event for ${sessionId}`);
             // console.log(`[handleGlobalEvent] isCurrentSession: ${isCurrentSession}`);
-            // Clear resume state when done
-            if (isResumedSession) {
-                resumeSessionStateRef.current = null;
-            }
-            processorStateRef.current.delete(sessionId);
-            setSessionStatus(sessionId, {
-                status: 'idle',
-                hasUnread: !isCurrentSession,
-            });
+
             if (isCurrentSession) {
                 setIsProcessing(false);
+                setIsAwaitingFirstToken(false);
+                setAwaitingFirstTokenSessionId(null);
 
-                // Simple fix: reload messages from backend to ensure complete content
-                // This avoids race conditions with async getEvents() requests
-                loadSessionMessages(sessionId);
+                // Mark all streaming/executing blocks as complete (like old implementation)
+                // This preserves the incrementally-built content instead of replacing from API
+                const finalizedId = `turn-${sessionId}-${Date.now()}`;
+                setMessages(prev => prev.map(msg => {
+                    if (msg.id.startsWith(`current-turn-${sessionId}`)) {
+                        const blocks = (msg.blocks || []).map(block =>
+                            block.status === 'executing' || block.status === 'streaming'
+                                ? { ...block, status: 'success' as const }
+                                : block
+                        );
+                        return { ...msg, id: finalizedId, blocks, isStreaming: false };
+                    }
+                    if (msg.isStreaming && msg.blocks) {
+                        const blocks = msg.blocks.map(block =>
+                            block.status === 'executing' || block.status === 'streaming'
+                                ? { ...block, status: 'success' as const }
+                                : block
+                        );
+                        return { ...msg, blocks, isStreaming: false };
+                    }
+                    return msg;
+                }));
 
                 sessionsApi.markRead(sessionId).catch(err =>
                     console.warn(`Failed to mark session ${sessionId} as read:`, err)
@@ -276,7 +297,20 @@ export function useChatLogic() {
                 // Focus input after completion
                 setTimeout(() => inputAreaRef.current?.focus(), 100);
             }
-            // Refresh session list to update title (backend may have auto-generated title)
+
+            // Update session status
+            setSessionStatus(sessionId, {
+                status: 'idle',
+                hasUnread: !isCurrentSession,
+            });
+
+            // Clean up processor state AFTER updating messages
+            if (isResumedSession) {
+                resumeSessionStateRef.current = null;
+            }
+            processorStateRef.current.delete(sessionId);
+
+            // Refresh session list to update title (but NOT message content)
             loadSessions();
             refreshWorkspaceSessions();
             subscribedSessionsRef.current.delete(sessionId);
@@ -301,6 +335,8 @@ export function useChatLogic() {
             });
             if (isCurrentSession) {
                 setIsProcessing(false);
+                setIsAwaitingFirstToken(false);
+                setAwaitingFirstTokenSessionId(null);
                 // Show toast for current session errors
                 toast.error('Error', { description: errorMessage });
                 // Add error block to the message
@@ -315,8 +351,12 @@ export function useChatLogic() {
                         };
                         // Also remove thinking placeholder if still present
                         const filteredBlocks = (msg.blocks || []).filter(b => !b.metadata?.isPlaceholder);
+                        const finalizedId = msg.id.startsWith(`current-turn-${sessionId}`)
+                            ? `turn-${sessionId}-${Date.now()}`
+                            : msg.id;
                         return {
                             ...msg,
+                            id: finalizedId,
                             blocks: [...filteredBlocks, errorBlock],
                             isStreaming: false,
                         };
@@ -363,7 +403,7 @@ export function useChatLogic() {
                 return [...prev, assistantMessage];
             });
         }
-    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, refreshWorkspaceSessions, loadSessionMessages, CONTENT_EVENT_TYPES]);
+    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, refreshWorkspaceSessions, CONTENT_EVENT_TYPES, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId]);
 
     // Stable wrapper that always calls the latest handler
     const handleGlobalEvent = useCallback((event: StreamEvent) => {
@@ -908,6 +948,8 @@ export function useChatLogic() {
                 // Update session status to idle
                 setSessionStatus(sessionId, { status: 'idle', hasUnread: false });
                 setIsProcessing(false);
+                setIsAwaitingFirstToken(false);
+                setAwaitingFirstTokenSessionId(null);
 
                 // Mark the current turn message as not streaming
                 setMessages(prev => prev.map(msg =>
@@ -924,7 +966,7 @@ export function useChatLogic() {
             console.error('Failed to interrupt session:', error);
             toast.error('Failed to interrupt session');
         }
-    }, [getSessionStatus, setSessionStatus, setIsProcessing, setMessages]);
+    }, [getSessionStatus, setSessionStatus, setIsProcessing, setMessages, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId]);
 
     // Main send handler - UNIFIED streaming path
     // After getting session_id, all events go through handleGlobalEvent → appendCurrentTurnFromEvents
@@ -939,6 +981,9 @@ export function useChatLogic() {
         // Capture the original session ID at send time
         // This is used to detect new session creation vs background session events
         const originalSessionId = currentSessionIdRef.current;
+
+        setIsAwaitingFirstToken(true);
+        setAwaitingFirstTokenSessionId(originalSessionId);
 
         const sentContent = content;
 
@@ -969,6 +1014,7 @@ export function useChatLogic() {
             : null;
         const pendingEvents: ProcessableEvent[] = [];
         let backgroundSessionId: string | null = null;
+        let placeholderRemoved = false;
 
         if (assistantMessageId) {
             const thinkingPlaceholderBlock: MessageBlock = {
@@ -1019,7 +1065,21 @@ export function useChatLogic() {
 
                 // Debug: Log key events
                 if (event.type === 'start' || event.type === 'done' || event.type === 'error') {
-                    // console.log(`[handleSend] Event: ${event.type}, eventSession=${eventSessionId}, currentRef=${currentSessionIdRef.current}`);
+                    // console.log(`[handleSend] Event: ${event.type}, eventSession=${eventSessionId}, currentRef=${currentSessionIdRef.current}`)
+                }
+
+                // Remove thinking placeholder when first real content event arrives
+                if (assistantMessageId && !placeholderRemoved && CONTENT_EVENT_TYPES.has(event.type as string)) {
+                    setMessages(prev => prev.map(msg => {
+                        if (msg.id === assistantMessageId && msg.blocks) {
+                            const filteredBlocks = msg.blocks.filter(b => !b.metadata?.isPlaceholder);
+                            if (filteredBlocks.length !== msg.blocks.length) {
+                                return { ...msg, blocks: filteredBlocks };
+                            }
+                        }
+                        return msg;
+                    }));
+                    placeholderRemoved = true;
                 }
 
                 // Handle new session creation (when we started with no session_id)
@@ -1037,6 +1097,7 @@ export function useChatLogic() {
                             currentSessionIdRef.current = eventSessionId;
                             isDraftSessionRef.current = false;
                             setCurrentSessionId(eventSessionId);
+                            setAwaitingFirstTokenSessionId(eventSessionId);
                             setSessionStatus(eventSessionId, {
                                 status: 'running',
                                 hasUnread: false,
@@ -1067,6 +1128,12 @@ export function useChatLogic() {
                         if (CONTENT_EVENT_TYPES.has(event.type as string)) {
                             state = processEvent(state, event as ProcessableEvent, assistantMessageId);
                             handledEvent = true;
+                        }
+
+                        const hasContentEvents = pendingEvents.length > 0 || CONTENT_EVENT_TYPES.has(event.type as string);
+                        if (hasContentEvents) {
+                            setIsAwaitingFirstToken(false);
+                            setAwaitingFirstTokenSessionId(null);
                         }
 
                         if (!state.blocks.length && !state.textContent) {
@@ -1127,6 +1194,8 @@ export function useChatLogic() {
             console.error('Failed to send message:', error);
             setIsProcessing(false);
             isProcessingRef.current = false;
+            setIsAwaitingFirstToken(false);
+            setAwaitingFirstTokenSessionId(null);
             setMessages((prev) => prev.filter(msg => msg.id !== userMessage.id && msg.id !== assistantMessageId));
             inputAreaRef.current?.setValue?.(sentContent);
             // Clear resume state on error
