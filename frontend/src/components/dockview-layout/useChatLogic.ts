@@ -1014,27 +1014,6 @@ export function useChatLogic() {
             : null;
         const pendingEvents: ProcessableEvent[] = [];
         let backgroundSessionId: string | null = null;
-        let placeholderRemoved = false;
-
-        if (assistantMessageId) {
-            const thinkingPlaceholderBlock: MessageBlock = {
-                id: `thinking-placeholder-${assistantMessageId}`,
-                type: 'thinking',
-                content: '思考中...',
-                status: 'streaming',
-                metadata: { isPlaceholder: true },
-            };
-
-            const assistantMessage: Message = {
-                id: assistantMessageId,
-                role: 'assistant',
-                content: '',
-                timestamp: Date.now(),
-                blocks: [thinkingPlaceholderBlock],
-                isStreaming: true,
-            };
-            setMessages((prev) => [...prev, assistantMessage]);
-        }
 
         // For existing sessions, set up resumeState immediately so globalHandler can process events
         if (originalSessionId) {
@@ -1066,20 +1045,6 @@ export function useChatLogic() {
                 // Debug: Log key events
                 if (event.type === 'start' || event.type === 'done' || event.type === 'error') {
                     // console.log(`[handleSend] Event: ${event.type}, eventSession=${eventSessionId}, currentRef=${currentSessionIdRef.current}`)
-                }
-
-                // Remove thinking placeholder when first real content event arrives
-                if (assistantMessageId && !placeholderRemoved && CONTENT_EVENT_TYPES.has(event.type as string)) {
-                    setMessages(prev => prev.map(msg => {
-                        if (msg.id === assistantMessageId && msg.blocks) {
-                            const filteredBlocks = msg.blocks.filter(b => !b.metadata?.isPlaceholder);
-                            if (filteredBlocks.length !== msg.blocks.length) {
-                                return { ...msg, blocks: filteredBlocks };
-                            }
-                        }
-                        return msg;
-                    }));
-                    placeholderRemoved = true;
                 }
 
                 // Handle new session creation (when we started with no session_id)
@@ -1136,18 +1101,10 @@ export function useChatLogic() {
                             setAwaitingFirstTokenSessionId(null);
                         }
 
-                        if (!state.blocks.length && !state.textContent) {
-                            state.blocks.push({
-                                id: `thinking-placeholder-${assistantMessageId}`,
-                                type: 'thinking',
-                                content: '思考中...',
-                                status: 'streaming',
-                                metadata: { isPlaceholder: true },
-                            });
+                        if (state.blocks.length || state.textContent) {
+                            const assistantMessage = buildMessageFromState(state, assistantMessageId, true);
+                            setMessages(prev => [...prev, assistantMessage]);
                         }
-
-                        const assistantMessage = buildMessageFromState(state, assistantMessageId, true);
-                        setMessages(prev => [...prev, assistantMessage]);
 
                         resumeSessionStateRef.current = {
                             sessionId: eventSessionId,

@@ -362,21 +362,12 @@ export function ChatPanel() {
         const assistantMessageId = crypto.randomUUID();
         const thinkingPlaceholderId = `thinking-placeholder-${assistantMessageId}`;
 
-        // Create thinking placeholder block that will be shown immediately
-        const thinkingPlaceholderBlock: MessageBlock = {
-            id: thinkingPlaceholderId,
-            type: 'thinking',
-            content: '思考中...',
-            status: 'streaming',
-            metadata: { isPlaceholder: true },
-        };
-
         const assistantMessage: Message = {
             id: assistantMessageId,
             role: "assistant",
             content: "", // Keep for legacy compatibility
             timestamp: Date.now(),
-            blocks: [thinkingPlaceholderBlock], // Start with thinking placeholder
+            blocks: [],
         };
         setMessages((prev) => [...prev, assistantMessage]);
 
