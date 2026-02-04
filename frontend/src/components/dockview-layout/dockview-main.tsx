@@ -162,6 +162,7 @@ export function DockviewMain() {
         isSessionSidebarOpen,
         setIsSessionSidebarOpen,
         setPreviewHTMLCallback,
+        setCanvasGroupId,
     } = useChat();
 
     // State for controlling FileExplorer's viewFilter from ImageEditor
@@ -191,6 +192,47 @@ export function DockviewMain() {
     const handleNewSession = useCallback(() => {
         chatLogicRef.current?.handleNewSession();
     }, []);
+
+    const canvasGroupIdRef = useRef<string | null>(null);
+    const updateCanvasGroupId = useCallback((groupId: string | null) => {
+        if (canvasGroupIdRef.current === groupId) return;
+        canvasGroupIdRef.current = groupId;
+        setCanvasGroupId(groupId);
+    }, [setCanvasGroupId]);
+
+    const ensureCanvasAnchor = useCallback(() => {
+        if (!apiRef.current) return null;
+        let editorPanel = apiRef.current.getPanel('editor-panel');
+        if (editorPanel) {
+            updateCanvasGroupId(editorPanel.group?.id ?? null);
+            return editorPanel;
+        }
+
+        const fallbackPanel =
+            apiRef.current.panels.find((panel) => panel.api.component === 'filepanel') ||
+            apiRef.current.getPanel('files-panel') ||
+            apiRef.current.getPanel('image-editor-panel') ||
+            apiRef.current.getPanel('terminal-panel') ||
+            apiRef.current.getPanel('agents-panel') ||
+            apiRef.current.getPanel('super-agent-panel');
+
+        if (fallbackPanel) {
+            updateCanvasGroupId(fallbackPanel.group?.id ?? null);
+            return fallbackPanel;
+        }
+
+        updateCanvasGroupId(null);
+        return null;
+    }, [updateCanvasGroupId]);
+
+    const getCanvasReference = useCallback(() => {
+        if (!apiRef.current) return null;
+        const anchor = ensureCanvasAnchor();
+        if (anchor) return { referencePanel: anchor, direction: 'within' as const };
+        const chatPanel = apiRef.current.getPanel('chat-panel');
+        if (!chatPanel) return null;
+        return { referencePanel: chatPanel, direction: 'right' as const };
+    }, [ensureCanvasAnchor]);
 
     const handleSelectSession = useCallback((id: string) => {
         chatLogicRef.current?.handleSelectSession(id);
@@ -239,14 +281,25 @@ export function DockviewMain() {
             const data = await res.json();
 
             // Ensure Editor Panel is visible/added
-            const editorPanel = apiRef.current?.getPanel('editor-panel');
-            if (!editorPanel && apiRef.current) {
-                // If closed, recreate it? Or just focus if hidden?
-                // Ideally we should re-add it if missing, but for now let's assume it's just hidden or we can find it.
-                // If it was *closed* (destroyed), we need to add it again.
-                // For simplicity, let's just warn if missing, or try to find it.
-                toast.error("Editor panel not found");
-                return;
+            let editorPanel = apiRef.current?.getPanel('editor-panel');
+            if (!editorPanel) {
+                const reference = getCanvasReference();
+                if (!reference) {
+                    toast.error("Editor panel not found");
+                    return;
+                }
+
+                editorPanel = apiRef.current?.addPanel({
+                    id: 'editor-panel',
+                    component: 'editor',
+                    title: 'Editor',
+                    position: reference,
+                    params: {
+                        onPreviewFile: (path: string, name: string, content?: string) => {
+                            handlePreviewFileRef.current?.(path, name, content);
+                        },
+                    }
+                });
             }
 
             if (editorPanel) {
@@ -257,12 +310,13 @@ export function DockviewMain() {
                     }
                 });
                 editorPanel.api.setActive();
+                updateCanvasGroupId(editorPanel.group?.id ?? null);
             }
         } catch (error) {
             console.error('Error opening file:', error);
             toast.error("Failed to open file in editor");
         }
-    }, []);
+    }, [getCanvasReference, updateCanvasGroupId]);
 
     // Handle reference bar toggle in ImageEditor - switch FileExplorer to images mode
     const handleReferenceBarToggle = useCallback((expanded: boolean) => {
@@ -307,18 +361,21 @@ export function DockviewMain() {
         };
 
         if (options?.initialMode === 'image') {
-            const editorGroup = apiRef.current.getPanel('editor-panel')?.group;
+            const editorGroup = ensureCanvasAnchor()?.group;
             const activePanel = editorGroup?.activePanel;
             if (activePanel?.api.component === 'filepanel') {
                 const activeParams = activePanel.api.getParameters() as { currentMode?: FilePanelMode } | undefined;
                 const activeMode = activeParams?.currentMode ?? filePanelModesRef.current.get(activePanel.api.id);
                 if (activeMode === 'image') {
-                    updateFilePanelParams(activePanel.api, {
+                    const updates: Parameters<typeof updateFilePanelParams>[1] = {
                         addImage: entry.path,
-                        openInAITool: false,
                         onModeChange: handleFilePanelModeChange,
                         onReferenceBarToggle: handleReferenceBarToggle,
-                    });
+                    };
+                    if (options?.openInAITool !== undefined) {
+                        updates.openInAITool = options.openInAITool;
+                    }
+                    updateFilePanelParams(activePanel.api, updates);
                     activePanel.api.setActive();
                     return;
                 }
@@ -332,13 +389,16 @@ export function DockviewMain() {
                 const panelParams = (panel as { params?: { path?: string } }).params;
                 if (panelParams?.path === entry.path) {
                     if (options?.initialMode || options?.openInAITool !== undefined) {
-                        updateFilePanelParams(panel.api, {
+                        const updates: Parameters<typeof updateFilePanelParams>[1] = {
                             initialMode: options?.initialMode,
-                            openInAITool: options?.openInAITool,
                             currentMode: options?.initialMode,
                             onModeChange: handleFilePanelModeChange,
                             onReferenceBarToggle: handleReferenceBarToggle,
-                        });
+                        };
+                        if (options?.openInAITool !== undefined) {
+                            updates.openInAITool = options.openInAITool;
+                        }
+                        updateFilePanelParams(panel.api, updates);
                     }
                     panel.api.setActive();
                     return;
@@ -346,17 +406,15 @@ export function DockviewMain() {
             }
         }
 
-        const editorPanel = apiRef.current.getPanel('editor-panel');
-        const chatPanel = apiRef.current.getPanel('chat-panel');
-        const referencePanel = editorPanel || chatPanel;
-        if (!referencePanel) return;
+        const reference = getCanvasReference();
+        if (!reference) return;
 
         const panelId = `file-panel-${Date.now()}`;
         const newPanel = apiRef.current.addPanel({
             id: panelId,
             component: 'filepanel',
             title: entry.name,
-            position: { referencePanel, direction: editorPanel ? 'within' : 'right' },
+            position: reference,
             params: {
                 path: entry.path,
                 name: entry.name,
@@ -371,7 +429,10 @@ export function DockviewMain() {
         });
 
         newPanel?.api.setActive();
-    }, [handleFilePanelModeChange, handleReferenceBarToggle]);
+        if (newPanel?.group?.id) {
+            updateCanvasGroupId(newPanel.group.id);
+        }
+    }, [ensureCanvasAnchor, getCanvasReference, handleFilePanelModeChange, handleReferenceBarToggle, updateCanvasGroupId]);
 
     // Handle opening an image in ImageEditor panel
     const handleOpenInImageEditor = useCallback((imagePath: string, options?: OpenImageOptions) => {
@@ -382,22 +443,21 @@ export function DockviewMain() {
 
         if (!imageEditorPanel) {
             // Panel doesn't exist, create it
-            const editorPanel = apiRef.current.getPanel('editor-panel');
-            const chatPanel = apiRef.current.getPanel('chat-panel');
-            const referencePanel = editorPanel || chatPanel;
-
-            if (referencePanel) {
-                imageEditorPanel = apiRef.current.addPanel({
-                    id: 'image-editor-panel',
-                    component: 'image-editor',
-                    title: 'Image Editor',
-                    position: { referencePanel: referencePanel, direction: editorPanel ? 'within' : 'right' },
-                    params: {
-                        addImage: imagePath,
-                        openInAITool,
-                        onReferenceBarToggle: handleReferenceBarToggle,
-                    }
-                });
+            const reference = getCanvasReference();
+            if (!reference) return;
+            imageEditorPanel = apiRef.current.addPanel({
+                id: 'image-editor-panel',
+                component: 'image-editor',
+                title: 'Image Editor',
+                position: reference,
+                params: {
+                    addImage: imagePath,
+                    openInAITool,
+                    onReferenceBarToggle: handleReferenceBarToggle,
+                }
+            });
+            if (imageEditorPanel?.group?.id) {
+                updateCanvasGroupId(imageEditorPanel.group.id);
             }
         } else {
             // Panel already exists, update addImage parameter
@@ -412,7 +472,7 @@ export function DockviewMain() {
 
         // Activate the panel
         imageEditorPanel?.api.setActive();
-    }, []);
+    }, [getCanvasReference, handleReferenceBarToggle, updateCanvasGroupId]);
 
     // Handle opening a file in editor from Preview panel
     const handleOpenInEditor = useCallback(async (filePath: string, fileName: string) => {
@@ -441,31 +501,31 @@ export function DockviewMain() {
             const editorId = `editor-${Date.now()}`;
 
             // Find a reference panel to anchor to
-            const editorPanel = apiRef.current.getPanel('editor-panel');
-            const chatPanel = apiRef.current.getPanel('chat-panel');
-            const referencePanel = editorPanel || chatPanel;
+            const reference = getCanvasReference();
+            if (!reference) return;
 
-            if (referencePanel) {
-                const newEditorPanel = apiRef.current.addPanel({
-                    id: editorId,
-                    component: 'editor',
-                    title: fileName,
-                    position: { referencePanel: referencePanel, direction: editorPanel ? 'within' : 'right' },
-                    params: {
-                        content: data.content,
-                        filename: filePath,
-                        onPreviewFile: (path: string, name: string, content?: string) => {
-                            // Forward to handlePreviewFile - will use the ref pattern
-                            handlePreviewFileRef.current?.(path, name, content);
-                        },
-                    }
-                });
-                newEditorPanel?.api.setActive();
+            const newEditorPanel = apiRef.current.addPanel({
+                id: editorId,
+                component: 'editor',
+                title: fileName,
+                position: reference,
+                params: {
+                    content: data.content,
+                    filename: filePath,
+                    onPreviewFile: (path: string, name: string, content?: string) => {
+                        // Forward to handlePreviewFile - will use the ref pattern
+                        handlePreviewFileRef.current?.(path, name, content);
+                    },
+                }
+            });
+            newEditorPanel?.api.setActive();
+            if (newEditorPanel?.group?.id) {
+                updateCanvasGroupId(newEditorPanel.group.id);
             }
         } catch (error) {
             console.error('Failed to open file in editor:', error);
         }
-    }, []);
+    }, [getCanvasReference, updateCanvasGroupId]);
 
     const handleFileSelect = useCallback((entry: { path: string, name: string, is_directory: boolean, size?: number, modified_at?: number }) => {
         // Only preview files
@@ -476,21 +536,19 @@ export function DockviewMain() {
 
         // If panel doesn't exist, create it
         if (!filesPanel) {
-            // Find a reference panel to anchor to (prefer editor-panel)
-            const editorPanel = apiRef.current.getPanel('editor-panel');
-            const chatPanel = apiRef.current.getPanel('chat-panel');
-            const referencePanel = editorPanel || chatPanel;
-
-            if (referencePanel) {
-                filesPanel = apiRef.current.addPanel({
-                    id: 'files-panel',
-                    component: 'files',
-                    title: 'Preview',
-                    position: { referencePanel: referencePanel, direction: editorPanel ? 'within' : 'right' },
-                    params: {
-                        onOpenInEditor: handleOpenInEditor,
-                    }
-                });
+            const reference = getCanvasReference();
+            if (!reference) return;
+            filesPanel = apiRef.current.addPanel({
+                id: 'files-panel',
+                component: 'files',
+                title: 'Preview',
+                position: reference,
+                params: {
+                    onOpenInEditor: handleOpenInEditor,
+                }
+            });
+            if (filesPanel?.group?.id) {
+                updateCanvasGroupId(filesPanel.group.id);
             }
         }
 
@@ -514,7 +572,7 @@ export function DockviewMain() {
             // Activate the Preview tab
             filesPanel.api.setActive();
         }
-    }, [handleOpenInEditor]);
+    }, [getCanvasReference, handleOpenInEditor, updateCanvasGroupId]);
 
     // Handle previewing a file from Editor panel
     const handlePreviewFile = useCallback((filePath: string, fileName: string, contentOverride?: string) => {
@@ -525,20 +583,19 @@ export function DockviewMain() {
 
         // If panel doesn't exist, create it
         if (!filesPanel) {
-            const editorPanel = apiRef.current.getPanel('editor-panel');
-            const chatPanel = apiRef.current.getPanel('chat-panel');
-            const referencePanel = editorPanel || chatPanel;
-
-            if (referencePanel) {
-                filesPanel = apiRef.current.addPanel({
-                    id: 'files-panel',
-                    component: 'files',
-                    title: 'Preview',
-                    position: { referencePanel: referencePanel, direction: editorPanel ? 'within' : 'right' },
-                    params: {
-                        onOpenInEditor: handleOpenInEditor,
-                    }
-                });
+            const reference = getCanvasReference();
+            if (!reference) return;
+            filesPanel = apiRef.current.addPanel({
+                id: 'files-panel',
+                component: 'files',
+                title: 'Preview',
+                position: reference,
+                params: {
+                    onOpenInEditor: handleOpenInEditor,
+                }
+            });
+            if (filesPanel?.group?.id) {
+                updateCanvasGroupId(filesPanel.group.id);
             }
         }
 
@@ -560,7 +617,7 @@ export function DockviewMain() {
             });
             filesPanel.api.setActive();
         }
-    }, [handleOpenInEditor]);
+    }, [getCanvasReference, handleOpenInEditor, updateCanvasGroupId]);
 
     // Handle previewing HTML content from code block
     const handlePreviewHTML = useCallback((htmlContent: string) => {
@@ -570,20 +627,19 @@ export function DockviewMain() {
 
         // If panel doesn't exist, create it
         if (!filesPanel) {
-            const editorPanel = apiRef.current.getPanel('editor-panel');
-            const chatPanel = apiRef.current.getPanel('chat-panel');
-            const referencePanel = editorPanel || chatPanel;
-
-            if (referencePanel) {
-                filesPanel = apiRef.current.addPanel({
-                    id: 'files-panel',
-                    component: 'files',
-                    title: 'Preview',
-                    position: { referencePanel: referencePanel, direction: editorPanel ? 'within' : 'right' },
-                    params: {
-                        onOpenInEditor: handleOpenInEditor,
-                    }
-                });
+            const reference = getCanvasReference();
+            if (!reference) return;
+            filesPanel = apiRef.current.addPanel({
+                id: 'files-panel',
+                component: 'files',
+                title: 'Preview',
+                position: reference,
+                params: {
+                    onOpenInEditor: handleOpenInEditor,
+                }
+            });
+            if (filesPanel?.group?.id) {
+                updateCanvasGroupId(filesPanel.group.id);
             }
         }
 
@@ -604,7 +660,7 @@ export function DockviewMain() {
             });
             filesPanel.api.setActive();
         }
-    }, [handleOpenInEditor]);
+    }, [getCanvasReference, handleOpenInEditor, updateCanvasGroupId]);
 
     // Update refs for forward reference
     handlePreviewFileRef.current = handlePreviewFile;
@@ -648,6 +704,7 @@ export function DockviewMain() {
                 onSecurityModeChange: handleSecurityModeChange,
                 inputAreaRef: chatLogic.inputAreaRef,
                 onSelectFile: handleFileSelect,
+                onOpenInPanel: handleOpenFilePanel,
                 onOpenImage: handleOpenInImageEditor,
                 onPreviewHTML: (htmlContent: string) => {
                     handlePreviewHTMLRef.current?.(htmlContent);
@@ -711,6 +768,7 @@ export function DockviewMain() {
 
             // Activate the Editor tab by default
             editorPanel.api.setActive();
+            updateCanvasGroupId(editorPanel.group?.id ?? null);
         }
 
 

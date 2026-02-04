@@ -8,6 +8,7 @@ import type { OpenImageOptions } from "@/components/image-editor/types";
 interface ImageGenBlockProps {
     block: MessageBlock;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
+    onOpenInPanel?: (entry: { path: string; name: string; is_directory: boolean }, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
 }
 
 interface ImageGenResult {
@@ -50,7 +51,7 @@ function parseImageGenResult(block: MessageBlock): ImageGenResult | null {
     return null;
 }
 
-export function ImageGenBlock({ block, onOpenImage }: ImageGenBlockProps) {
+export function ImageGenBlock({ block, onOpenImage, onOpenInPanel }: ImageGenBlockProps) {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
 
@@ -107,6 +108,15 @@ export function ImageGenBlock({ block, onOpenImage }: ImageGenBlockProps) {
     // Handle open in Image Editor (fallback to system default if handler not available)
     const handleOpenInEditor = async () => {
         if (!result?.file_path) return;
+
+        if (onOpenInPanel) {
+            const name = result.file_path.split('/').pop() || 'generated-image';
+            onOpenInPanel(
+                { path: result.file_path, name, is_directory: false },
+                { initialMode: 'image', openInAITool: true }
+            );
+            return;
+        }
 
         if (onOpenImage) {
             onOpenImage(result.file_path, { tool: 'ai' });

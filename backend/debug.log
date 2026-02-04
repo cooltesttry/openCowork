@@ -24386,3 +24386,440 @@
 2026-02-04 03:03:02 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
 2026-02-04 03:03:05 - routers.terminal - INFO - WebSocket disconnected
 2026-02-04 03:03:05 - routers.terminal - INFO - Closing terminal session 7546
+2026-02-04 03:06:47 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-04 03:06:47 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:06:51 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/config.json", inode=30269679, flags=11400, id=145244810): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:06:51 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/config.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:06:51 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-02-04 03:06:56 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/config.json", inode=30269679, flags=11400, id=145244950): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:06:56 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/config.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:06:57 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-02-04 03:06:59 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/config.json", inode=30269679, flags=11400, id=145245016): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:06:59 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/config.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:00 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-02-04 03:07:07 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/config.json", inode=30269679, flags=11400, id=145245333): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:07:07 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/config.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:08 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-02-04 03:07:14 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/config.json", inode=30269679, flags=11400, id=145245451): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:07:14 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/config.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:14 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 1 clients: file_change
+2026-02-04 03:07:57 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-04 03:07:57 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "GET /health HTTP/1.1" 200 15
+2026-02-04 03:07:58 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-04 03:07:58 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "GET /health HTTP/1.1" 200 15
+2026-02-04 03:07:58 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31044935, flags=19700, id=145246726): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:07:58 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044934, flags=19300, id=145246732): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:07:58 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31044937, flags=19700, id=145246762): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:07:58 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044936, flags=19300, id=145246768): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:07:58 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite", inode=30846889, flags=11400, id=145246771): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:07:58 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044938, flags=18100, id=145246777): is_created, is_file, is_xattr_mod
+2026-02-04 03:07:58 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31044939, flags=18500, id=145246786): is_created, is_file, is_inode_meta_mod, is_xattr_mod
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-04 03:07:58 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "POST /v1/embeddings HTTP/1.1" 200 16431
+2026-02-04 03:07:58 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31044939, flags=19700, id=145246795): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:07:58 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044938, flags=19300, id=145246801): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:07:58 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite", inode=30846889, flags=11400, id=145246804): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:07:58 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31044979, flags=19700, id=145247431): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:08:08 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044978, flags=19300, id=145247437): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite", inode=30846889, flags=11400, id=145247440): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044980, flags=18100, id=145247446): is_created, is_file, is_xattr_mod
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31044981, flags=18500, id=145247455): is_created, is_file, is_inode_meta_mod, is_xattr_mod
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:08 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "GET /health HTTP/1.1" 200 15
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-04 03:08:08 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "GET /health HTTP/1.1" 200 15
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31044981, flags=19700, id=145247467): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044980, flags=19300, id=145247473): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite", inode=30846889, flags=11400, id=145247476): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044982, flags=18100, id=145247482): is_created, is_file, is_xattr_mod
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31044983, flags=18500, id=145247491): is_created, is_file, is_inode_meta_mod, is_xattr_mod
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-04 03:08:08 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "POST /v1/embeddings HTTP/1.1" 200 16431
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31044983, flags=19700, id=145247500): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044982, flags=19300, id=145247506): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:08:08 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite", inode=30846889, flags=11400, id=145247509): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31044996, flags=19700, id=145247704): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044995, flags=19300, id=145247710): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite", inode=30846889, flags=11400, id=145247713): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044997, flags=18100, id=145247719): is_created, is_file, is_xattr_mod
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31044998, flags=18500, id=145247728): is_created, is_file, is_inode_meta_mod, is_xattr_mod
+2026-02-04 03:08:15 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "GET /health HTTP/1.1" 200 15
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-04 03:08:15 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "GET /health HTTP/1.1" 200 15
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31044998, flags=19700, id=145247740): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044997, flags=19300, id=145247746): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite", inode=30846889, flags=11400, id=145247749): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044999, flags=18100, id=145247755): is_created, is_file, is_xattr_mod
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31045000, flags=18500, id=145247764): is_created, is_file, is_inode_meta_mod, is_xattr_mod
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-04 03:08:15 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "POST /v1/embeddings HTTP/1.1" 200 16431
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm", inode=31045000, flags=19700, id=145247773): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal", inode=31044999, flags=19300, id=145247779): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-04 03:08:15 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite", inode=30846889, flags=11400, id=145247782): is_file, is_inode_meta_mod, is_modified
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-04 03:08:15 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/agenttest/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-04 03:08:27 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:08:27 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:08:28 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:08:28 - routers.terminal - INFO - Terminal session started with PID 9696
+2026-02-04 03:08:28 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:08:28 - routers.terminal - INFO - Closing terminal session 9696
+2026-02-04 03:08:28 - routers.terminal - INFO - Terminal session started with PID 9697
+2026-02-04 03:09:35 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:09:35 - routers.terminal - INFO - Closing terminal session 9697
+2026-02-04 03:16:27 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:16:27 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:16:27 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:16:28 - routers.terminal - INFO - Terminal session started with PID 12203
+2026-02-04 03:16:28 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:16:28 - routers.terminal - INFO - Closing terminal session 12203
+2026-02-04 03:16:28 - routers.terminal - INFO - Terminal session started with PID 12204
+2026-02-04 03:17:02 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:17:02 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-04 03:17:02 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-04 03:17:02 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:17:05 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:17:05 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-04 03:27:54 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:27:54 - routers.terminal - INFO - Closing terminal session 97780
+2026-02-04 03:27:54 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:27:54 - routers.terminal - INFO - Closing terminal session 97777
+2026-02-04 03:27:54 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:27:54 - routers.terminal - INFO - Closing terminal session 1516
+2026-02-04 03:27:54 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-04 03:27:54 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:27:54 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:27:54 - routers.terminal - INFO - Closing terminal session 12204
+2026-02-04 03:27:54 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-04 03:27:54 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:27:55 - routers.terminal - INFO - Terminal session started with PID 15472
+2026-02-04 03:27:55 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:27:55 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-04 03:27:55 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-04 03:27:55 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:27:55 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:27:55 - routers.terminal - INFO - Closing terminal session 15472
+2026-02-04 03:27:55 - routers.terminal - INFO - Terminal session started with PID 15474
+2026-02-04 03:27:55 - routers.terminal - INFO - Terminal session started with PID 15476
+2026-02-04 03:27:55 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:27:55 - routers.terminal - INFO - Closing terminal session 15476
+2026-02-04 03:27:55 - routers.terminal - INFO - Terminal session started with PID 15477
+2026-02-04 03:27:55 - routers.terminal - INFO - Terminal session started with PID 15479
+2026-02-04 03:27:55 - routers.terminal - INFO - Terminal session started with PID 15481
+2026-02-04 03:27:55 - routers.terminal - INFO - Terminal session started with PID 15483
+2026-02-04 03:27:55 - routers.terminal - INFO - Terminal session started with PID 15485
+2026-02-04 03:27:55 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:27:55 - routers.terminal - INFO - Closing terminal session 15479
+2026-02-04 03:27:55 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:27:55 - routers.terminal - INFO - Closing terminal session 15483
+2026-02-04 03:27:58 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:27:58 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-04 03:27:58 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:27:58 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-04 03:28:24 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:28:24 - routers.terminal - INFO - Closing terminal session 15481
+2026-02-04 03:28:24 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:28:24 - routers.terminal - INFO - Closing terminal session 15477
+2026-02-04 03:28:24 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:28:24 - routers.terminal - INFO - Closing terminal session 15485
+2026-02-04 03:28:24 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-04 03:28:24 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:28:24 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:28:24 - routers.terminal - INFO - Closing terminal session 15474
+2026-02-04 03:28:24 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-04 03:28:24 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:29:00 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:00 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:00 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:00 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:00 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:00 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:00 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:00 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:00 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:29:00 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:29:00 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:29:00 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:29:07 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:07 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:07 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:07 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:07 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:07 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:07 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:07 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:08 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:29:08 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:29:08 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:29:08 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:29:42 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:42 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:42 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:42 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:42 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:42 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:42 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:42 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:43 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:29:43 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:29:43 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:29:43 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:29:48 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:48 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:48 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:48 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:48 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:48 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:29:48 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:29:48 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:33:48 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:33:48 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:33:48 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:33:48 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:33:48 - routers.terminal - INFO - Terminal session started with PID 17769
+2026-02-04 03:33:48 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:33:48 - routers.terminal - INFO - Closing terminal session 17769
+2026-02-04 03:33:48 - routers.terminal - INFO - Terminal session started with PID 17770
+2026-02-04 03:33:48 - routers.terminal - INFO - Terminal session started with PID 17774
+2026-02-04 03:33:48 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:33:48 - routers.terminal - INFO - Closing terminal session 17774
+2026-02-04 03:33:49 - routers.terminal - INFO - Terminal session started with PID 17775
+2026-02-04 03:33:49 - routers.terminal - INFO - Terminal session started with PID 17777
+2026-02-04 03:33:49 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:33:49 - routers.terminal - INFO - Closing terminal session 17777
+2026-02-04 03:33:49 - routers.terminal - INFO - Terminal session started with PID 17778
+2026-02-04 03:33:49 - routers.terminal - INFO - Terminal session started with PID 17780
+2026-02-04 03:33:49 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:33:49 - routers.terminal - INFO - Closing terminal session 17780
+2026-02-04 03:33:49 - routers.terminal - INFO - Terminal session started with PID 17782
+2026-02-04 03:45:21 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:45:21 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:45:21 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:45:21 - routers.terminal - INFO - Closing terminal session 17770
+2026-02-04 03:45:21 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:45:21 - routers.terminal - INFO - Terminal session started with PID 21181
+2026-02-04 03:45:21 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:45:21 - routers.terminal - INFO - Closing terminal session 21181
+2026-02-04 03:45:21 - routers.terminal - INFO - Terminal session started with PID 21182
+2026-02-04 03:45:24 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:45:24 - routers.terminal - INFO - Closing terminal session 21182
+2026-02-04 03:45:27 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:45:27 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-04 03:45:27 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-04 03:45:27 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:45:30 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:45:30 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-04 03:52:04 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:52:04 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:52:04 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-04 03:52:04 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:52:04 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:52:04 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:52:04 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-04 03:52:04 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-04 03:52:04 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:52:05 - routers.terminal - INFO - Terminal session started with PID 23256
+2026-02-04 03:52:07 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:52:07 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-04 03:53:33 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:53:33 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:53:33 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:33 - routers.terminal - INFO - Closing terminal session 17775
+2026-02-04 03:53:33 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:53:33 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:53:33 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:33 - routers.terminal - INFO - Closing terminal session 17782
+2026-02-04 03:53:33 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:53:33 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:53:33 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:33 - routers.terminal - INFO - Closing terminal session 17778
+2026-02-04 03:53:33 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-04 03:53:33 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:53:33 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:53:33 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:53:33 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:33 - routers.terminal - INFO - Closing terminal session 23256
+2026-02-04 03:53:33 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:53:34 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:53:34 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-04 03:53:34 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-04 03:53:34 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:53:34 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:53:34 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:53:34 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:53:34 - routers.terminal - INFO - Terminal session started with PID 24080
+2026-02-04 03:53:34 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:34 - routers.terminal - INFO - Closing terminal session 24080
+2026-02-04 03:53:34 - routers.terminal - INFO - Terminal session started with PID 24081
+2026-02-04 03:53:34 - routers.terminal - INFO - Terminal session started with PID 24083
+2026-02-04 03:53:34 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:34 - routers.terminal - INFO - Closing terminal session 24083
+2026-02-04 03:53:34 - routers.terminal - INFO - Terminal session started with PID 24084
+2026-02-04 03:53:35 - routers.terminal - INFO - Terminal session started with PID 24086
+2026-02-04 03:53:35 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:35 - routers.terminal - INFO - Closing terminal session 24086
+2026-02-04 03:53:35 - routers.terminal - INFO - Terminal session started with PID 24087
+2026-02-04 03:53:35 - routers.terminal - INFO - Terminal session started with PID 24089
+2026-02-04 03:53:35 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:35 - routers.terminal - INFO - Closing terminal session 24089
+2026-02-04 03:53:35 - routers.terminal - INFO - Terminal session started with PID 24090
+2026-02-04 03:53:37 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:53:37 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-04 03:53:37 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:53:37 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-04 03:53:54 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:54 - routers.terminal - INFO - Closing terminal session 24087
+2026-02-04 03:53:54 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:54 - routers.terminal - INFO - Closing terminal session 24084
+2026-02-04 03:53:54 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:54 - routers.terminal - INFO - Closing terminal session 24081
+2026-02-04 03:53:54 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-04 03:53:54 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:53:54 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:54 - routers.terminal - INFO - Closing terminal session 24090
+2026-02-04 03:53:54 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-04 03:53:54 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:53:54 - routers.terminal - INFO - Terminal session started with PID 24202
+2026-02-04 03:53:54 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:53:54 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-04 03:53:54 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:54 - routers.terminal - INFO - Closing terminal session 24202
+2026-02-04 03:53:54 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-04 03:53:54 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:53:54 - routers.terminal - INFO - Terminal session started with PID 24204
+2026-02-04 03:53:55 - routers.terminal - INFO - Terminal session started with PID 24206
+2026-02-04 03:53:55 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:53:55 - routers.terminal - INFO - Closing terminal session 24206
+2026-02-04 03:53:55 - routers.terminal - INFO - Terminal session started with PID 24208
+2026-02-04 03:53:55 - routers.terminal - INFO - Terminal session started with PID 24210
+2026-02-04 03:53:55 - routers.terminal - INFO - Terminal session started with PID 24212
+2026-02-04 03:53:57 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:53:57 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-04 03:53:58 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:53:58 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-04 03:59:58 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-04 03:59:58 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-04 03:59:58 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:59:58 - routers.terminal - INFO - Closing terminal session 24204
+2026-02-04 03:59:58 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-04 03:59:58 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:59:58 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-04 03:59:58 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 03:59:58 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-04 03:59:58 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-04 03:59:58 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-04 03:59:59 - routers.terminal - INFO - Terminal session started with PID 27053
+2026-02-04 03:59:59 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 03:59:59 - routers.terminal - INFO - Closing terminal session 27053
+2026-02-04 03:59:59 - routers.terminal - INFO - Terminal session started with PID 27054
+2026-02-04 04:00:01 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-04 04:00:01 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-04 04:00:17 - routers.terminal - INFO - WebSocket disconnected
+2026-02-04 04:00:17 - routers.terminal - INFO - Closing terminal session 27054

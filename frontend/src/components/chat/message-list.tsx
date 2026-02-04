@@ -12,11 +12,12 @@ interface MessageListProps {
     onAskUserSubmit?: (requestId: string, answers: Record<string, string>) => void;
     onAskUserSkip?: (requestId: string) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
+    onOpenInPanel?: (entry: { path: string, name: string, is_directory: boolean }, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     onPreviewHTML?: (htmlContent: string) => void;
 }
 
-export function MessageList({ messages, showProcessingPlaceholder, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onSelectFile, onOpenImage, onPreviewHTML }: MessageListProps) {
+export function MessageList({ messages, showProcessingPlaceholder, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onSelectFile, onOpenInPanel, onOpenImage, onPreviewHTML }: MessageListProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom only when there's a streaming message
@@ -45,6 +46,7 @@ export function MessageList({ messages, showProcessingPlaceholder, onPermissionR
                         onAskUserSubmit={onAskUserSubmit}
                         onAskUserSkip={onAskUserSkip}
                         onSelectFile={onSelectFile}
+                        onOpenInPanel={onOpenInPanel}
                         onOpenImage={onOpenImage}
                         onPreviewHTML={onPreviewHTML}
                     />

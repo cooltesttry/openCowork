@@ -24,6 +24,7 @@ interface MessageItemProps {
     onAskUserSubmit?: (requestId: string, answers: Record<string, string>) => void;
     onAskUserSkip?: (requestId: string) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
+    onOpenInPanel?: (entry: { path: string, name: string, is_directory: boolean }, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     onPreviewHTML?: (htmlContent: string) => void;
 }
@@ -51,7 +52,7 @@ function isPreviewableFile(path: string): boolean {
     return IMAGE_EXTENSIONS.includes(ext) || PREVIEWABLE_EXTENSIONS.includes(ext);
 }
 
-export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onSelectFile, onOpenImage, onPreviewHTML }: MessageItemProps) {
+export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onSelectFile, onOpenInPanel, onOpenImage, onPreviewHTML }: MessageItemProps) {
     const isUser = message.role === "user";
     const hasBlocks = message.blocks && message.blocks.length > 0;
 
@@ -169,10 +170,12 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
     // Handle file click - open in Preview panel
     const handleFileClick = (path: string, isPreviewable: boolean) => {
         if (!isPreviewable) return;
-        if (onSelectFile) {
-            const name = getFileName(path);
-            onSelectFile({ path, name, is_directory: false });
+        const name = getFileName(path);
+        if (onOpenInPanel) {
+            onOpenInPanel({ path, name, is_directory: false });
+            return;
         }
+        onSelectFile?.({ path, name, is_directory: false });
     };
 
     return (
@@ -212,6 +215,7 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                             onAskUserSubmit={onAskUserSubmit}
                             onAskUserSkip={onAskUserSkip}
                             onOpenImage={onOpenImage}
+                            onOpenInPanel={onOpenInPanel}
                             onPreviewHTML={onPreviewHTML}
                         />
                     )}

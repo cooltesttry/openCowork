@@ -51,6 +51,10 @@ interface ChatContextType {
     previewHTMLCallback: ((htmlContent: string) => void) | null;
     setPreviewHTMLCallback: React.Dispatch<React.SetStateAction<((htmlContent: string) => void) | null>>;
 
+    // Canvas group tracking (Dockview canvas panel group)
+    canvasGroupId: string | null;
+    setCanvasGroupId: React.Dispatch<React.SetStateAction<string | null>>;
+
     // Session status tracking for background tasks
     sessionStatuses: Map<string, SessionStatus>;
     setSessionStatus: (sessionId: string, status: SessionStatus) => void;
@@ -101,6 +105,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     // Preview HTML callback (registered by dockview-main)
     const [previewHTMLCallback, setPreviewHTMLCallback] = useState<((htmlContent: string) => void) | null>(null);
+    const [canvasGroupId, setCanvasGroupId] = useState<string | null>(null);
 
     // Session status tracking for background tasks
     const [sessionStatuses, setSessionStatuses] = useState<Map<string, SessionStatus>>(new Map());
@@ -232,6 +237,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             activeEndpoint, setActiveEndpoint,
             activeModel, setActiveModel,
             previewHTMLCallback, setPreviewHTMLCallback,
+            canvasGroupId, setCanvasGroupId,
             sessionStatuses, setSessionStatus, getSessionStatus,
             currentSessionIdRef,
         }}>

@@ -17,6 +17,7 @@ interface ChatPanelContentProps {
         onSecurityModeChange?: (mode: SecurityMode) => void;
         inputAreaRef?: React.RefObject<InputAreaRef>;
         onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
+        onOpenInPanel?: (entry: { path: string, name: string, is_directory: boolean }, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
         onOpenImage?: (path: string, options?: OpenImageOptions) => void;
         onPreviewHTML?: (htmlContent: string) => void;
     };
@@ -54,6 +55,7 @@ export function ChatPanelContent({ params }: ChatPanelContentProps) {
                         onAskUserSubmit={params?.onAskUserSubmit || (() => { })}
                         onAskUserSkip={params?.onAskUserSkip || (() => { })}
                         onSelectFile={params?.onSelectFile}
+                        onOpenInPanel={params?.onOpenInPanel}
                         onOpenImage={params?.onOpenImage}
                         onPreviewHTML={params?.onPreviewHTML}
                     />
