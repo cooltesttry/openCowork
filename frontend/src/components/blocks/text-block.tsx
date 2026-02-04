@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { Copy, Check, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useChat } from "@/lib/store";
+import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
 
 // Import KaTeX CSS for math rendering
 import "katex/dist/katex.min.css";
@@ -18,6 +19,7 @@ import "katex/dist/katex.min.css";
 interface TextBlockProps {
     block: MessageBlock;
     onPreviewHTML?: (htmlContent: string) => void;
+    onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
 }
 
 // Code block wrapper with Copy and Preview buttons
@@ -26,17 +28,20 @@ function CodeBlockWrapper({
     className,
     language,
     codeContent,
-    onPreviewHTML
+    onPreviewHTML,
+    onOpenInPanel
 }: {
     children: React.ReactNode;
     className?: string;
     language?: string;
     codeContent: string;
     onPreviewHTML?: (htmlContent: string) => void;
+    onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
 }) {
     const [copied, setCopied] = useState(false);
     const preRef = useRef<HTMLPreElement>(null);
-    const isHTML = language === 'html' || language === 'htm';
+    const normalizedLanguage = language?.toLowerCase();
+    const isHTML = normalizedLanguage === 'html' || normalizedLanguage === 'htm';
 
     const handleCopy = async () => {
         try {
@@ -54,7 +59,17 @@ function CodeBlockWrapper({
     const handlePreview = () => {
         // Get text content from the pre element directly (same as handleCopy)
         const htmlToPreview = preRef.current?.textContent || codeContent;
-        if (onPreviewHTML) {
+        if (onOpenInPanel) {
+            onOpenInPanel(
+                {
+                    content: htmlToPreview,
+                    name: 'Untitled.html',
+                    is_directory: false,
+                    language: normalizedLanguage,
+                },
+                { initialMode: 'preview' }
+            );
+        } else if (onPreviewHTML) {
             onPreviewHTML(htmlToPreview);
         } else {
             toast.error('Preview not available - callback missing');
@@ -116,7 +131,7 @@ function filterLocalImages(markdown: string): string {
     return result;
 }
 
-export function TextBlock({ block, onPreviewHTML }: TextBlockProps) {
+export function TextBlock({ block, onPreviewHTML, onOpenInPanel }: TextBlockProps) {
     const rawContent = typeof block.content === 'string' ? block.content : '';
 
     // Filter out broken local file path images before rendering
@@ -176,6 +191,7 @@ export function TextBlock({ block, onPreviewHTML }: TextBlockProps) {
                                     language={language}
                                     codeContent={codeContent}
                                     onPreviewHTML={previewCallback}
+                                    onOpenInPanel={onOpenInPanel}
                                 >
                                     {children}
                                 </CodeBlockWrapper>

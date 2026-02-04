@@ -5,6 +5,7 @@ import { MessageList } from '@/components/chat/message-list';
 import { InputArea, InputAreaRef, SecurityMode } from '@/components/chat/input-area';
 import { useRef } from 'react';
 import type { OpenImageOptions } from '@/components/image-editor/types';
+import type { FilePanelOpenEntry } from '@/components/panels/file-panel';
 
 interface ChatPanelContentProps {
     params?: {
@@ -17,7 +18,7 @@ interface ChatPanelContentProps {
         onSecurityModeChange?: (mode: SecurityMode) => void;
         inputAreaRef?: React.RefObject<InputAreaRef>;
         onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
-        onOpenInPanel?: (entry: { path: string, name: string, is_directory: boolean }, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
+        onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
         onOpenImage?: (path: string, options?: OpenImageOptions) => void;
         onPreviewHTML?: (htmlContent: string) => void;
     };

@@ -1,6 +1,7 @@
 import { useRef, useEffect } from "react";
 import { Message } from "@/lib/types";
 import type { OpenImageOptions } from "@/components/image-editor/types";
+import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
 import { MessageItem } from "./message-item";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2 } from "lucide-react";
@@ -12,7 +13,7 @@ interface MessageListProps {
     onAskUserSubmit?: (requestId: string, answers: Record<string, string>) => void;
     onAskUserSkip?: (requestId: string) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
-    onOpenInPanel?: (entry: { path: string, name: string, is_directory: boolean }, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
+    onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     onPreviewHTML?: (htmlContent: string) => void;
 }

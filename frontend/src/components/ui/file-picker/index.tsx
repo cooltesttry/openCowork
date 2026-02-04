@@ -34,6 +34,7 @@ export function FilePickerDialog({
   type,
   title,
   defaultPath,
+  defaultFilename,
   fileFilter,
   onSelect,
   onCancel,
@@ -57,6 +58,41 @@ export function FilePickerDialog({
   const [newFolderName, setNewFolderName] = React.useState("");
   const [selectedFormat, setSelectedFormat] = React.useState(defaultFormat || (formatOptions?.[0]?.value ?? ""));
   const filenameInputRef = React.useRef<HTMLInputElement>(null);
+
+  const seedFilename = React.useMemo(() => {
+    if (!defaultFilename) return "";
+    const match = /^untitled\.([^.]+)$/i.exec(defaultFilename);
+    if (match) return `.${match[1]}`;
+    return defaultFilename;
+  }, [defaultFilename]);
+
+  const seedIsExtensionOnly = React.useMemo(() => {
+    return Boolean(seedFilename && seedFilename.startsWith(".") && seedFilename.indexOf(".", 1) === -1);
+  }, [seedFilename]);
+
+  const applyFilenameSelection = React.useCallback((input: HTMLInputElement) => {
+    if (!seedFilename) return;
+    if (state.filename !== seedFilename) return;
+    if (seedIsExtensionOnly) {
+      input.setSelectionRange(0, 0);
+      return;
+    }
+    const dotIndex = seedFilename.lastIndexOf('.');
+    const end = dotIndex > 0 ? dotIndex : seedFilename.length;
+    input.setSelectionRange(0, end);
+  }, [seedFilename, seedIsExtensionOnly, state.filename]);
+
+  const handleOpenAutoFocus = React.useCallback((event: Event) => {
+    if (mode !== "create") return;
+    const input = filenameInputRef.current;
+    if (!input) return;
+    event.preventDefault();
+    requestAnimationFrame(() => {
+      input.focus();
+      applyFilenameSelection(input);
+      requestAnimationFrame(() => applyFilenameSelection(input));
+    });
+  }, [mode, applyFilenameSelection]);
 
   // Load common directories on mount
   React.useEffect(() => {
@@ -96,9 +132,47 @@ export function FilePickerDialog({
   // Focus filename input in create mode
   React.useEffect(() => {
     if (open && mode === "create" && filenameInputRef.current) {
-      setTimeout(() => filenameInputRef.current?.focus(), 100);
+      requestAnimationFrame(() => filenameInputRef.current?.focus());
     }
   }, [open, mode]);
+
+  // Seed filename for create mode when opening
+  React.useEffect(() => {
+    if (!open || mode !== "create" || !seedFilename) return;
+    setState((prev) => (prev.filename ? prev : { ...prev, filename: seedFilename }));
+  }, [open, mode, seedFilename]);
+
+  // Select base name when using a default filename (keep extension)
+  React.useEffect(() => {
+    if (!open || mode !== "create" || !seedFilename) return;
+    if (state.filename !== seedFilename) return;
+    const input = filenameInputRef.current;
+    if (!input) return;
+    setTimeout(() => {
+      input.focus();
+      applyFilenameSelection(input);
+    }, 0);
+  }, [open, mode, seedFilename, state.filename, applyFilenameSelection]);
+
+  React.useLayoutEffect(() => {
+    if (!open || mode !== "create" || !seedFilename) return;
+    if (state.filename !== seedFilename) return;
+    const input = filenameInputRef.current;
+    if (!input) return;
+    input.focus();
+    applyFilenameSelection(input);
+  }, [open, mode, seedFilename, state.filename, applyFilenameSelection]);
+
+  React.useEffect(() => {
+    if (!open || mode !== "create" || !seedFilename) return;
+    const input = filenameInputRef.current;
+    if (!input) return;
+    const onFocus = () => {
+      applyFilenameSelection(input);
+    };
+    input.addEventListener("focus", onFocus);
+    return () => input.removeEventListener("focus", onFocus);
+  }, [open, mode, seedFilename, applyFilenameSelection]);
 
   // Reset state when dialog closes
   React.useEffect(() => {
@@ -110,13 +184,13 @@ export function FilePickerDialog({
         selectedItem: null,
         loading: true,
         error: null,
-        filename: "",
+        filename: seedFilename,
         showHidden: false,
       });
       setCreatingFolder(false);
       setNewFolderName("");
     }
-  }, [open, defaultPath]);
+  }, [open, defaultPath, seedFilename]);
 
   const navigateTo = React.useCallback((path: string) => {
     setState((prev) => ({ ...prev, currentPath: path }));
@@ -139,34 +213,32 @@ export function FilePickerDialog({
   }, [type, mode, onSelect, onOpenChange, selectedFormat]);
 
   const handleConfirm = React.useCallback(() => {
-    setState((prev) => {
-      if (mode === "select") {
-        if (prev.selectedItem) {
-          if (type === "directory" && !prev.selectedItem.is_directory) {
-            return prev; // Can't select a file when only directories are allowed
-          }
-          onSelect(prev.selectedItem.path, selectedFormat || undefined);
-          onOpenChange(false);
+    if (mode === "select") {
+      if (state.selectedItem) {
+        if (type === "directory" && !state.selectedItem.is_directory) {
+          return; // Can't select a file when only directories are allowed
         }
-      } else {
-        // Create mode
-        if (prev.filename) {
-          // Add extension from format if provided and filename doesn't have one
-          let filename = prev.filename;
-          if (formatOptions && selectedFormat) {
-            const formatOption = formatOptions.find(f => f.value === selectedFormat);
-            if (formatOption && !filename.includes('.')) {
-              filename = `${filename}.${formatOption.extension}`;
-            }
-          }
-          const fullPath = prev.currentPath + "/" + filename;
-          onSelect(fullPath, selectedFormat || undefined);
-          onOpenChange(false);
+        onSelect(state.selectedItem.path, selectedFormat || undefined);
+        onOpenChange(false);
+      }
+      return;
+    }
+
+    // Create mode
+    if (state.filename) {
+      // Add extension from format if provided and filename doesn't have one
+      let filename = state.filename;
+      if (formatOptions && selectedFormat) {
+        const formatOption = formatOptions.find(f => f.value === selectedFormat);
+        if (formatOption && !filename.includes('.')) {
+          filename = `${filename}.${formatOption.extension}`;
         }
       }
-      return prev;
-    });
-  }, [mode, type, onSelect, onOpenChange, selectedFormat, formatOptions]);
+      const fullPath = state.currentPath + "/" + filename;
+      onSelect(fullPath, selectedFormat || undefined);
+      onOpenChange(false);
+    }
+  }, [mode, type, state, onSelect, onOpenChange, selectedFormat, formatOptions]);
 
   const handleCancel = React.useCallback(() => {
     onCancel?.();
@@ -263,6 +335,7 @@ export function FilePickerDialog({
       <DialogContent
         className="!max-w-[820px] sm:!max-w-[820px] h-[520px] p-0 flex flex-col gap-0"
         showCloseButton={false}
+        onOpenAutoFocus={handleOpenAutoFocus}
       >
         <DialogHeader className="px-4 py-3 border-b">
           <DialogTitle>{dialogTitle}</DialogTitle>
@@ -377,6 +450,8 @@ export function FilePickerDialog({
               <Input
                 ref={filenameInputRef}
                 value={state.filename}
+                autoFocus={mode === "create"}
+                onFocus={(e) => applyFilenameSelection(e.currentTarget)}
                 onChange={(e) =>
                   setState((prev) => ({ ...prev, filename: e.target.value }))
                 }

@@ -24,11 +24,12 @@ import { FileExplorer } from "../file-explorer/file-explorer";
 import { useWorkspace } from "@/lib/workspace-store";
 import { useChat } from "@/lib/store";
 import type { OpenImageOptions } from "@/components/image-editor/types";
+import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
 
 interface McpSidebarPanelProps {
     onMentionFile?: (path: string) => void;
     onOpenFile?: (path: string) => void;
-    onOpenInPanel?: (entry: { path: string; name: string; is_directory: boolean; size?: number | null; modified_at?: number | null }, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
+    onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     isPreviewPanelActive?: () => boolean;

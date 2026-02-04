@@ -4,11 +4,12 @@ import { MessageBlock } from "@/lib/types";
 import { Image as ImageIcon, Loader2, AlertCircle, Download, Sparkles } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { OpenImageOptions } from "@/components/image-editor/types";
+import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
 
 interface ImageGenBlockProps {
     block: MessageBlock;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
-    onOpenInPanel?: (entry: { path: string; name: string; is_directory: boolean }, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
+    onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
 }
 
 interface ImageGenResult {

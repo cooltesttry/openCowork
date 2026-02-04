@@ -21,7 +21,7 @@ import { useChatLogic } from './useChatLogic';
 import { Toaster, toast } from 'sonner';
 import type { SecurityMode } from '@/components/chat/input-area';
 import type { OpenImageOptions } from '@/components/image-editor/types';
-import type { FilePanelMode } from '../panels/file-panel';
+import type { FilePanelMode, FilePanelOpenEntry } from '../panels/file-panel';
 import type { DockviewPanelApi, IDockviewPanelHeaderProps } from 'dockview-core';
 
 const components = {
@@ -329,11 +329,52 @@ export function DockviewMain() {
     }, []);
 
     const handleOpenFilePanel = useCallback((
-        entry: { path: string; name: string; is_directory: boolean; size?: number | null; modified_at?: number | null },
+        entry: FilePanelOpenEntry,
         options?: { initialMode?: FilePanelMode; openInAITool?: boolean }
     ) => {
         if (!apiRef.current) return;
         if (entry.is_directory) return;
+
+        const toDataUrl = (dataUrl?: string, base64?: string, mimeType: string = 'image/png') => {
+            if (dataUrl) return dataUrl;
+            if (!base64) return undefined;
+            if (base64.startsWith('data:')) return base64;
+            return `data:${mimeType};base64,${base64}`;
+        };
+
+        const inferImageExtension = (dataUrl: string) => {
+            const match = /^data:image\/([a-zA-Z0-9+.-]+);/i.exec(dataUrl);
+            if (!match) return 'png';
+            const mime = match[1].toLowerCase();
+            if (mime === 'jpeg' || mime === 'jpg') return 'jpg';
+            if (mime === 'png') return 'png';
+            if (mime === 'gif') return 'gif';
+            if (mime === 'webp') return 'webp';
+            if (mime === 'svg+xml') return 'svg';
+            if (mime === 'bmp') return 'bmp';
+            if (mime === 'tiff') return 'tif';
+            if (mime === 'x-icon' || mime === 'vnd.microsoft.icon') return 'ico';
+            return 'png';
+        };
+
+        const base64MimeType = (() => {
+            const ext = entry.name?.split('.').pop()?.toLowerCase();
+            if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+            if (ext === 'png') return 'image/png';
+            if (ext === 'gif') return 'image/gif';
+            if (ext === 'webp') return 'image/webp';
+            if (ext === 'svg') return 'image/svg+xml';
+            if (ext === 'bmp') return 'image/bmp';
+            if (ext === 'tif' || ext === 'tiff') return 'image/tiff';
+            return 'image/png';
+        })();
+
+        const inlineImageDataUrl = toDataUrl(entry.imageDataUrl, entry.imageBase64, base64MimeType);
+        const inlineTextContent = entry.content;
+        const entryPath = entry.path;
+        const resolvedName = entry.name || (entryPath ? entryPath.split('/').pop() : undefined);
+        const hasInlineContent = !entryPath && (inlineImageDataUrl || typeof inlineTextContent === 'string');
+        if (!entryPath && !hasInlineContent) return;
 
         const updateFilePanelParams = (
             panel: DockviewPanelApi,
@@ -345,6 +386,9 @@ export function DockviewMain() {
                 initialMode?: FilePanelMode;
                 currentMode?: FilePanelMode;
                 addImage?: string;
+                content?: string;
+                imageDataUrl?: string;
+                language?: string;
                 openInAITool?: boolean;
                 onModeChange?: (panelId: string, mode: FilePanelMode) => void;
                 onReferenceBarToggle?: (expanded: boolean) => void;
@@ -360,7 +404,7 @@ export function DockviewMain() {
             });
         };
 
-        if (options?.initialMode === 'image') {
+        if (entryPath && options?.initialMode === 'image') {
             const editorGroup = ensureCanvasAnchor()?.group;
             const activePanel = editorGroup?.activePanel;
             if (activePanel?.api.component === 'filepanel') {
@@ -368,7 +412,7 @@ export function DockviewMain() {
                 const activeMode = activeParams?.currentMode ?? filePanelModesRef.current.get(activePanel.api.id);
                 if (activeMode === 'image') {
                     const updates: Parameters<typeof updateFilePanelParams>[1] = {
-                        addImage: entry.path,
+                        addImage: entryPath,
                         onModeChange: handleFilePanelModeChange,
                         onReferenceBarToggle: handleReferenceBarToggle,
                     };
@@ -382,12 +426,12 @@ export function DockviewMain() {
             }
         }
 
-        const shouldReuseByPath = options?.initialMode !== 'image';
+        const shouldReuseByPath = Boolean(entryPath) && options?.initialMode !== 'image';
         if (shouldReuseByPath) {
             // If a file panel for this path already exists, activate it
             for (const panel of apiRef.current.panels) {
                 const panelParams = (panel as { params?: { path?: string } }).params;
-                if (panelParams?.path === entry.path) {
+                if (panelParams?.path === entryPath) {
                     if (options?.initialMode || options?.openInAITool !== undefined) {
                         const updates: Parameters<typeof updateFilePanelParams>[1] = {
                             initialMode: options?.initialMode,
@@ -409,15 +453,47 @@ export function DockviewMain() {
         const reference = getCanvasReference();
         if (!reference) return;
 
+        if (hasInlineContent && !entryPath) {
+            const fallbackName = inlineImageDataUrl
+                ? `Untitled.${inferImageExtension(inlineImageDataUrl)}`
+                : typeof inlineTextContent === 'string'
+                    ? 'Untitled.txt'
+                    : 'Untitled';
+            const panelId = `file-panel-${Date.now()}`;
+            const newPanel = apiRef.current.addPanel({
+                id: panelId,
+                component: 'filepanel',
+                title: entry.name || fallbackName,
+                position: reference,
+                params: {
+                    name: entry.name || fallbackName,
+                    initialMode: options?.initialMode,
+                    currentMode: options?.initialMode,
+                    content: typeof inlineTextContent === 'string' ? inlineTextContent : undefined,
+                    imageDataUrl: inlineImageDataUrl,
+                    language: entry.language,
+                    openInAITool: options?.openInAITool,
+                    onModeChange: handleFilePanelModeChange,
+                    onReferenceBarToggle: handleReferenceBarToggle,
+                },
+            });
+
+            newPanel?.api.setActive();
+            if (newPanel?.group?.id) {
+                updateCanvasGroupId(newPanel.group.id);
+            }
+            return;
+        }
+
         const panelId = `file-panel-${Date.now()}`;
         const newPanel = apiRef.current.addPanel({
             id: panelId,
             component: 'filepanel',
-            title: entry.name,
+            title: resolvedName || 'Untitled',
             position: reference,
             params: {
-                path: entry.path,
-                name: entry.name,
+                path: entryPath,
+                name: resolvedName || 'Untitled',
                 size: entry.size ?? undefined,
                 modified_at: entry.modified_at ?? undefined,
                 initialMode: options?.initialMode,

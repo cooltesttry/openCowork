@@ -16,6 +16,7 @@ interface EditorPanelProps extends IDockviewPanelProps {
         filename?: string;
         onPreviewFile?: (filePath: string, fileName: string, content?: string) => void;
         onContentChange?: (content: string) => void;
+        onSaveRequest?: (content: string) => void;
         onSave?: (content: string) => void;
         hideHeader?: boolean;
     };
@@ -62,6 +63,10 @@ export function EditorPanel({ params }: EditorPanelProps) {
     }, [params?.content, params?.language, params?.filename, params?.onContentChange]);
 
     const handleSave = useCallback(async () => {
+        if (params?.onSaveRequest) {
+            params.onSaveRequest(value);
+            return;
+        }
         if (!params.filename) {
             toast.error('No filename associated with this editor');
             return;

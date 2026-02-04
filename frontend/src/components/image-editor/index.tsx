@@ -29,6 +29,7 @@ export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, 
   const [canvas, setCanvas] = useState<FabricCanvas | null>(null);
   const { state, actions } = useEditor(canvas);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [currentSavePath, setCurrentSavePath] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const initialImageLoadedRef = useRef(false);
   const addImagePathRef = useRef<string | null>(null);
@@ -74,6 +75,18 @@ export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, 
       actions.setTool('ai');  // Auto-select AI tool
     }
   }, [canvas, initialImage, actions]);
+
+  useEffect(() => {
+    if (!initialImage) {
+      setCurrentSavePath(null);
+      return;
+    }
+    if (initialImage.startsWith('http') || initialImage.startsWith('data:')) {
+      setCurrentSavePath(null);
+      return;
+    }
+    setCurrentSavePath(initialImage);
+  }, [initialImage]);
 
   // Handle adding image from file explorer
   useEffect(() => {
@@ -308,9 +321,60 @@ export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, 
     }
   }, [actions]);
 
-  const handleSave = useCallback(() => {
-    setShowSaveDialog(true);
+  const handleSaveConfirm = useCallback(async (path: string, format?: string) => {
+    // Determine format and quality
+    const imageFormat = (format === 'jpeg' ? 'jpeg' : 'png') as 'png' | 'jpeg';
+    const quality = imageFormat === 'jpeg' ? 0.92 : 1; // High quality for JPEG
+
+    const dataUrl = actions.exportImage(imageFormat, quality);
+    if (!dataUrl) {
+      toast.error('No image to save');
+      return;
+    }
+
+    let saved = false;
+    if (onSave) {
+      await onSave(dataUrl, path);
+      saved = true;
+    } else {
+      // Default save via API
+      try {
+        const base64 = dataUrl.split(',')[1];
+        await writeBase64File(path, base64);
+        toast.success('Image saved successfully');
+        saved = true;
+      } catch (error) {
+        console.error('Failed to save:', error);
+        toast.error('Failed to save image');
+      }
+    }
+
+    if (saved) {
+      setCurrentSavePath(path);
+    }
+    setShowSaveDialog(false);
+  }, [actions, onSave]);
+
+  const getFormatFromPath = useCallback((path: string): 'png' | 'jpeg' | null => {
+    const ext = path.split('.').pop()?.toLowerCase();
+    if (ext === 'png') return 'png';
+    if (ext === 'jpg' || ext === 'jpeg') return 'jpeg';
+    return null;
   }, []);
+
+  const handleSave = useCallback(() => {
+    if (currentSavePath) {
+      const format = getFormatFromPath(currentSavePath);
+      if (!format) {
+        toast.error('Unsupported format. Please choose a PNG or JPG filename.');
+        setShowSaveDialog(true);
+        return;
+      }
+      handleSaveConfirm(currentSavePath, format);
+      return;
+    }
+    setShowSaveDialog(true);
+  }, [currentSavePath, getFormatFromPath, handleSaveConfirm]);
 
   // Handle AI image generation
   const handleGenerateAI = useCallback(async (prompt: string) => {
@@ -367,33 +431,6 @@ export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, 
     { label: 'JPG', value: 'jpeg', extension: 'jpg' },
   ];
 
-  const handleSaveConfirm = useCallback(async (path: string, format?: string) => {
-    // Determine format and quality
-    const imageFormat = (format === 'jpeg' ? 'jpeg' : 'png') as 'png' | 'jpeg';
-    const quality = imageFormat === 'jpeg' ? 0.92 : 1; // High quality for JPEG
-
-    const dataUrl = actions.exportImage(imageFormat, quality);
-    if (!dataUrl) {
-      toast.error('No image to save');
-      return;
-    }
-
-    if (onSave) {
-      await onSave(dataUrl, path);
-    } else {
-      // Default save via API
-      try {
-        const base64 = dataUrl.split(',')[1];
-        await writeBase64File(path, base64);
-        toast.success('Image saved successfully');
-      } catch (error) {
-        console.error('Failed to save:', error);
-        toast.error('Failed to save image');
-      }
-    }
-
-    setShowSaveDialog(false);
-  }, [actions, onSave]);
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-zinc-900">

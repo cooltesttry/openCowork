@@ -7,20 +7,37 @@ import { toast } from 'sonner';
 
 import { saveFile } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { FilePickerDialog } from '@/components/ui/file-picker';
+import { useWorkspace } from '@/lib/workspace-store';
 import { EditorPanel } from './editor-panel';
 import { FilePreviewPanel } from './file-preview-panel';
 import { ImageEditorPanel } from '../dockview-layout/panels/image-editor-panel';
 
 export type FilePanelMode = 'editor' | 'preview' | 'image';
 
+export interface FilePanelOpenEntry {
+    path?: string;
+    name?: string;
+    is_directory?: boolean;
+    size?: number | null;
+    modified_at?: number | null;
+    content?: string;
+    imageDataUrl?: string;
+    imageBase64?: string;
+    language?: string;
+}
+
 interface FilePanelParams {
-    path: string;
+    path?: string;
     name?: string;
     size?: number | null;
     modified_at?: number | null;
     initialMode?: FilePanelMode;
     currentMode?: FilePanelMode;
     addImage?: string;
+    content?: string;
+    imageDataUrl?: string;
+    language?: string;
     openInAITool?: boolean;
     onModeChange?: (panelId: string, mode: FilePanelMode) => void;
     onReferenceBarToggle?: (expanded: boolean) => void;
@@ -33,13 +50,42 @@ interface FilePanelProps extends IDockviewPanelProps {
 const isImageFile = (filename: string) => /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tif|tiff|heic|heif)$/i.test(filename);
 const isEditableFile = (filename: string) => /\.(txt|js|jsx|ts|tsx|py|json|html|htm|css|scss|less|md|markdown|xml|yaml|yml|toml|ini|cfg|conf|sh|bash|zsh|sql|go|rs|java|c|cpp|h|hpp|rb|php|swift|kt|scala|lua|r|vue|svelte|astro)$/i.test(filename);
 
+const inferImageExtension = (dataUrl: string) => {
+    const match = /^data:image\/([a-zA-Z0-9+.-]+);/i.exec(dataUrl);
+    if (!match) return null;
+    const mime = match[1].toLowerCase();
+    if (mime === 'jpeg' || mime === 'jpg') return 'jpg';
+    if (mime === 'png') return 'png';
+    if (mime === 'gif') return 'gif';
+    if (mime === 'webp') return 'webp';
+    if (mime === 'svg+xml') return 'svg';
+    if (mime === 'bmp') return 'bmp';
+    if (mime === 'tiff') return 'tif';
+    if (mime === 'x-icon' || mime === 'vnd.microsoft.icon') return 'ico';
+    return null;
+};
+
 export function FilePanel({ params, api }: FilePanelProps) {
+    const { currentWorkspace } = useWorkspace();
     const filePath = params?.path;
-    const fileName = params?.name || filePath?.split('/').pop() || 'Untitled';
+    const inlineImageDataUrl = params?.imageDataUrl;
+    const inlineTextContent = params?.content;
+    const fileName = useMemo(() => {
+        if (params?.name) return params.name;
+        if (filePath) return filePath.split('/').pop() || 'Untitled';
+        if (inlineImageDataUrl) {
+            const ext = inferImageExtension(inlineImageDataUrl) || 'png';
+            return `Untitled.${ext}`;
+        }
+        if (typeof inlineTextContent === 'string') {
+            return 'Untitled.txt';
+        }
+        return 'Untitled';
+    }, [params?.name, filePath, inlineImageDataUrl, inlineTextContent]);
     const fileExt = fileName.includes('.') ? fileName.split('.').pop() : undefined;
 
-    const isImage = isImageFile(fileName);
-    const isEditable = isEditableFile(fileName);
+    const isImage = Boolean(inlineImageDataUrl) || isImageFile(fileName);
+    const isEditable = typeof inlineTextContent === 'string' || isEditableFile(fileName);
 
     const allowedModes = useMemo<FilePanelMode[]>(() => {
         if (isImage) return ['preview', 'image'];
@@ -63,8 +109,10 @@ export function FilePanel({ params, api }: FilePanelProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [imagePreviewDataUrl, setImagePreviewDataUrl] = useState<string | null>(null);
     const [imageHasContent, setImageHasContent] = useState(false);
+    const [showSaveDialog, setShowSaveDialog] = useState(false);
     const imageExporterRef = useRef<null | (() => string | null)>(null);
     const [imageAutoFitToken, setImageAutoFitToken] = useState(0);
+    const skipDefaultModeResetRef = useRef(false);
 
     useEffect(() => {
         if (params?.currentMode === mode) return;
@@ -77,6 +125,10 @@ export function FilePanel({ params, api }: FilePanelProps) {
     }, [api.id, mode, params?.onModeChange]);
 
     useEffect(() => {
+        if (skipDefaultModeResetRef.current) {
+            skipDefaultModeResetRef.current = false;
+            return;
+        }
         setMode(defaultMode);
     }, [defaultMode, filePath]);
 
@@ -93,7 +145,16 @@ export function FilePanel({ params, api }: FilePanelProps) {
     }, [mode, filePath]);
 
     useEffect(() => {
-        if (!filePath || !isEditable) return;
+        if (params?.content === undefined) return;
+        if (params.content === draftContent && params.content === lastSavedContent) return;
+        const content = params.content ?? '';
+        setEditorContent(content);
+        setDraftContent(content);
+        setLastSavedContent(content);
+    }, [params?.content, draftContent, lastSavedContent]);
+
+    useEffect(() => {
+        if (!filePath || !isEditable || params?.content !== undefined) return;
 
         let isActive = true;
         setIsLoading(true);
@@ -127,8 +188,9 @@ export function FilePanel({ params, api }: FilePanelProps) {
     const isDirty = isEditable && draftContent !== lastSavedContent;
 
     const handleSave = useCallback(async () => {
+        if (!isEditable) return;
         if (!filePath) {
-            toast.error('No filename associated with this file');
+            setShowSaveDialog(true);
             return;
         }
         try {
@@ -139,7 +201,27 @@ export function FilePanel({ params, api }: FilePanelProps) {
             console.error('Failed to save:', error);
             toast.error('Failed to save file');
         }
-    }, [filePath, draftContent]);
+    }, [filePath, draftContent, isEditable]);
+
+    const handleSaveConfirm = useCallback(async (path: string) => {
+        try {
+            await saveFile(path, draftContent);
+            setLastSavedContent(draftContent);
+            skipDefaultModeResetRef.current = true;
+            const nextName = path.split('/').pop() || 'Untitled';
+            api.updateParameters({
+                ...params,
+                path,
+                name: nextName,
+                content: params?.content ?? draftContent,
+            });
+            (api as { setTitle?: (title: string) => void }).setTitle?.(nextName);
+            toast.success('File saved');
+        } catch (error) {
+            console.error('Failed to save:', error);
+            toast.error('Failed to save file');
+        }
+    }, [api, draftContent, params]);
 
     const previewContentOverride = useMemo(() => {
         if (mode !== 'preview') return undefined;
@@ -160,10 +242,17 @@ export function FilePanel({ params, api }: FilePanelProps) {
         }
     }, [mode, isImage, imageHasContent, filePath]);
 
+    useEffect(() => {
+        if (!inlineImageDataUrl) return;
+        setImagePreviewDataUrl(inlineImageDataUrl);
+        setImageHasContent(true);
+    }, [inlineImageDataUrl]);
+
     const rawUri = filePath
         ? `http://localhost:8000/api/files/raw?path=${encodeURIComponent(filePath)}`
         : '';
-    const previewUri = isImage && imagePreviewDataUrl ? imagePreviewDataUrl : rawUri;
+    const baseImageUri = inlineImageDataUrl || rawUri;
+    const previewUri = isImage && imagePreviewDataUrl ? imagePreviewDataUrl : baseImageUri;
 
     const imageModeToggle = (
         <div className="flex items-center rounded-md bg-zinc-100 dark:bg-zinc-700/60 p-1">
@@ -260,9 +349,13 @@ export function FilePanel({ params, api }: FilePanelProps) {
                         <EditorPanel
                             params={{
                                 content: editorContent,
-                                filename: filePath,
+                                filename: filePath ?? fileName,
+                                language: params?.language,
                                 hideHeader: true,
                                 onContentChange: setDraftContent,
+                                onSaveRequest: () => {
+                                    handleSave();
+                                },
                                 onSave: (content) => setLastSavedContent(content),
                             }}
                         />
@@ -273,7 +366,7 @@ export function FilePanel({ params, api }: FilePanelProps) {
                     <div className={mode === 'image' ? 'h-full' : 'hidden'}>
                         <ImageEditorPanel
                             params={{
-                                initialImage: filePath,
+                                initialImage: inlineImageDataUrl || filePath,
                                 addImage: params?.addImage,
                                 openInAITool: params?.openInAITool,
                                 onHasContentChange: setImageHasContent,
@@ -312,6 +405,17 @@ export function FilePanel({ params, api }: FilePanelProps) {
                     />
                 )}
             </div>
+            <FilePickerDialog
+                open={showSaveDialog}
+                onOpenChange={setShowSaveDialog}
+                mode="create"
+                type="file"
+                title="Save File"
+                defaultPath={currentWorkspace?.path}
+                defaultFilename={fileName}
+                onSelect={handleSaveConfirm}
+                customShortcut={currentWorkspace?.path ? { name: 'Workspace', path: currentWorkspace.path, icon: 'folder' } : undefined}
+            />
         </div>
     );
 }

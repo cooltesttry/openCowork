@@ -11,6 +11,7 @@ export interface FilePickerDialogProps {
   type: 'file' | 'directory' | 'both';
   title?: string;
   defaultPath?: string;
+  defaultFilename?: string;
   fileFilter?: FileFilter[];
   onSelect: (path: string, format?: string) => void;
   onCancel?: () => void;

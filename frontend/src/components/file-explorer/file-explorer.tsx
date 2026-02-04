@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { DndContext, DragEndEvent, DragStartEvent, DragMoveEvent, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { FileTreeItem } from "./file-tree";
 import { FileEntry } from "./types";
+import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
 import { Loader2, RefreshCw, File, Folder, AtSign, Pencil, Trash2, FolderPlus, FilePlus, Copy, ExternalLink, Search, X, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { FilePreviewPopup } from "./file-preview-popup";
@@ -77,7 +78,7 @@ interface FileExplorerProps {
     className?: string;
     onMentionFile?: (path: string) => void;
     onOpenFile?: (path: string) => void;
-    onOpenInPanel?: (entry: FileEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
+    onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     isPreviewPanelActive?: () => boolean;

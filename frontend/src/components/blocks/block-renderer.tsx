@@ -10,6 +10,7 @@ import { AskUserBlock } from "./ask-user-block";
 import { ImageGenBlock } from "./imagegen-block";
 import { AlertCircle } from "lucide-react";
 import type { OpenImageOptions } from "@/components/image-editor/types";
+import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
 
 interface BlockRendererProps {
     block: MessageBlock;
@@ -17,7 +18,7 @@ interface BlockRendererProps {
     onAskUserSubmit?: (requestId: string, answers: Record<string, string>) => void;
     onAskUserSkip?: (requestId: string) => void;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
-    onOpenInPanel?: (entry: { path: string; name: string; is_directory: boolean }, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
+    onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onPreviewHTML?: (htmlContent: string) => void;
 }
 
@@ -88,7 +89,7 @@ export function BlockRenderer({ block, onPermissionResponse, onAskUserSubmit, on
             return <PlanBlock block={block} />;
 
         case 'text':
-            return <TextBlock block={block} onPreviewHTML={onPreviewHTML} />;
+            return <TextBlock block={block} onPreviewHTML={onPreviewHTML} onOpenInPanel={onOpenInPanel} />;
 
         case 'ask_user':
             return (
@@ -118,7 +119,7 @@ interface BlockListProps {
     onAskUserSubmit?: (requestId: string, answers: Record<string, string>) => void;
     onAskUserSkip?: (requestId: string) => void;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
-    onOpenInPanel?: (entry: { path: string; name: string; is_directory: boolean }, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
+    onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onPreviewHTML?: (htmlContent: string) => void;
 }
 
