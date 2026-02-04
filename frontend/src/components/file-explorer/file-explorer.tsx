@@ -1059,6 +1059,29 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
         await openWithDefaultApp(entry);
     };
 
+    const handleOpenFromExplorer = (entry: FileEntry) => {
+        if (entry.is_directory) {
+            handleOpen(entry);
+            return;
+        }
+
+        const ext = getExtension(entry.name);
+        const isAudio = AUDIO_EXTS.has(ext);
+        const isImage = IMAGE_EXTS.has(ext);
+
+        if (isAudio) {
+            handleOpen(entry);
+            return;
+        }
+
+        if (!isImage && onOpenInPanel) {
+            onOpenInPanel(entry);
+            return;
+        }
+
+        handleOpen(entry);
+    };
+
     const handleContextMenu = (e: React.MouseEvent, entry: FileEntry) => {
         e.preventDefault();
 
@@ -1273,7 +1296,7 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
                                             key={result.path}
                                             className="px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
                                             onClick={(e) => handleSelect(entry, e)}
-                                            onDoubleClick={() => handleOpen(entry)}
+                                            onDoubleClick={() => handleOpenFromExplorer(entry)}
                                         >
                                             <div className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate">
                                                 {result.name}
@@ -1311,7 +1334,7 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
                                             key={entry.path}
                                             className="group rounded-md overflow-hidden border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 cursor-pointer"
                                             onClick={(e) => handleSelect(entry, e)}
-                                            onDoubleClick={() => handleOpen(entry)}
+                                            onDoubleClick={() => handleOpenFromExplorer(entry)}
                                         >
                                             <div className="aspect-square overflow-hidden bg-zinc-100 dark:bg-zinc-800">
                                                 <img
@@ -1343,7 +1366,7 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
                                         key={entry.path}
                                         className="group relative flex items-center py-1 px-2 rounded-sm cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800"
                                         onClick={(e) => handleSelect(entry, e)}
-                                        onDoubleClick={() => handleOpen(entry)}
+                                        onDoubleClick={() => handleOpenFromExplorer(entry)}
                                         onContextMenu={(e) => handleContextMenu(e, entry)}
                                     >
                                         <span className="mr-1.5 shrink-0 text-zinc-500 dark:text-zinc-400">
@@ -1457,7 +1480,7 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
                                     onEditingCancel={cancelRename}
                                     onEditingSelectionStart={editingSelectionStart}
                                     onEditingSelectionEnd={editingSelectionEnd}
-                                    onDoubleClick={(entry) => handleOpen(entry)}
+                                    onDoubleClick={(entry) => handleOpenFromExplorer(entry)}
                                 />
                             ))}
                         </div>

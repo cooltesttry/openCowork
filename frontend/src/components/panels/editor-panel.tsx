@@ -100,10 +100,10 @@ export function EditorPanel({ params }: EditorPanelProps) {
             inherit: true,
             rules: [],
             colors: {
-                'editor.background': '#f7f7f2',
-                'editorGutter.background': '#f7f7f2',
-                'editorLineHighlightBackground': '#f0f0eb',
-                'editorLineHighlightBorder': '#f0f0eb',
+                'editor.background': '#f6f7f9',
+                'editorGutter.background': '#f6f7f9',
+                'editorLineHighlightBackground': '#eef1f4',
+                'editorLineHighlightBorder': '#eef1f4',
             },
         });
     }, []);

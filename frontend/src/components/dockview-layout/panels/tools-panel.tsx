@@ -30,15 +30,15 @@ export function ToolsPanelContent({ params }: ToolsPanelContentProps) {
 
     if (!isOpen) {
         return (
-            <div className="h-full flex flex-col items-center pt-3">
+            <div className="h-full flex flex-col items-stretch gap-2 py-4">
                 <Button
                     variant="ghost"
                     size="icon"
                     onClick={params?.onToggle}
-                    className="h-8 w-8"
+                    className="w-full !h-12 !rounded-none px-0"
                     title="显示 MCP Servers"
                 >
-                    <PanelRightOpen className="h-4 w-4" />
+                    <PanelRightOpen className="h-6 w-6" />
                 </Button>
                 <Button
                     variant={rightPanelView === "files" ? "secondary" : "ghost"}
@@ -47,10 +47,10 @@ export function ToolsPanelContent({ params }: ToolsPanelContentProps) {
                         setRightPanelView("files");
                         params?.onToggle?.();
                     }}
-                    className="h-8 w-8"
+                    className="w-full !h-12 !rounded-none px-0"
                     title="Files"
                 >
-                    <FolderOpen className="h-4 w-4" />
+                    <FolderOpen className="h-6 w-6" />
                 </Button>
                 <Button
                     variant={rightPanelView === "tools" ? "secondary" : "ghost"}
@@ -59,18 +59,19 @@ export function ToolsPanelContent({ params }: ToolsPanelContentProps) {
                         setRightPanelView("tools");
                         params?.onToggle?.();
                     }}
-                    className="h-8 w-8"
+                    className="w-full !h-12 !rounded-none px-0"
                     title="Tools"
                 >
-                    <Wrench className="h-4 w-4" />
+                    <Wrench className="h-6 w-6" />
                 </Button>
-                <div className="mt-2 flex h-8 w-8 items-center justify-center" title={isProcessing ? "Active" : "Idle"}>
+                <ThemeToggle buttonClassName="w-full !h-12 !rounded-none px-0" iconClassName="h-6 w-6" />
+                <SettingsDialog buttonClassName="w-full !h-12 !rounded-none px-0" iconClassName="h-6 w-6" />
+
+                <div className="mt-auto flex h-12 w-full items-center justify-center" title={isProcessing ? "Active" : "Idle"}>
                     <div
                         className={`h-2 w-2 rounded-full ${isProcessing ? "bg-green-500 animate-pulse" : "bg-muted-foreground/40"}`}
                     />
                 </div>
-                <ThemeToggle />
-                <SettingsDialog />
             </div>
         );
     }
