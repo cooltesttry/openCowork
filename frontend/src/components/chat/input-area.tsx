@@ -450,7 +450,7 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
 
         return (
 
-            <div className="p-4 border-t bg-zinc-50 dark:bg-zinc-900 relative">
+            <div className="p-4 relative">
                 <div className="mx-auto relative w-full">
                     {/* Unified Input Box Container */}
                     <div className="flex flex-col border rounded-xl bg-white dark:bg-zinc-800 shadow-sm focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400 transition-all">

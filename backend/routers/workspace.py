@@ -72,6 +72,9 @@ class WorkspaceSkillRemoveRequest(BaseModel):
     skill_id: str
 
 
+class WorkspaceMcpDisableRequest(BaseModel):
+    name: str
+
 # ==================== Helper ====================
 
 def get_workspace_manager(request: Request) -> WorkspaceManager:
@@ -514,6 +517,83 @@ async def remove_workspace_skill(request: Request, workspace_id: str, body: Work
         "status": "success",
         "skills": [skill.model_dump() for skill in skills],
     }
+
+
+# ==================== Workspace MCP Servers ====================
+
+@router.get("/{workspace_id}/mcp-servers")
+async def list_workspace_mcp_servers(request: Request, workspace_id: str):
+    """List MCP servers configured for a workspace."""
+    manager = get_workspace_manager(request)
+    storage = manager.get_storage_by_id(workspace_id)
+
+    if not storage:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    config = storage.get_config()
+    return {"servers": [server.to_dict() for server in config.mcp_servers]}
+
+
+@router.post("/{workspace_id}/mcp-servers")
+async def add_workspace_mcp_server(request: Request, workspace_id: str, body: MCPServerRequest):
+    """Add or enable an MCP server for a workspace."""
+    manager = get_workspace_manager(request)
+    storage = manager.get_storage_by_id(workspace_id)
+
+    if not storage:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="MCP server name is required")
+
+    config = storage.get_config()
+    existing = next((server for server in config.mcp_servers if server.name == name), None)
+    if existing:
+        existing.type = body.type
+        existing.command = body.command
+        existing.args = body.args
+        existing.url = body.url
+        existing.env = body.env
+        existing.enabled = True
+    else:
+        config.mcp_servers.append(
+            MCPServerConfig(
+                name=name,
+                type=body.type,
+                command=body.command,
+                args=body.args,
+                url=body.url,
+                env=body.env,
+                enabled=True,
+            )
+        )
+
+    storage.update_config(config)
+    return {"servers": [server.to_dict() for server in config.mcp_servers]}
+
+
+@router.post("/{workspace_id}/mcp-servers/disable")
+async def disable_workspace_mcp_server(request: Request, workspace_id: str, body: WorkspaceMcpDisableRequest):
+    """Disable an MCP server for a workspace without deleting its config."""
+    manager = get_workspace_manager(request)
+    storage = manager.get_storage_by_id(workspace_id)
+
+    if not storage:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="MCP server name is required")
+
+    config = storage.get_config()
+    existing = next((server for server in config.mcp_servers if server.name == name), None)
+    if not existing:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+
+    existing.enabled = False
+    storage.update_config(config)
+    return {"servers": [server.to_dict() for server in config.mcp_servers]}
 
 
 # ==================== Effective MCP Servers ====================

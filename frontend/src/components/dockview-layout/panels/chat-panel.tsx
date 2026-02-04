@@ -46,27 +46,31 @@ export function ChatPanelContent({ params }: ChatPanelContentProps) {
     return (
         <div className="flex flex-col h-full overflow-hidden">
             <div className="flex-1 min-h-0">
-                <MessageList
-                    messages={messages}
-                    showProcessingPlaceholder={showProcessingPlaceholder}
-                    onPermissionResponse={params?.onPermissionResponse || (() => { })}
-                    onAskUserSubmit={params?.onAskUserSubmit || (() => { })}
-                    onAskUserSkip={params?.onAskUserSkip || (() => { })}
-                    onSelectFile={params?.onSelectFile}
-                    onOpenImage={params?.onOpenImage}
-                    onPreviewHTML={params?.onPreviewHTML}
-                />
+                <div className="h-full w-full max-w-4xl mx-auto">
+                    <MessageList
+                        messages={messages}
+                        showProcessingPlaceholder={showProcessingPlaceholder}
+                        onPermissionResponse={params?.onPermissionResponse || (() => { })}
+                        onAskUserSubmit={params?.onAskUserSubmit || (() => { })}
+                        onAskUserSkip={params?.onAskUserSkip || (() => { })}
+                        onSelectFile={params?.onSelectFile}
+                        onOpenImage={params?.onOpenImage}
+                        onPreviewHTML={params?.onPreviewHTML}
+                    />
+                </div>
             </div>
 
-            <div className="flex-none z-10 bg-background">
-                <InputArea
-                    ref={inputRef}
-                    onSend={params?.onSend || (() => { })}
-                    isRunning={isCurrentSessionProcessing}
-                    onInterrupt={params?.onInterrupt}
-                    securityMode={params?.securityMode || 'bypassPermissions'}
-                    onSecurityModeChange={params?.onSecurityModeChange || (() => { })}
-                />
+            <div className="flex-none z-10">
+                <div className="w-full max-w-4xl mx-auto">
+                    <InputArea
+                        ref={inputRef}
+                        onSend={params?.onSend || (() => { })}
+                        isRunning={isCurrentSessionProcessing}
+                        onInterrupt={params?.onInterrupt}
+                        securityMode={params?.securityMode || 'bypassPermissions'}
+                        onSecurityModeChange={params?.onSecurityModeChange || (() => { })}
+                    />
+                </div>
             </div>
         </div>
     );

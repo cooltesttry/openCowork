@@ -28,6 +28,8 @@ interface ChatContextType {
     setIsSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
     sidebarWidth: number;
     setSidebarWidth: React.Dispatch<React.SetStateAction<number>>;
+    rightPanelView: 'files' | 'tools';
+    setRightPanelView: React.Dispatch<React.SetStateAction<'files' | 'tools'>>;
 
     // Session management (left sidebar)
     sessions: Session[];
@@ -72,6 +74,7 @@ const ChatSessionsContext = createContext<ChatSessionsContextType | undefined>(u
 
 const SIDEBAR_OPEN_KEY = "sidebar-open";
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
+const RIGHT_PANEL_VIEW_KEY = "right-panel-view";
 const SESSION_SIDEBAR_OPEN_KEY = "session-sidebar-open";
 const CURRENT_SESSION_KEY = "current-session-id";
 const DEFAULT_SIDEBAR_WIDTH = 30;
@@ -84,6 +87,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const [awaitingFirstTokenSessionId, setAwaitingFirstTokenSessionId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+    const [rightPanelView, setRightPanelView] = useState<'files' | 'tools'>('files');
 
     // Session state
     const [sessions, setSessions] = useState<Session[]>([]);
@@ -149,6 +153,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 }
             }
 
+            const savedRightPanel = localStorage.getItem(RIGHT_PANEL_VIEW_KEY);
+            if (savedRightPanel === 'files' || savedRightPanel === 'tools') {
+                setRightPanelView(savedRightPanel);
+            }
+
             // Load session sidebar state
             const savedSessionSidebarOpen = localStorage.getItem(SESSION_SIDEBAR_OPEN_KEY);
             if (savedSessionSidebarOpen !== null) {
@@ -178,6 +187,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         if (!isHydrated.current) return;
         localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
     }, [sidebarWidth]);
+
+    useEffect(() => {
+        if (!isHydrated.current) return;
+        localStorage.setItem(RIGHT_PANEL_VIEW_KEY, rightPanelView);
+    }, [rightPanelView]);
 
     // Save session sidebar state to localStorage (only after hydration)
     useEffect(() => {
@@ -210,6 +224,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             awaitingFirstTokenSessionId, setAwaitingFirstTokenSessionId,
             isSidebarOpen, setIsSidebarOpen,
             sidebarWidth, setSidebarWidth,
+            rightPanelView, setRightPanelView,
             sessions, setSessions,
             currentSessionId, setCurrentSessionId,
             isSessionSidebarOpen, setIsSessionSidebarOpen,

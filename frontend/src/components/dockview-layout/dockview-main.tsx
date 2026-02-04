@@ -3,6 +3,7 @@
 import { DockviewReact, DockviewReadyEvent, DockviewApi } from 'dockview';
 import 'dockview/dist/styles/dockview.css';
 import { useRef, useEffect, useCallback, useState } from 'react';
+import type { HTMLAttributes, MouseEvent, PointerEvent } from 'react';
 import { useChat } from '@/lib/store';
 import { WorkspacePanelContent } from './panels/workspace-panel';
 import { ChatPanelContent } from './panels/chat-panel';
@@ -21,6 +22,7 @@ import { Toaster, toast } from 'sonner';
 import type { SecurityMode } from '@/components/chat/input-area';
 import type { OpenImageOptions } from '@/components/image-editor/types';
 import type { FilePanelMode } from '../panels/file-panel';
+import type { DockviewPanelApi, IDockviewPanelHeaderProps } from 'dockview-core';
 
 const components = {
     workspaces: WorkspacePanelContent,
@@ -38,6 +40,116 @@ const components = {
 const SESSION_PANEL_WIDTH = 238;
 const TOOLS_PANEL_WIDTH = 310;
 const COLLAPSED_PANEL_WIDTH = 44;
+
+type DockviewTabProps = IDockviewPanelHeaderProps & HTMLAttributes<HTMLDivElement> & {
+    hideClose?: boolean;
+    closeActionOverride?: () => void;
+};
+
+const useDockviewTitle = (api: DockviewPanelApi) => {
+    const [title, setTitle] = useState(api.title);
+
+    useEffect(() => {
+        const disposable = api.onDidTitleChange((event) => {
+            setTitle(event.title);
+        });
+        setTitle((current) => (current !== api.title ? api.title : current));
+        return () => {
+            disposable.dispose();
+        };
+    }, [api]);
+
+    return title;
+};
+
+const splitTitleForTab = (title: string) => {
+    const lastDot = title.lastIndexOf('.');
+    if (lastDot <= 0 || lastDot >= title.length - 1) {
+        return { head: title, tail: '' };
+    }
+
+    const ext = title.slice(lastDot + 1);
+    if (!/^[A-Za-z0-9]{1,6}$/.test(ext)) {
+        return { head: title, tail: '' };
+    }
+
+    return {
+        head: title.slice(0, lastDot),
+        tail: title.slice(lastDot),
+    };
+};
+
+const MiddleEllipsisTab = ({
+    api,
+    containerApi: _containerApi,
+    params: _params,
+    hideClose,
+    closeActionOverride,
+    onPointerDown,
+    onPointerUp,
+    onPointerLeave,
+    tabLocation: _tabLocation,
+    className,
+    ...rest
+}: DockviewTabProps) => {
+    const title = useDockviewTitle(api);
+    const { head, tail } = splitTitleForTab(title);
+    const isMiddleMouseButton = useRef(false);
+
+    const onClose = useCallback((event: MouseEvent<HTMLDivElement> | PointerEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        if (closeActionOverride) {
+            closeActionOverride();
+        } else {
+            api.close();
+        }
+    }, [api, closeActionOverride]);
+
+    const onBtnPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
+        event.preventDefault();
+    }, []);
+
+    const handlePointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
+        isMiddleMouseButton.current = event.button === 1;
+        onPointerDown?.(event);
+    }, [onPointerDown]);
+
+    const handlePointerUp = useCallback((event: PointerEvent<HTMLDivElement>) => {
+        if (isMiddleMouseButton.current && event.button === 1 && !hideClose) {
+            isMiddleMouseButton.current = false;
+            onClose(event);
+        }
+        onPointerUp?.(event);
+    }, [hideClose, onClose, onPointerUp]);
+
+    const handlePointerLeave = useCallback((event: PointerEvent<HTMLDivElement>) => {
+        isMiddleMouseButton.current = false;
+        onPointerLeave?.(event);
+    }, [onPointerLeave]);
+
+    return (
+        <div
+            data-testid="dockview-dv-default-tab"
+            {...rest}
+            onPointerDown={handlePointerDown}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerLeave}
+            className={["dv-default-tab", className].filter(Boolean).join(' ')}
+        >
+            <span className="dv-default-tab-content dv-middle-ellipsis" title={title}>
+                <span className="dv-tab-title-head">{head}</span>
+                {tail ? <span className="dv-tab-title-tail">{tail}</span> : null}
+            </span>
+            {!hideClose && (
+                <div className="dv-default-tab-action" onPointerDown={onBtnPointerDown} onClick={onClose}>
+                    <svg height="11" width="11" viewBox="0 0 28 28" aria-hidden="false" focusable="false" className="dv-svg">
+                        <path d="M2.1 27.3L0 25.2L11.55 13.65L0 2.1L2.1 0L13.65 11.55L25.2 0L27.3 2.1L15.75 13.65L27.3 25.2L25.2 27.3L13.65 15.75L2.1 27.3Z" />
+                    </svg>
+                </div>
+            )}
+        </div>
+    );
+};
 
 export function DockviewMain() {
     const apiRef = useRef<DockviewApi | null>(null);
@@ -780,6 +892,41 @@ export function DockviewMain() {
               --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
               --dv-inactivegroup-visiblepanel-tab-color: var(--muted-foreground);
               --dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
+
+              /* Slightly smaller and shorter tabs (especially for the right panel area) */
+              --dv-tabs-and-actions-container-height: 30px;
+              --dv-tabs-and-actions-container-font-size: 12px;
+              --dv-tab-font-size: 12px;
+            }
+
+            .dockview-theme-light .dv-tabs-and-actions-container .dv-tab,
+            .dockview-theme-dark .dv-tabs-and-actions-container .dv-tab {
+              padding: 0 0.5rem;
+            }
+
+            .dockview-theme-light .dv-tabs-and-actions-container .dv-default-tab-content,
+            .dockview-theme-dark .dv-tabs-and-actions-container .dv-default-tab-content {
+              max-width: 12ch;
+              min-width: 0;
+              overflow: hidden;
+              display: flex;
+              align-items: center;
+              gap: 0;
+            }
+
+            .dockview-theme-light .dv-tabs-and-actions-container .dv-tab-title-head,
+            .dockview-theme-dark .dv-tabs-and-actions-container .dv-tab-title-head {
+              min-width: 0;
+              flex: 1 1 auto;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+
+            .dockview-theme-light .dv-tabs-and-actions-container .dv-tab-title-tail,
+            .dockview-theme-dark .dv-tabs-and-actions-container .dv-tab-title-tail {
+              flex: 0 0 auto;
+              white-space: nowrap;
             }
 
             /* Smooth programmatic resize for sidebars */
@@ -792,6 +939,7 @@ export function DockviewMain() {
           `}</style>
                     <DockviewReact
                         components={components}
+                        defaultTabComponent={MiddleEllipsisTab}
                         onReady={onReady}
                         className="h-full w-full dockview-theme-light dark:dockview-theme-dark"
                     />

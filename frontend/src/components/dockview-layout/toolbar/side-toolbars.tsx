@@ -1,6 +1,6 @@
 "use client";
 
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import { FolderOpen, PanelRightClose, PanelRightOpen, Wrench } from "lucide-react";
 
 import { useChat } from "@/lib/store";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -16,6 +16,8 @@ export function DocksideToolbars({ toolsPanelWidth }: { toolsPanelWidth: number 
         setIsSidebarOpen,
         isSessionSidebarOpen,
         setIsSessionSidebarOpen,
+        rightPanelView,
+        setRightPanelView,
     } = useChat();
 
     return (
@@ -39,6 +41,22 @@ export function DocksideToolbars({ toolsPanelWidth }: { toolsPanelWidth: number 
                             <PanelRightClose className="h-5 w-5" />
                         </Button>
                         <div className="flex items-center gap-2">
+                            <Button
+                                variant={rightPanelView === "files" ? "secondary" : "ghost"}
+                                size="icon"
+                                onClick={() => setRightPanelView("files")}
+                                title="Files"
+                            >
+                                <FolderOpen className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant={rightPanelView === "tools" ? "secondary" : "ghost"}
+                                size="icon"
+                                onClick={() => setRightPanelView("tools")}
+                                title="Tools"
+                            >
+                                <Wrench className="h-4 w-4" />
+                            </Button>
                             <div className="flex h-8 w-8 items-center justify-center" title={isProcessing ? "Active" : "Idle"}>
                                 <div
                                     className={`h-2 w-2 rounded-full ${isProcessing ? "bg-green-500 animate-pulse" : "bg-muted-foreground/40"}`}

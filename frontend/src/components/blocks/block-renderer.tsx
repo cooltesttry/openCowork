@@ -100,8 +100,8 @@ export function BlockRenderer({ block, onPermissionResponse, onAskUserSubmit, on
 
         case 'error':
             return (
-                <div className="my-2 flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
-                    <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <div className="my-2 flex items-start gap-2 p-3 rounded-md border border-border bg-card text-foreground text-sm">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5 text-destructive" />
                     <span>{typeof block.content === 'string' ? block.content : JSON.stringify(block.content)}</span>
                 </div>
             );

@@ -131,17 +131,17 @@ export function ImageGenBlock({ block, onOpenImage }: ImageGenBlockProps) {
     // Running state - show loading with preload
     if (isRunning) {
         return (
-            <div className="my-2 w-full min-w-0 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-900/20 overflow-hidden transition-all duration-300">
+            <div className="my-2 w-full min-w-0 rounded-md border border-border bg-card overflow-hidden transition-all duration-300">
                 <div className="px-4 py-3 flex items-center gap-3 min-w-0">
-                    <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/50">
-                        <Loader2 className="h-4 w-4 text-violet-600 dark:text-violet-400 animate-spin" />
+                    <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-md bg-muted/40">
+                        <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
                     </div>
                     <div className="flex-1 w-0 min-w-0 overflow-hidden">
-                        <div className="text-sm font-medium text-violet-700 dark:text-violet-300">
+                        <div className="text-sm font-medium text-foreground">
                             Generating image...
                         </div>
                         {prompt && (
-                            <div className="text-xs text-violet-600/70 dark:text-violet-400/70 truncate mt-0.5">
+                            <div className="text-xs text-muted-foreground truncate mt-0.5">
                                 {prompt.length > 100 ? prompt.slice(0, 100) + '...' : prompt}
                             </div>
                         )}
@@ -157,16 +157,16 @@ export function ImageGenBlock({ block, onOpenImage }: ImageGenBlockProps) {
             ? block.content.result
             : 'Image generation failed';
         return (
-            <div className="my-2 w-full min-w-0 rounded-xl border border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/20 overflow-hidden transition-all duration-300">
+            <div className="my-2 w-full min-w-0 rounded-md border border-border bg-card overflow-hidden transition-all duration-300">
                 <div className="px-4 py-3 flex items-center gap-3 min-w-0">
-                    <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/50">
-                        <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                    <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-md bg-muted/40">
+                        <AlertCircle className="h-4 w-4 text-destructive" />
                     </div>
                     <div className="flex-1 w-0 min-w-0 overflow-hidden">
-                        <div className="text-sm font-medium text-red-700 dark:text-red-300">
+                        <div className="text-sm font-medium text-foreground">
                             Image generation failed
                         </div>
-                        <div className="text-xs text-red-600/70 dark:text-red-400/70 mt-0.5 truncate">
+                        <div className="text-xs text-muted-foreground mt-0.5 truncate">
                             {errorMessage}
                         </div>
                     </div>
@@ -178,16 +178,16 @@ export function ImageGenBlock({ block, onOpenImage }: ImageGenBlockProps) {
     // Success state - show the image
     if (isSuccess && result) {
         return (
-            <div className="my-2 w-full min-w-0 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/30 dark:bg-violet-900/10 overflow-hidden transition-all duration-300">
+            <div className="my-2 w-full min-w-0 rounded-md border border-border bg-card overflow-hidden transition-all duration-300">
                 {/* Header */}
-                <div className="px-4 py-2 flex items-center justify-between border-b border-violet-200/50 dark:border-violet-800/50">
+                <div className="px-4 py-2 flex items-center justify-between border-b border-border">
                     <div className="flex items-center gap-2">
-                        <ImageIcon className="h-4 w-4 text-violet-600 dark:text-violet-400" />
-                        <span className="text-xs font-medium text-violet-700 dark:text-violet-300">
+                        <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs font-medium text-foreground">
                             Generated Image
                         </span>
                         {result.width && result.height && (
-                            <span className="text-xs text-violet-600/60 dark:text-violet-400/60">
+                            <span className="text-xs text-muted-foreground">
                                 {result.width} × {result.height}
                             </span>
                         )}
@@ -195,17 +195,17 @@ export function ImageGenBlock({ block, onOpenImage }: ImageGenBlockProps) {
                     <div className="flex items-center gap-1">
                         <button
                             onClick={handleDownload}
-                            className="p-1.5 rounded-md hover:bg-violet-100 dark:hover:bg-violet-900/50 transition-colors"
+                            className="p-1.5 rounded-md hover:bg-muted/40 transition-colors"
                             title="Download image"
                         >
-                            <Download className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                            <Download className="h-3.5 w-3.5 text-muted-foreground" />
                         </button>
                         <button
                             onClick={handleOpenInEditor}
-                            className="p-1.5 rounded-md hover:bg-violet-100 dark:hover:bg-violet-900/50 transition-colors"
+                            className="p-1.5 rounded-md hover:bg-muted/40 transition-colors"
                             title="Open in Image Editor"
                         >
-                            <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                            <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
                         </button>
                     </div>
                 </div>
@@ -214,14 +214,14 @@ export function ImageGenBlock({ block, onOpenImage }: ImageGenBlockProps) {
                 <div className="relative min-h-[100px]">
                     {/* Loading overlay - fades out when image loads */}
                     <div
-                        className={`absolute inset-0 flex items-center justify-center bg-violet-50 dark:bg-violet-900/20 transition-opacity duration-300 ${imageLoaded ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                        className={`absolute inset-0 flex items-center justify-center bg-background/70 transition-opacity duration-300 ${imageLoaded ? 'opacity-0 pointer-events-none' : 'opacity-100'
                             }`}
                     >
-                        <Loader2 className="h-6 w-6 text-violet-400 animate-spin" />
+                        <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
                     </div>
 
                     {imageError ? (
-                        <div className="p-8 flex flex-col items-center justify-center text-violet-600/60 dark:text-violet-400/60">
+                        <div className="p-8 flex flex-col items-center justify-center text-muted-foreground">
                             <AlertCircle className="h-8 w-8 mb-2" />
                             <span className="text-sm">Failed to load image</span>
                             <span className="text-xs mt-1 opacity-60">{result.file_path}</span>
@@ -230,7 +230,7 @@ export function ImageGenBlock({ block, onOpenImage }: ImageGenBlockProps) {
                         <img
                             src={imageUrl!}
                             alt={prompt || "Generated image"}
-                            className={`w-full max-h-[500px] object-contain bg-zinc-100 dark:bg-zinc-800 transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'
+                            className={`w-full max-h-[500px] object-contain bg-muted/30 transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'
                                 }`}
                             onLoad={() => setImageLoaded(true)}
                             onError={() => setImageError(true)}
@@ -240,12 +240,12 @@ export function ImageGenBlock({ block, onOpenImage }: ImageGenBlockProps) {
 
                 {/* Prompt (collapsible) */}
                 {prompt && (
-                    <div className="px-4 py-2 border-t border-violet-200/50 dark:border-violet-800/50">
+                    <div className="px-4 py-2 border-t border-border">
                         <details className="group">
-                            <summary className="text-xs text-violet-600/70 dark:text-violet-400/70 cursor-pointer hover:text-violet-700 dark:hover:text-violet-300 transition-colors">
+                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
                                 View prompt
                             </summary>
-                            <p className="mt-2 text-xs text-violet-700/80 dark:text-violet-300/80 leading-relaxed whitespace-pre-wrap">
+                            <p className="mt-2 text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap">
                                 {prompt}
                             </p>
                         </details>

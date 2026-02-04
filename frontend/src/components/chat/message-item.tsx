@@ -178,15 +178,15 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
     return (
         <div
             className={cn(
-                "w-full py-8 border-b border-black/5 dark:border-white/5",
-                isUser ? "bg-zinc-100/50 dark:bg-zinc-800/30" : "bg-zinc-50 dark:bg-zinc-900"
+                "w-full py-8 border-b border-border",
+                isUser ? "bg-muted/20" : "bg-background"
             )}
         >
             <div className="mx-auto flex gap-4 px-4 w-full">
                 {/* User avatar - only for user messages */}
                 {isUser && (
                     <div className="shrink-0">
-                        <div className="h-7 w-7 rounded-full flex items-center justify-center bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300">
+                        <div className="h-7 w-7 rounded-full flex items-center justify-center bg-muted/40 text-muted-foreground">
                             <User className="h-4 w-4" />
                         </div>
                     </div>
@@ -198,7 +198,7 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                         <div className="flex items-center gap-2 mb-1">
                             {message.isStreaming && (
                                 <span className="inline-flex items-center gap-1">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                                    <span className="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-pulse" />
                                 </span>
                             )}
                         </div>
@@ -238,18 +238,18 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                                         <button
                                             key={`img-${file.path}-${index}`}
                                             onClick={() => handleFileClick(file.path, file.isPreviewable)}
-                                            className="relative group rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 transition-colors"
+                                            className="relative group rounded-md overflow-hidden border border-border hover:border-foreground/20 transition-colors"
                                             title={file.path}
                                         >
                                             <img
                                                 src={`http://localhost:8000/api/files/raw?path=${encodeURIComponent(file.path)}`}
                                                 alt={file.name}
-                                                className="max-h-[150px] max-w-[200px] object-contain bg-zinc-100 dark:bg-zinc-800"
+                                                className="max-h-[150px] max-w-[200px] object-contain bg-muted/30"
                                                 onError={(e) => {
                                                     // Replace with placeholder on error
                                                     const target = e.target as HTMLImageElement;
                                                     target.style.display = 'none';
-                                                    target.parentElement?.classList.add('flex', 'items-center', 'justify-center', 'w-24', 'h-24', 'bg-zinc-100', 'dark:bg-zinc-800');
+                                                    target.parentElement?.classList.add('flex', 'items-center', 'justify-center', 'w-24', 'h-24', 'bg-muted/30');
                                                     const icon = document.createElement('div');
                                                     icon.innerHTML = '<svg class="h-8 w-8 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
                                                     target.parentElement?.appendChild(icon);
@@ -271,10 +271,10 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                                             key={`file-${file.path}-${index}`}
                                             onClick={() => handleFileClick(file.path, file.isPreviewable)}
                                             className={cn(
-                                                "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border",
+                                                "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors border",
                                                 file.isPreviewable
-                                                    ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 cursor-pointer"
-                                                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 cursor-default opacity-60"
+                                                    ? "bg-muted/40 text-foreground border-border hover:bg-muted/60 cursor-pointer"
+                                                    : "bg-muted/30 text-muted-foreground border-border cursor-default opacity-60"
                                             )}
                                             title={file.isPreviewable ? `Click to preview: ${file.path}` : `Not previewable: ${file.path}`}
                                             disabled={!file.isPreviewable}
@@ -307,28 +307,23 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                         });
 
                         return (
-                            <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-700">
+                            <div className="mt-4 pt-3 border-t border-border">
                                 <div className="flex flex-wrap gap-2">
                                     {uniqueOperations.map((op, index) => (
                                         <button
                                             key={`file-${op.path}-${index}`}
                                             onClick={() => handleFileClick(op.path, true)}
                                             className={cn(
-                                                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer",
-                                                op.type === 'Write'
-                                                    ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50"
-                                                    : op.type === 'ImageGen'
-                                                        ? "bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-900/50"
-                                                        : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50"
+                                                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer border border-border bg-muted/40 text-foreground hover:bg-muted/60"
                                             )}
                                             title={`Click to preview: ${op.path}`}
                                         >
                                             {op.type === 'Write' ? (
-                                                <FilePlus className="h-3 w-3" />
+                                                <FilePlus className="h-3 w-3 text-muted-foreground" />
                                             ) : op.type === 'ImageGen' ? (
-                                                <ImageIcon className="h-3 w-3" />
+                                                <ImageIcon className="h-3 w-3 text-muted-foreground" />
                                             ) : (
-                                                <FileEdit className="h-3 w-3" />
+                                                <FileEdit className="h-3 w-3 text-muted-foreground" />
                                             )}
                                             <span className="underline underline-offset-2">{getFileName(op.path)}</span>
                                         </button>

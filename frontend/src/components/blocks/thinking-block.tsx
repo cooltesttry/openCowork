@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { BrainCircuit, ChevronDown, ChevronRight, CheckCircle } from "lucide-react";
+import { ChevronDown, ChevronRight, Check } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { MessageBlock } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -38,40 +38,36 @@ export function ThinkingBlock({ block, autoCollapseDelay = 500 }: ThinkingBlockP
     }, [block.status, autoCollapseDelay]);
 
     return (
-        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="my-2 min-w-0">
+        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="my-1 min-w-0">
             <CollapsibleTrigger
                 className={cn(
-                    "flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium",
+                    "flex items-center gap-2 w-full px-3 py-2 rounded-md text-xs font-medium text-muted-foreground",
                     "transition-colors duration-200",
-                    "hover:bg-purple-100/50 dark:hover:bg-purple-900/30",
+                    "hover:bg-muted/40",
                     isStreaming
-                        ? "bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300"
-                        : "bg-purple-50/50 dark:bg-purple-900/10 text-purple-600 dark:text-purple-400"
+                        ? "bg-muted/40"
+                        : "bg-muted/30"
                 )}
             >
                 {isOpen ? (
-                    <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                    <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
                 ) : (
-                    <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                    <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
                 )}
-                <BrainCircuit className={cn(
-                    "h-4 w-4 flex-shrink-0",
-                    isStreaming && "animate-pulse"
-                )} />
-                <span className="flex-1 text-left">
+                <span className="flex-1 text-left text-muted-foreground">
                     {isStreaming ? "Thinking..." : "Thinking"}
                 </span>
                 {isComplete && (
-                    <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                    <Check className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 )}
                 {isStreaming && (
-                    <span className="h-2 w-2 rounded-full bg-purple-500 animate-pulse flex-shrink-0" />
+                    <span className="h-2 w-2 rounded-full bg-foreground/40 animate-pulse flex-shrink-0" />
                 )}
             </CollapsibleTrigger>
 
             <CollapsibleContent className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
                 <div className={cn(
-                    "mt-1 ml-6 pl-4 py-2 border-l-2 border-purple-200 dark:border-purple-800",
+                    "mt-1 ml-6 pl-4 py-2 border-l-2 border-border",
                     "text-sm text-muted-foreground whitespace-pre-wrap break-words min-w-0 overflow-hidden"
                 )}>
                     {typeof block.content === 'string' ? block.content : JSON.stringify(block.content, null, 2)}
@@ -80,4 +76,3 @@ export function ThinkingBlock({ block, autoCollapseDelay = 500 }: ThinkingBlockP
         </Collapsible>
     );
 }
-

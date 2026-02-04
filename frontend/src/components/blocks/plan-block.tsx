@@ -16,12 +16,12 @@ const statusConfig = {
     },
     in_progress: {
         icon: Clock,
-        className: "text-blue-500",
+        className: "text-muted-foreground",
         label: "In Progress"
     },
     completed: {
         icon: CheckCircle2,
-        className: "text-green-500",
+        className: "text-foreground",
         label: "Completed"
     }
 };
@@ -37,11 +37,11 @@ export function PlanBlock({ block }: PlanBlockProps) {
     const progress = Math.round((completedCount / todos.length) * 100);
 
     return (
-        <div className="my-3 rounded-lg border bg-card overflow-hidden min-w-0">
+        <div className="my-3 rounded-md border border-border bg-card overflow-hidden min-w-0">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 bg-muted/30 border-b">
+            <div className="flex items-center justify-between px-4 py-2 bg-muted/30 border-b border-border">
                 <div className="flex items-center gap-2 text-sm font-medium">
-                    <ListTodo className="h-4 w-4 text-primary" />
+                    <ListTodo className="h-4 w-4 text-muted-foreground" />
                     <span>Execution Plan</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -50,7 +50,7 @@ export function PlanBlock({ block }: PlanBlockProps) {
                     </span>
                     <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
                         <div
-                            className="h-full bg-primary transition-all duration-300"
+                            className="h-full bg-foreground/70 transition-all duration-300"
                             style={{ width: `${progress}%` }}
                         />
                     </div>
@@ -67,8 +67,7 @@ export function PlanBlock({ block }: PlanBlockProps) {
                         <div
                             key={todo.id}
                             className={cn(
-                                "flex items-start gap-2 py-1.5 px-2 rounded text-sm",
-                                todo.status === 'in_progress' && "bg-blue-50/50 dark:bg-blue-900/10",
+                                "flex items-start gap-2 py-1.5 px-2 rounded text-sm bg-muted/30",
                                 todo.status === 'completed' && "opacity-60"
                             )}
                         >

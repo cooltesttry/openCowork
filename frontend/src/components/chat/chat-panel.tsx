@@ -959,23 +959,27 @@ export function ChatPanel() {
                             </header>
 
                             <div className="flex-1 min-h-0 flex flex-col">
-                                <MessageList
-                                    messages={messages}
-                                    onPermissionResponse={handlePermissionResponse}
-                                    onAskUserSubmit={handleAskUserSubmit}
-                                    onAskUserSkip={handleAskUserSkip}
-                                />
+                                <div className="h-full w-full max-w-4xl mx-auto">
+                                    <MessageList
+                                        messages={messages}
+                                        onPermissionResponse={handlePermissionResponse}
+                                        onAskUserSubmit={handleAskUserSubmit}
+                                        onAskUserSkip={handleAskUserSkip}
+                                    />
+                                </div>
                             </div>
 
-                            <div className="flex-none z-10 bg-background">
-                                <InputArea
-                                    ref={inputAreaRef}
-                                    onSend={handleSend}
-                                    isRunning={isProcessing}
-                                    securityMode={securityMode}
-                                    onSecurityModeChange={setSecurityMode}
-                                    slashCommands={slashCommands.length > 0 ? slashCommands : undefined}
-                                />
+                            <div className="flex-none z-10">
+                                <div className="w-full max-w-4xl mx-auto">
+                                    <InputArea
+                                        ref={inputAreaRef}
+                                        onSend={handleSend}
+                                        isRunning={isProcessing}
+                                        securityMode={securityMode}
+                                        onSecurityModeChange={setSecurityMode}
+                                        slashCommands={slashCommands.length > 0 ? slashCommands : undefined}
+                                    />
+                                </div>
                             </div>
                         </div>
                     </Panel>

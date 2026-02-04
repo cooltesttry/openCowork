@@ -153,21 +153,19 @@ export function AskUserBlock({ block, onSubmit, onSkip }: AskUserBlockProps) {
     if (isAnswered) {
         const parsedAnswers = getAnswers();
         return (
-            <div className="my-2 rounded-lg border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10 p-4">
+            <div className="my-2 rounded-md border border-border bg-card p-4">
                 <div className="flex items-center gap-2 mb-3">
-                    <HelpCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    <Badge variant="outline" className="text-green-600 dark:text-green-400 border-green-300 dark:border-green-700">
-                        AskUserQuestion
-                    </Badge>
-                    <CheckCircle className="h-4 w-4 text-green-500 ml-auto" />
-                    <span className="text-xs text-green-600 dark:text-green-400">Answered</span>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                    <Badge variant="outline">AskUserQuestion</Badge>
+                    <CheckCircle className="h-4 w-4 text-muted-foreground ml-auto" />
+                    <span className="text-xs text-muted-foreground">Answered</span>
                 </div>
                 <div className="space-y-2 text-sm">
                     {questions.map((q, idx) => (
-                        <div key={idx} className="border-l-2 border-green-300 dark:border-green-700 pl-3">
+                        <div key={idx} className="border-l-2 border-border pl-3">
                             <div className="text-muted-foreground text-xs">{q.header || `Question ${idx + 1}`}</div>
                             <div className="font-medium">{q.question}</div>
-                            <div className="text-green-600 dark:text-green-400">
+                            <div className="text-foreground">
                                 → {parsedAnswers[q.question] || 'N/A'}
                             </div>
                         </div>
@@ -180,14 +178,12 @@ export function AskUserBlock({ block, onSubmit, onSkip }: AskUserBlockProps) {
     // Render skipped state
     if (isSkipped) {
         return (
-            <div className="my-2 rounded-lg border border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/10 p-4">
+            <div className="my-2 rounded-md border border-border bg-card p-4">
                 <div className="flex items-center gap-2 mb-3">
-                    <HelpCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                    <Badge variant="outline" className="text-red-600 dark:text-red-400 border-red-300 dark:border-red-700">
-                        AskUserQuestion
-                    </Badge>
-                    <XCircle className="h-4 w-4 text-red-500 ml-auto" />
-                    <span className="text-xs text-red-600 dark:text-red-400">Skipped / Timeout</span>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                    <Badge variant="outline">AskUserQuestion</Badge>
+                    <XCircle className="h-4 w-4 text-destructive ml-auto" />
+                    <span className="text-xs text-destructive">Skipped / Timeout</span>
                 </div>
                 <div className="text-sm text-muted-foreground">
                     {questions.length} question(s) were not answered.
@@ -198,18 +194,16 @@ export function AskUserBlock({ block, onSubmit, onSkip }: AskUserBlockProps) {
 
     // Render pending state (interactive form)
     return (
-        <div className="my-2 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/10 p-4">
+        <div className="my-2 rounded-md border border-border bg-card p-4">
             {/* Header */}
             <div className="flex items-center gap-2 mb-4">
-                <HelpCircle className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                <Badge variant="outline" className="text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-700">
-                    AskUserQuestion
-                </Badge>
+                <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                <Badge variant="outline">AskUserQuestion</Badge>
                 <div className="flex items-center gap-1 ml-auto">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className={cn(
                         "text-xs font-medium",
-                        timeRemaining < 15 ? "text-red-500" : "text-muted-foreground"
+                        timeRemaining < 15 ? "text-destructive" : "text-muted-foreground"
                     )}>
                         {formatTime(timeRemaining)}
                     </span>
@@ -314,7 +308,7 @@ export function AskUserBlock({ block, onSubmit, onSkip }: AskUserBlockProps) {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-purple-200 dark:border-purple-800">
+            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border">
                 <Button
                     variant="ghost"
                     size="sm"

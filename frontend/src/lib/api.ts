@@ -315,6 +315,20 @@ export interface WorkspaceSkillsResponse {
     mode?: string;
 }
 
+export interface WorkspaceMcpServer {
+    name: string;
+    type: string;
+    command?: string;
+    args?: string[];
+    url?: string;
+    env?: Record<string, string>;
+    enabled?: boolean;
+}
+
+export interface WorkspaceMcpResponse {
+    servers: WorkspaceMcpServer[];
+}
+
 export interface SubagentInfo {
     name: string;
     path?: string;
@@ -368,6 +382,41 @@ export async function removeWorkspaceSkill(workspaceId: string, skillId: string)
         body: JSON.stringify({ skill_id: skillId }),
     });
     if (!res.ok) throw new Error("Failed to remove workspace skill");
+    return res.json();
+}
+
+export async function fetchWorkspaceMcpServers(workspaceId: string): Promise<WorkspaceMcpResponse> {
+    const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/mcp-servers`);
+    if (!res.ok) throw new Error("Failed to fetch workspace MCP servers");
+    return res.json();
+}
+
+export async function addWorkspaceMcpServer(
+    workspaceId: string,
+    payload: WorkspaceMcpServer
+): Promise<WorkspaceMcpResponse> {
+    const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/mcp-servers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error("Failed to add workspace MCP server");
+    return res.json();
+}
+
+export async function disableWorkspaceMcpServer(workspaceId: string, name: string): Promise<WorkspaceMcpResponse> {
+    const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/mcp-servers/disable`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+    });
+    if (!res.ok) throw new Error("Failed to disable workspace MCP server");
+    return res.json();
+}
+
+export async function fetchGlobalMcpServers(): Promise<WorkspaceMcpServer[]> {
+    const res = await fetch(`${API_BASE}/mcp`);
+    if (!res.ok) throw new Error("Failed to fetch global MCP servers");
     return res.json();
 }
 

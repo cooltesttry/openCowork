@@ -1,6 +1,6 @@
 'use client';
 
-import { PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { FolderOpen, PanelRightClose, PanelRightOpen, Wrench } from 'lucide-react';
 
 import { McpSidebarPanel } from '@/components/chat/mcp-sidebar-panel';
 import { useChat } from '@/lib/store';
@@ -24,7 +24,7 @@ interface ToolsPanelContentProps {
 }
 
 export function ToolsPanelContent({ params }: ToolsPanelContentProps) {
-    const { isProcessing } = useChat();
+    const { isProcessing, rightPanelView, setRightPanelView } = useChat();
     const isOpen = params?.isOpen ?? true;
 
     if (!isOpen) {
@@ -38,6 +38,30 @@ export function ToolsPanelContent({ params }: ToolsPanelContentProps) {
                     title="显示 MCP Servers"
                 >
                     <PanelRightOpen className="h-4 w-4" />
+                </Button>
+                <Button
+                    variant={rightPanelView === "files" ? "secondary" : "ghost"}
+                    size="icon"
+                    onClick={() => {
+                        setRightPanelView("files");
+                        params?.onToggle?.();
+                    }}
+                    className="h-8 w-8"
+                    title="Files"
+                >
+                    <FolderOpen className="h-4 w-4" />
+                </Button>
+                <Button
+                    variant={rightPanelView === "tools" ? "secondary" : "ghost"}
+                    size="icon"
+                    onClick={() => {
+                        setRightPanelView("tools");
+                        params?.onToggle?.();
+                    }}
+                    className="h-8 w-8"
+                    title="Tools"
+                >
+                    <Wrench className="h-4 w-4" />
                 </Button>
                 <div className="mt-2 flex h-8 w-8 items-center justify-center" title={isProcessing ? "Active" : "Idle"}>
                     <div
@@ -67,6 +91,22 @@ export function ToolsPanelContent({ params }: ToolsPanelContentProps) {
                             className={`h-2 w-2 rounded-full ${isProcessing ? "bg-green-500 animate-pulse" : "bg-muted-foreground/40"}`}
                         />
                     </div>
+                    <Button
+                        variant={rightPanelView === "files" ? "secondary" : "ghost"}
+                        size="icon"
+                        onClick={() => setRightPanelView("files")}
+                        title="Files"
+                    >
+                        <FolderOpen className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        variant={rightPanelView === "tools" ? "secondary" : "ghost"}
+                        size="icon"
+                        onClick={() => setRightPanelView("tools")}
+                        title="Tools"
+                    >
+                        <Wrench className="h-4 w-4" />
+                    </Button>
                     <ThemeToggle />
                     <SettingsDialog />
                 </div>

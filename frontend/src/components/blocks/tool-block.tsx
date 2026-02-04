@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Terminal, ChevronDown, ChevronRight, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Check, XCircle, Loader2 } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { MessageBlock } from "@/lib/types";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 interface ToolBlockProps {
@@ -50,23 +49,16 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
 
     // Get status icon - use useMemo to avoid recreating component during render
     const statusIcon = useMemo(() => {
-        if (isComplete) return <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />;
-        if (isError) return <XCircle className="h-4 w-4 text-red-500 shrink-0" />;
-        if (isExecuting) return <Loader2 className="h-4 w-4 text-blue-500 animate-spin shrink-0" />;
-        if (isStreaming) return <Loader2 className="h-4 w-4 text-purple-500 animate-spin shrink-0" />;
-        if (isPending) return <span className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />;
+        if (isComplete) return <Check className="h-4 w-4 text-muted-foreground shrink-0" />;
+        if (isError) return <XCircle className="h-4 w-4 text-destructive shrink-0" />;
+        if (isExecuting) return <Loader2 className="h-4 w-4 text-muted-foreground animate-spin shrink-0" />;
+        if (isStreaming) return <Loader2 className="h-4 w-4 text-muted-foreground animate-spin shrink-0" />;
+        if (isPending) return <span className="h-2 w-2 rounded-full bg-foreground/40 animate-pulse shrink-0" />;
         return null;
     }, [isComplete, isError, isExecuting, isStreaming, isPending]);
 
     // Get status background color
-    const getBgClass = () => {
-        if (isError) return "bg-red-50 dark:bg-red-900/20";
-        if (isComplete) return "bg-green-50/50 dark:bg-green-900/10";
-        if (isExecuting) return "bg-blue-50 dark:bg-blue-900/20";
-        if (isStreaming) return "bg-purple-50 dark:bg-purple-900/20";
-        if (isPending) return "bg-yellow-50 dark:bg-yellow-900/20";
-        return "bg-muted/30";
-    };
+    const getBgClass = () => "bg-muted/30";
 
     // Format input/output for display
     const formatContent = (data: any) => {
@@ -75,24 +67,23 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
     };
 
     return (
-        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="my-2 w-full min-w-0">
+        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="my-1 w-full min-w-0">
             <CollapsibleTrigger
                 className={cn(
-                    "flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium",
+                    "flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm font-medium",
                     "transition-colors duration-200",
-                    "hover:bg-muted/50",
+                    "hover:bg-muted/40",
                     getBgClass()
                 )}
             >
                 {isOpen ? (
-                    <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                    <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
                 ) : (
-                    <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                    <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
                 )}
-                <Terminal className="h-4 w-4 flex-shrink-0" />
-                <Badge variant="outline" className="font-mono text-xs">
+                <span className="font-mono text-xs text-muted-foreground">
                     {toolName}
-                </Badge>
+                </span>
                 <span className="flex-1 text-left text-xs text-muted-foreground truncate">
                     {isPending && "Waiting..."}
                     {isStreaming && "Generating..."}
@@ -110,9 +101,9 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
                         <div className="min-w-0">
                             <div className="text-muted-foreground mb-1 uppercase tracking-wider text-[10px] flex items-center gap-2">
                                 <span>Generating</span>
-                                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                <span className="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-pulse" />
                             </div>
-                            <pre className="bg-blue-50/50 dark:bg-blue-900/10 p-2 rounded max-h-[200px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full text-blue-600 dark:text-blue-400">
+                            <pre className="bg-muted/40 p-2 rounded max-h-[200px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full text-foreground">
                                 {content.inputBuffer}
                             </pre>
                         </div>
@@ -122,7 +113,7 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
                     {content?.input && !content?.inputBuffer && (
                         <div className="min-w-0">
                             <div className="text-muted-foreground mb-1 uppercase tracking-wider text-[10px]">Input</div>
-                            <pre className="bg-muted/50 p-2 rounded max-h-[100px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full">
+                            <pre className="bg-muted/40 p-2 rounded max-h-[100px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full text-foreground">
                                 {formatContent(content.input)}
                             </pre>
                         </div>
@@ -135,10 +126,8 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
                                 {isError ? "Error" : "Result"}
                             </div>
                             <pre className={cn(
-                                "p-2 rounded max-h-[100px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full",
-                                isError
-                                    ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
-                                    : "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"
+                                "p-2 rounded max-h-[100px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full bg-muted/40",
+                                isError ? "text-destructive" : "text-foreground"
                             )}>
                                 {formatContent(content.result)}
                             </pre>
@@ -149,4 +138,3 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
         </Collapsible>
     );
 }
-

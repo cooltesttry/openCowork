@@ -18,11 +18,11 @@ export function PermissionCard({ block, onApprove, onDeny }: PermissionCardProps
         : block.content?.description || "This tool requires your permission to execute.";
 
     return (
-        <Card className="my-3 border-yellow-300 dark:border-yellow-700 bg-yellow-50/50 dark:bg-yellow-900/10 w-full min-w-0 overflow-hidden">
+        <Card className="my-3 border-border bg-card w-full min-w-0 overflow-hidden">
             <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30">
-                        <Shield className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                    <div className="p-1.5 rounded-full bg-muted/40">
+                        <Shield className="h-4 w-4 text-muted-foreground" />
                     </div>
                     <div>
                         <h4 className="font-medium text-sm">Permission Request</h4>
@@ -34,9 +34,9 @@ export function PermissionCard({ block, onApprove, onDeny }: PermissionCardProps
             </CardHeader>
 
             <CardContent className="py-2">
-                <div className="flex items-start gap-2 p-2 rounded bg-yellow-100/50 dark:bg-yellow-900/20 text-sm">
-                    <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
-                    <p className="text-yellow-800 dark:text-yellow-200">{description}</p>
+                <div className="flex items-start gap-2 p-2 rounded bg-muted/30 text-sm">
+                    <AlertTriangle className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                    <p className="text-foreground">{description}</p>
                 </div>
             </CardContent>
 
@@ -52,7 +52,7 @@ export function PermissionCard({ block, onApprove, onDeny }: PermissionCardProps
                 <Button
                     size="sm"
                     onClick={onApprove}
-                    className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white"
+                    className="flex-1"
                 >
                     Approve
                 </Button>

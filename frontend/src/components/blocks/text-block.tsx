@@ -14,8 +14,6 @@ import { useChat } from "@/lib/store";
 
 // Import KaTeX CSS for math rendering
 import "katex/dist/katex.min.css";
-// Import highlight.js CSS for code syntax highlighting
-import "highlight.js/styles/github-dark.css";
 
 interface TextBlockProps {
     block: MessageBlock;
@@ -71,9 +69,9 @@ function CodeBlockWrapper({
             <pre
                 ref={preRef}
                 className={cn(
-                    "bg-slate-100 dark:bg-slate-900 p-4 rounded-lg overflow-x-auto",
-                    "border border-slate-300 dark:border-slate-700",
-                    "text-sm font-mono leading-relaxed",
+                    "bg-muted/40 dark:bg-muted/30 p-4 rounded-md overflow-x-auto",
+                    "border border-border",
+                    "text-sm font-mono leading-relaxed text-foreground",
                     className
                 )}
             >
@@ -84,7 +82,7 @@ function CodeBlockWrapper({
                 {isHTML && (
                     <button
                         onClick={handlePreview}
-                        className="px-2 py-1 rounded text-xs bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors"
+                        className="px-2 py-1 rounded text-xs bg-muted/50 hover:bg-muted/70 text-muted-foreground transition-colors"
                         title="Preview HTML"
                     >
                         <Eye className="h-3.5 w-3.5 inline mr-1" />
@@ -93,10 +91,10 @@ function CodeBlockWrapper({
                 )}
                 <button
                     onClick={handleCopy}
-                    className="px-2 py-1 rounded text-xs bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors"
+                    className="px-2 py-1 rounded text-xs bg-muted/50 hover:bg-muted/70 text-muted-foreground transition-colors"
                     title="Copy code"
                 >
-                    {copied ? <Check className="h-3.5 w-3.5 inline mr-1 text-green-500" /> : <Copy className="h-3.5 w-3.5 inline mr-1" />}
+                    {copied ? <Check className="h-3.5 w-3.5 inline mr-1 text-foreground" /> : <Copy className="h-3.5 w-3.5 inline mr-1" />}
                     {copied ? 'Copied' : 'Copy'}
                 </button>
             </div>
@@ -135,23 +133,17 @@ export function TextBlock({ block, onPreviewHTML }: TextBlockProps) {
 
     return (
         <div className={cn(
-            "prose dark:prose-invert max-w-none break-words min-w-0 overflow-hidden",
-            // Softer text color in dark mode (not pure white)
-            "text-zinc-800 dark:text-zinc-300",
+            "chat-markdown prose dark:prose-invert max-w-none break-words min-w-0 overflow-hidden",
+            "text-foreground",
             "prose-p:leading-7 prose-pre:my-2",
-            "prose-pre:rounded-lg prose-code:rounded-sm prose-code:before:content-none prose-code:after:content-none",
-            // Headings - slightly brighter but not pure white
-            "prose-headings:font-bold prose-h1:text-xl prose-h2:text-lg prose-h3:text-base",
-            "prose-headings:text-zinc-900 dark:prose-headings:text-zinc-200",
-            // Bold/strong text - match heading color
-            "prose-strong:text-zinc-900 dark:prose-strong:text-zinc-200",
-            // Table styling
+            "prose-pre:rounded-md prose-code:rounded-sm prose-code:before:content-none prose-code:after:content-none",
+            "prose-headings:font-semibold prose-h1:text-xl prose-h2:text-lg prose-h3:text-base",
+            "prose-headings:text-foreground",
+            "prose-strong:text-foreground",
             "prose-table:border-collapse prose-table:w-full prose-table:my-4",
-            "prose-th:border prose-th:border-border prose-th:p-2 prose-th:bg-muted/50",
+            "prose-th:border prose-th:border-border prose-th:p-2 prose-th:bg-muted/30",
             "prose-td:border prose-td:border-border prose-td:p-2",
-            // Link styling
-            "prose-a:text-primary hover:prose-a:underline",
-            // List spacing
+            "prose-a:text-foreground hover:prose-a:underline",
             "prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5"
         )}>
             <div className="markdown-content min-w-0 overflow-hidden">
@@ -198,7 +190,7 @@ export function TextBlock({ block, onPreviewHTML }: TextBlockProps) {
                             if (isInline) {
                                 return (
                                     <code
-                                        className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-sm font-mono border border-primary/20 break-all"
+                                        className="bg-muted/60 text-foreground px-1.5 py-0.5 rounded text-sm font-mono border border-border break-all"
                                         {...props}
                                     >
                                         {children}
@@ -208,14 +200,14 @@ export function TextBlock({ block, onPreviewHTML }: TextBlockProps) {
 
                             // Block code - just return code element, pre is handled above
                             return (
-                                <code className={cn("text-slate-800 dark:text-slate-200", className)} {...props}>
+                                <code className={cn("text-foreground", className)} {...props}>
                                     {children}
                                 </code>
                             );
                         },
                         table({ children }: any) {
                             return (
-                                <div className="overflow-x-auto w-full my-6 border rounded-lg bg-card/50">
+                                <div className="overflow-x-auto w-full my-6">
                                     <table className="w-full text-sm">
                                         {children}
                                     </table>

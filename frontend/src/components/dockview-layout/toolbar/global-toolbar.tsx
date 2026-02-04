@@ -34,7 +34,7 @@ export function GlobalToolbar() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                    title={isSidebarOpen ? "隐藏 MCP Servers" : "显示 MCP Servers"}
+                    title={isSidebarOpen ? "隐藏侧边栏" : "显示侧边栏"}
                 >
                     {isSidebarOpen ? <PanelRightClose className="h-5 w-5" /> : <PanelRightOpen className="h-5 w-5" />}
                 </Button>

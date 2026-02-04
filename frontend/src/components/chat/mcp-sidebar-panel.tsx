@@ -2,49 +2,28 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-    fetchConfig,
-    toggleMcpServer,
-    toggleSearch,
-    fetchSkillsAgents,
-    warmupSession,
-    SubagentInfo,
     fetchWorkspaceSkills,
     addWorkspaceSkill,
     removeWorkspaceSkill,
     fetchSkillsCatalog,
     SkillsCatalogEntry,
     WorkspaceSkillInfo,
+    fetchWorkspaceMcpServers,
+    addWorkspaceMcpServer,
+    disableWorkspaceMcpServer,
+    WorkspaceMcpServer,
+    fetchGlobalMcpServers,
 } from "@/lib/api";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Server, RefreshCw, Search, FolderOpen, Sparkles, Bot, CheckCircle2, Plus, Trash2 } from "lucide-react";
+import { Server, RefreshCw, Sparkles, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import * as Tabs from "@radix-ui/react-tabs";
 import { FileExplorer } from "../file-explorer/file-explorer";
 import { useWorkspace } from "@/lib/workspace-store";
+import { useChat } from "@/lib/store";
 import type { OpenImageOptions } from "@/components/image-editor/types";
-
-interface MCPServer {
-    name: string;
-    type: "stdio" | "sse" | "http" | "sdk";
-    enabled: boolean;
-    command?: string;
-    args?: string[];
-    url?: string;
-}
-
-interface SearchConfig {
-    provider: "serper" | "tavily" | "brave" | "none";
-    api_key: string | null;
-    enabled: boolean;
-}
-
-interface ImageGenConfig {
-    selected_endpoint: string;
-    model_name: string;
-}
 
 interface McpSidebarPanelProps {
     onMentionFile?: (path: string) => void;
@@ -58,40 +37,41 @@ interface McpSidebarPanelProps {
 
 export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSelectFile, onOpenImage, isPreviewPanelActive, externalViewFilter }: McpSidebarPanelProps) {
     const { currentWorkspace } = useWorkspace();
-    const [servers, setServers] = useState<MCPServer[]>([]);
-    const [searchConfig, setSearchConfig] = useState<SearchConfig | null>(null);
-    const [imageGenConfig, setImageGenConfig] = useState<ImageGenConfig | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [toggling, setToggling] = useState<string | null>(null);
+    const { rightPanelView } = useChat();
+    const [toolsMode, setToolsMode] = useState<"active" | "add">("active");
+    const [addTab, setAddTab] = useState<"mcp" | "skills">("skills");
 
-    // Skills & Subagents state
+    const [mcpServers, setMcpServers] = useState<WorkspaceMcpServer[]>([]);
+    const [mcpLoading, setMcpLoading] = useState(true);
+    const [globalMcpServers, setGlobalMcpServers] = useState<WorkspaceMcpServer[]>([]);
+    const [globalMcpLoading, setGlobalMcpLoading] = useState(false);
+    const [addingMcpName, setAddingMcpName] = useState<string | null>(null);
+    const [removingMcp, setRemovingMcp] = useState<string | null>(null);
+    const [mcpQuery, setMcpQuery] = useState("");
+
+    // Skills state
     const [skills, setSkills] = useState<WorkspaceSkillInfo[]>([]);
-    const [subagents, setSubagents] = useState<SubagentInfo[]>([]);
-    const [loadedAgents, setLoadedAgents] = useState<Set<string>>(new Set());
     const [skillsLoading, setSkillsLoading] = useState(true);
-    const [agentsLoading, setAgentsLoading] = useState(true);
-    const [libraryOpen, setLibraryOpen] = useState(false);
     const [libraryLoading, setLibraryLoading] = useState(false);
     const [libraryQuery, setLibraryQuery] = useState("");
     const [libraryEntries, setLibraryEntries] = useState<SkillsCatalogEntry[]>([]);
     const [addingSkillId, setAddingSkillId] = useState<string | null>(null);
     const [removingSkillId, setRemovingSkillId] = useState<string | null>(null);
 
-    const loadData = async () => {
+    const loadWorkspaceMcp = async () => {
+        if (!currentWorkspace?.id) {
+            setMcpServers([]);
+            setMcpLoading(false);
+            return;
+        }
         try {
-            setLoading(true);
-            const [mcpData, searchData, imageGenData] = await Promise.all([
-                fetchConfig<MCPServer[]>("/mcp"),
-                fetchConfig<SearchConfig>("/search"),
-                fetchConfig<ImageGenConfig>("/image_gen").catch(() => null),
-            ]);
-            setServers(mcpData);
-            setSearchConfig(searchData);
-            setImageGenConfig(imageGenData);
+            setMcpLoading(true);
+            const res = await fetchWorkspaceMcpServers(currentWorkspace.id);
+            setMcpServers(res.servers || []);
         } catch (err) {
-            console.error("Failed to load data:", err);
+            console.error("Failed to load workspace MCP:", err);
         } finally {
-            setLoading(false);
+            setMcpLoading(false);
         }
     };
 
@@ -112,32 +92,6 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
         }
     };
 
-    const loadAgents = async () => {
-        try {
-            setAgentsLoading(true);
-            const fsData = await fetchSkillsAgents();
-            setSubagents(fsData.agents);
-
-            try {
-                const warmupData = await warmupSession({});
-                if (warmupData.status === "success") {
-                    const agentNames = Array.isArray(warmupData.agents)
-                        ? warmupData.agents
-                            .map((agent: any) => (typeof agent === "string" ? agent : agent?.name))
-                            .filter(Boolean)
-                        : [];
-                    setLoadedAgents(new Set(agentNames as string[]));
-                }
-            } catch (warmupErr) {
-                console.debug("Warmup skipped:", warmupErr);
-            }
-        } catch (err) {
-            console.error("Failed to load agents:", err);
-        } finally {
-            setAgentsLoading(false);
-        }
-    };
-
     const loadLibrary = async () => {
         try {
             setLibraryLoading(true);
@@ -153,53 +107,74 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
         }
     };
 
-    useEffect(() => {
-        loadData();
-        loadAgents();
-    }, []);
+    const loadGlobalMcp = async () => {
+        try {
+            setGlobalMcpLoading(true);
+            const res = await fetchGlobalMcpServers();
+            setGlobalMcpServers(res || []);
+        } catch (err) {
+            console.error("Failed to load global MCP servers:", err);
+        } finally {
+            setGlobalMcpLoading(false);
+        }
+    };
 
     useEffect(() => {
+        loadWorkspaceMcp();
         loadWorkspaceSkills();
     }, [currentWorkspace?.id]);
 
     useEffect(() => {
-        if (libraryOpen) {
+        if (toolsMode === "add") {
             loadLibrary();
+            loadGlobalMcp();
         }
-    }, [libraryOpen]);
+    }, [toolsMode]);
 
-    const handleToggleMcp = async (name: string) => {
-        setToggling(name);
+    const refreshTools = async () => {
+        await Promise.all([loadWorkspaceMcp(), loadWorkspaceSkills()]);
+    };
+
+    const handleAddMcpFromGlobal = async (server: WorkspaceMcpServer) => {
+        if (!currentWorkspace?.id) {
+            toast.error("未选择 Workspace");
+            return;
+        }
+        setAddingMcpName(server.name);
         try {
-            const result = await toggleMcpServer(name);
-            setServers((prev) =>
-                prev.map((s) =>
-                    s.name === name ? { ...s, enabled: result.enabled } : s
-                )
-            );
-            toast.success(result.enabled ? "已激活" : "已关闭", {
-                description: `MCP Server: ${name}`,
-            });
+            const payload: WorkspaceMcpServer = {
+                name: server.name,
+                type: server.type,
+                command: server.command,
+                args: server.args || [],
+                url: server.url,
+                env: server.env || {},
+                enabled: true,
+            };
+            const res = await addWorkspaceMcpServer(currentWorkspace.id, payload);
+            setMcpServers(res.servers || []);
+            toast.success("MCP 已添加", { description: server.name });
         } catch (err) {
-            toast.error("切换失败", { description: String(err) });
+            toast.error("添加失败", { description: String(err) });
         } finally {
-            setToggling(null);
+            setAddingMcpName(null);
         }
     };
 
-    const handleToggleSearch = async () => {
-        if (!searchConfig) return;
-        setToggling("search");
+    const handleDisableMcp = async (name: string) => {
+        if (!currentWorkspace?.id) {
+            toast.error("未选择 Workspace");
+            return;
+        }
+        setRemovingMcp(name);
         try {
-            const result = await toggleSearch();
-            setSearchConfig((prev) => prev ? { ...prev, enabled: result.enabled } : null);
-            toast.success(result.enabled ? "已激活" : "已关闭", {
-                description: "搜索工具",
-            });
+            const res = await disableWorkspaceMcpServer(currentWorkspace.id, name);
+            setMcpServers(res.servers || []);
+            toast.success("MCP 已停用", { description: name });
         } catch (err) {
-            toast.error("切换失败", { description: String(err) });
+            toast.error("停用失败", { description: String(err) });
         } finally {
-            setToggling(null);
+            setRemovingMcp(null);
         }
     };
 
@@ -237,16 +212,17 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
         }
     };
 
-    // Check if search is configured (has provider and api_key)
-    const isSearchConfigured = searchConfig &&
-        searchConfig.provider !== "none" &&
-        searchConfig.api_key;
+    const activeMcpServers = useMemo(() => {
+        return mcpServers.filter((server) => server.enabled !== false);
+    }, [mcpServers]);
 
-    // Count enabled items
-    const searchEnabled = isSearchConfigured && searchConfig.enabled ? 1 : 0;
-    const mcpEnabled = servers.filter((s) => s.enabled).length;
-    const totalItems = (isSearchConfigured ? 1 : 0) + servers.length;
-    const enabledCount = searchEnabled + mcpEnabled;
+    const activeMcpNames = useMemo(() => {
+        return new Set(activeMcpServers.map((server) => server.name));
+    }, [activeMcpServers]);
+
+    const workspaceMcpNames = useMemo(() => {
+        return new Set(mcpServers.map((server) => server.name));
+    }, [mcpServers]);
 
     const sortedSkills = useMemo(() => {
         return [...skills].sort((a, b) => a.name.localeCompare(b.name));
@@ -273,399 +249,314 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
         });
     }, [libraryEntries, libraryQuery]);
 
-    // Sort subagents: loaded first, then builtin
-    const sortedAgents = [...subagents].sort((a, b) => {
-        const aLoaded = loadedAgents.has(a.name);
-        const bLoaded = loadedAgents.has(b.name);
-        if (aLoaded && !bLoaded) return -1;
-        if (!aLoaded && bLoaded) return 1;
-        if (a.is_builtin && !b.is_builtin) return -1;
-        if (!a.is_builtin && b.is_builtin) return 1;
-        return a.name.localeCompare(b.name);
-    });
+    const filteredGlobalMcpServers = useMemo(() => {
+        if (!mcpQuery.trim()) return globalMcpServers;
+        const q = mcpQuery.trim().toLowerCase();
+        return globalMcpServers.filter((server) => {
+            const name = (server.name || "").toLowerCase();
+            const type = (server.type || "").toLowerCase();
+            const command = (server.command || "").toLowerCase();
+            const url = (server.url || "").toLowerCase();
+            return name.includes(q) || type.includes(q) || command.includes(q) || url.includes(q);
+        });
+    }, [globalMcpServers, mcpQuery]);
 
     return (
         <div className="h-full flex flex-col bg-card/50">
-            <Tabs.Root defaultValue="files" className="flex flex-col h-full">
-                {/* Tabs Header */}
-                <div className="flex items-center justify-between px-3 py-1.5 border-b bg-card/80 backdrop-blur shrink-0">
-                    <Tabs.List className="flex items-center gap-3">
-                        <Tabs.Trigger
-                            value="files"
-                            className="font-medium text-xs data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground transition-colors cursor-pointer outline-none flex items-center gap-1.5"
-                        >
-                            <FolderOpen className="h-3.5 w-3.5" />
-                            Files
-                        </Tabs.Trigger>
-                        <Tabs.Trigger
-                            value="mcp"
-                            className="font-medium text-xs data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground transition-colors cursor-pointer outline-none flex items-center gap-1.5"
-                        >
-                            <Server className="h-3.5 w-3.5" />
-                            MCP
-                        </Tabs.Trigger>
-                        <Tabs.Trigger
-                            value="skills"
-                            className="font-medium text-xs data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground transition-colors cursor-pointer outline-none flex items-center gap-1.5"
-                        >
-                            <Sparkles className="h-3.5 w-3.5" />
-                            Skills
-                        </Tabs.Trigger>
-                        <Tabs.Trigger
-                            value="agents"
-                            className="font-medium text-xs data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground transition-colors cursor-pointer outline-none flex items-center gap-1.5"
-                        >
-                            <Bot className="h-3.5 w-3.5" />
-                            Agents
-                        </Tabs.Trigger>
-                    </Tabs.List>
-                </div>
-
-                {/* MCP Tab Content */}
-                <Tabs.Content value="mcp" className="flex flex-col flex-1 overflow-hidden data-[state=inactive]:hidden mt-0">
-                    {/* MCP Header Stats & Refresh (Sub-header) */}
+            {rightPanelView === "files" ? (
+                <FileExplorer
+                    className="h-full border-0 bg-transparent"
+                    onMentionFile={onMentionFile}
+                    onOpenFile={onOpenFile}
+                    onOpenInPanel={onOpenInPanel}
+                    onSelectFile={onSelectFile}
+                    onOpenImage={onOpenImage}
+                    isPreviewPanelActive={isPreviewPanelActive}
+                    workspaceId={currentWorkspace?.id}
+                    externalViewFilter={externalViewFilter}
+                />
+            ) : (
+                <div className="flex flex-col flex-1 overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/20 shrink-0">
                         <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Enabled:</span>
-                            <Badge variant="secondary" className="text-xs">
-                                {enabledCount}/{totalItems}
-                            </Badge>
-                        </div>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={loadData}
-                            disabled={loading}
-                            title="Refresh MCP Config"
-                        >
-                            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-                        </Button>
-                    </div>
-
-                    {/* Server List */}
-                    <div className="flex-1 overflow-y-auto px-2 py-2">
-                        {loading && servers.length === 0 ? (
-                            <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
-                                加载中...
-                            </div>
-                        ) : !isSearchConfigured && servers.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-32 text-sm text-muted-foreground gap-2">
-                                <Server className="h-8 w-8 opacity-30" />
-                                <span>暂无 MCP Server</span>
-                                <span className="text-xs">请在设置中添加</span>
-                            </div>
-                        ) : (
-                            <div className="space-y-1">
-                                {/* Search Tool - Always First when configured */}
-                                {isSearchConfigured && searchConfig && (
-                                    <div
-                                        className={`flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${searchConfig.enabled
-                                            ? "bg-blue-500/10 hover:bg-blue-500/15 border border-blue-500/20"
-                                            : "bg-muted/30 hover:bg-muted/50 opacity-60"
-                                            }`}
-                                    >
-                                        <div className="flex flex-col gap-0.5 min-w-0 flex-1 mr-3">
-                                            <div className="flex items-center gap-2">
-                                                <Search className={`h-3.5 w-3.5 ${searchConfig.enabled ? "text-blue-500" : "text-muted-foreground"
-                                                    }`} />
-                                                <span className={`font-medium text-sm truncate ${searchConfig.enabled ? "text-foreground" : "text-muted-foreground"
-                                                    }`}>
-                                                    搜索工具
-                                                </span>
-                                                <Badge
-                                                    variant="outline"
-                                                    className={`text-[10px] px-1.5 py-0 ${searchConfig.enabled
-                                                        ? "border-blue-500/50 text-blue-600 dark:text-blue-400"
-                                                        : "opacity-50"
-                                                        }`}
-                                                >
-                                                    {searchConfig.provider}
-                                                </Badge>
-                                            </div>
-                                            <span className="text-xs text-muted-foreground truncate">
-                                                search-tools (内置)
-                                            </span>
-                                        </div>
-                                        <Switch
-                                            checked={searchConfig.enabled}
-                                            onCheckedChange={handleToggleSearch}
-                                            disabled={toggling === "search"}
-                                            className="shrink-0"
-                                        />
-                                    </div>
-                                )}
-
-                                {/* Regular MCP Servers */}
-                                {servers.map((server) => (
-                                    <div
-                                        key={server.name}
-                                        className={`flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${server.enabled
-                                            ? "bg-primary/5 hover:bg-primary/10"
-                                            : "bg-muted/30 hover:bg-muted/50 opacity-60"
-                                            }`}
-                                    >
-                                        <div className="flex flex-col gap-0.5 min-w-0 flex-1 mr-3">
-                                            <div className="flex items-center gap-2">
-                                                <span className={`font-medium text-sm truncate ${server.enabled ? "text-foreground" : "text-muted-foreground"
-                                                    }`}>
-                                                    {server.name}
-                                                </span>
-                                                <Badge
-                                                    variant="outline"
-                                                    className={`text-[10px] px-1.5 py-0 ${server.enabled ? "" : "opacity-50"
-                                                        }`}
-                                                >
-                                                    {server.type}
-                                                </Badge>
-                                            </div>
-                                            <span className="text-xs text-muted-foreground truncate">
-                                                {server.type === "stdio"
-                                                    ? `${server.command || ""} ${(server.args || []).join(" ")}`.trim() || "—"
-                                                    : server.url || "—"}
-                                            </span>
-                                        </div>
-                                        <Switch
-                                            checked={server.enabled}
-                                            onCheckedChange={() => handleToggleMcp(server.name)}
-                                            disabled={
-                                                toggling === server.name ||
-                                                // Disable imagegen if image model not configured
-                                                (server.name === "imagegen" &&
-                                                    (!imageGenConfig?.selected_endpoint || !imageGenConfig?.model_name))
-                                            }
-                                            className="shrink-0"
-                                            title={
-                                                server.name === "imagegen" &&
-                                                    (!imageGenConfig?.selected_endpoint || !imageGenConfig?.model_name)
-                                                    ? "请先在 Settings 中配置 Image Model"
-                                                    : undefined
-                                            }
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                    {/* Footer hint */}
-                    <div className="px-4 py-2 border-t text-xs text-muted-foreground text-center">
-                        仅激活的服务器会被 Agent 调用
-                    </div>
-                </Tabs.Content>
-
-                {/* Skills Tab Content */}
-                <Tabs.Content value="skills" className="flex flex-col flex-1 overflow-hidden data-[state=inactive]:hidden mt-0">
-                    <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/20 shrink-0">
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Installed:</span>
-                            <Badge variant="secondary" className="text-xs">
-                                {skills.length}
-                            </Badge>
+                            <span className="text-xs text-muted-foreground">
+                                {toolsMode === "active" ? "Active Tools" : "Add Tools"}
+                            </span>
+                            {toolsMode === "active" && (
+                                <Badge variant="secondary" className="text-xs">
+                                    {activeMcpServers.length + skills.length}
+                                </Badge>
+                            )}
                         </div>
                         <div className="flex items-center gap-2">
                             <Button
                                 variant="secondary"
                                 size="sm"
-                                onClick={() => setLibraryOpen((prev) => !prev)}
+                                onClick={() => {
+                                    setToolsMode((prev) => {
+                                        const next = prev === "active" ? "add" : "active";
+                                        if (next === "add") {
+                                            setAddTab("skills");
+                                        }
+                                        return next;
+                                    });
+                                }}
                                 disabled={!currentWorkspace?.id}
                             >
-                                <Plus className="h-3.5 w-3.5 mr-1" />
-                                {libraryOpen ? "Close" : "Add"}
+                                {toolsMode === "active" ? (
+                                    <>
+                                        <Plus className="h-3.5 w-3.5 mr-1" />
+                                        Add
+                                    </>
+                                ) : (
+                                    "Back"
+                                )}
                             </Button>
                             <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6"
-                                onClick={loadWorkspaceSkills}
-                                disabled={skillsLoading}
-                                title="Refresh Skills"
+                                onClick={refreshTools}
+                                disabled={mcpLoading || skillsLoading}
+                                title="Refresh Tools"
                             >
-                                <RefreshCw className={`h-3.5 w-3.5 ${skillsLoading ? "animate-spin" : ""}`} />
+                                <RefreshCw className={`h-3.5 w-3.5 ${(mcpLoading || skillsLoading) ? "animate-spin" : ""}`} />
                             </Button>
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto px-2 py-2">
-                        {libraryOpen ? (
-                            <div className="h-full flex flex-col gap-3">
-                                <Input
-                                    value={libraryQuery}
-                                    onChange={(e) => setLibraryQuery(e.target.value)}
-                                    placeholder="搜索库里的 Skills"
-                                />
-                                <div className="flex-1 overflow-y-auto space-y-2">
-                                    {libraryLoading ? (
-                                        <div className="text-sm text-muted-foreground">加载中...</div>
-                                    ) : filteredLibraryEntries.length === 0 ? (
-                                        <div className="text-sm text-muted-foreground">库里暂无可用 Skills。</div>
+                    <div className="flex-1 overflow-hidden px-2 py-2">
+                        {!currentWorkspace?.id ? (
+                            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                                请选择 Workspace
+                            </div>
+                        ) : toolsMode === "add" ? (
+                            <div className="h-full flex flex-col gap-2">
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant={addTab === "mcp" ? "secondary" : "ghost"}
+                                        size="sm"
+                                        onClick={() => setAddTab("mcp")}
+                                    >
+                                        MCP
+                                    </Button>
+                                    <Button
+                                        variant={addTab === "skills" ? "secondary" : "ghost"}
+                                        size="sm"
+                                        onClick={() => setAddTab("skills")}
+                                    >
+                                        Skills
+                                    </Button>
+                                </div>
+
+                                {addTab === "mcp" ? (
+                                    <div className="flex-1 rounded-lg border bg-background p-3 space-y-3 flex flex-col">
+                                        <Input
+                                            value={mcpQuery}
+                                            onChange={(e) => setMcpQuery(e.target.value)}
+                                            placeholder="搜索 MCP"
+                                        />
+                                        <div className="flex-1 overflow-y-auto space-y-0.5">
+                                            {globalMcpLoading ? (
+                                                <div className="text-sm text-muted-foreground">加载中...</div>
+                                            ) : filteredGlobalMcpServers.length === 0 ? (
+                                                <div className="text-sm text-muted-foreground">暂无可用 MCP 配置。</div>
+                                            ) : (
+                                                filteredGlobalMcpServers.map((server) => {
+                                                    const installed = activeMcpNames.has(server.name);
+                                                    const exists = workspaceMcpNames.has(server.name);
+                                                    const isAdding = addingMcpName === server.name;
+                                                    const label = installed ? "Enabled" : exists ? "Enable" : "Add";
+                                                    return (
+                                                        <div
+                                                            key={server.name}
+                                                        className="flex items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-0"
+                                                        >
+                                                            <div className="min-w-0">
+                                                                <div className="text-sm font-medium truncate">{server.name}</div>
+                                                                <div className="text-xs text-muted-foreground truncate">
+                                                                    {server.type === "stdio"
+                                                                        ? `${server.command || ""} ${(server.args || []).join(" ")}`.trim() || "—"
+                                                                        : server.url || "—"}
+                                                                </div>
+                                                            </div>
+                                                            <Button
+                                                                size="sm"
+                                                                variant={installed ? "outline" : "secondary"}
+                                                                disabled={installed || isAdding}
+                                                                onClick={() => handleAddMcpFromGlobal(server)}
+                                                            >
+                                                                {isAdding ? "Adding..." : label}
+                                                            </Button>
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 rounded-lg border bg-background p-3 space-y-3 flex flex-col">
+                                        <Input
+                                            value={libraryQuery}
+                                            onChange={(e) => setLibraryQuery(e.target.value)}
+                                            placeholder="搜索库里的 Skills"
+                                        />
+                                        <div className="flex-1 overflow-y-auto space-y-0.5">
+                                            {libraryLoading ? (
+                                                <div className="text-sm text-muted-foreground">加载中...</div>
+                                            ) : filteredLibraryEntries.length === 0 ? (
+                                                <div className="text-sm text-muted-foreground">库里暂无可用 Skills。</div>
+                                            ) : (
+                                                filteredLibraryEntries.map((entry) => {
+                                                    const entryId = resolveLibraryEntryId(entry);
+                                                    const installed = installedSkillIds.has(entryId);
+                                                    const isAdding = addingSkillId === entry.skill_id;
+                                                    return (
+                                                        <div
+                                                            key={entry.skill_id}
+                                                        className="flex items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-0"
+                                                        >
+                                                            <div className="min-w-0">
+                                                                <div className="text-sm font-medium truncate">{entry.name}</div>
+                                                                <div className="text-xs text-muted-foreground truncate">
+                                                                    {entry.description || "—"}
+                                                                </div>
+                                                            </div>
+                                                            <Button
+                                                                size="sm"
+                                                                variant={installed ? "outline" : "secondary"}
+                                                                disabled={installed || isAdding}
+                                                                onClick={() => handleAddSkill(entry)}
+                                                            >
+                                                                {installed ? "Installed" : isAdding ? "Adding..." : "Add"}
+                                                            </Button>
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="h-full overflow-y-auto space-y-3">
+                                <div className="space-y-1">
+                                    <div className="flex items-center justify-between px-1">
+                                        <span className="text-xs text-muted-foreground uppercase">MCP Servers</span>
+                                        <Badge variant="secondary" className="text-xs">
+                                            {activeMcpServers.length}
+                                        </Badge>
+                                    </div>
+                                    {mcpLoading ? (
+                                        <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+                                            加载中...
+                                        </div>
+                                    ) : activeMcpServers.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center h-24 text-sm text-muted-foreground gap-2">
+                                            <Server className="h-8 w-8 opacity-30" />
+                                            <span>暂无 MCP</span>
+                                            <span className="text-xs">点击 Add 添加</span>
+                                        </div>
                                     ) : (
-                                        filteredLibraryEntries.map((entry) => {
-                                            const entryId = resolveLibraryEntryId(entry);
-                                            const installed = installedSkillIds.has(entryId);
-                                            const isAdding = addingSkillId === entry.skill_id;
-                                            return (
+                                        <div className="space-y-0.5">
+                                            {activeMcpServers.map((server) => (
                                                 <div
-                                                    key={entry.skill_id}
-                                                    className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2"
+                                                    key={server.name}
+                                                    className="group flex items-center justify-between px-3 py-0 rounded-lg transition-colors bg-muted/30 hover:bg-muted/50"
                                                 >
-                                                    <div className="min-w-0">
-                                                        <div className="text-sm font-medium truncate">{entry.name}</div>
-                                                        <div className="text-xs text-muted-foreground truncate">
-                                                            {entry.description || "—"}
+                                                    <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-medium text-sm truncate">{server.name}</span>
+                                                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                                                {server.type}
+                                                            </Badge>
                                                         </div>
                                                     </div>
                                                     <Button
-                                                        size="sm"
-                                                        variant={installed ? "outline" : "secondary"}
-                                                        disabled={installed || isAdding}
-                                                        onClick={() => handleAddSkill(entry)}
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        onClick={() => handleDisableMcp(server.name)}
+                                                        disabled={removingMcp === server.name}
+                                                        title="Disable MCP"
                                                     >
-                                                        {installed ? "Installed" : isAdding ? "Adding..." : "Add"}
+                                                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                                                     </Button>
                                                 </div>
-                                            );
-                                        })
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="space-y-1">
+                                    <div className="flex items-center justify-between px-1">
+                                        <span className="text-xs text-muted-foreground uppercase">Skills</span>
+                                        <Badge variant="secondary" className="text-xs">
+                                            {skills.length}
+                                        </Badge>
+                                    </div>
+                                    {skillsLoading ? (
+                                        <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+                                            加载中...
+                                        </div>
+                                    ) : skills.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center h-24 text-sm text-muted-foreground gap-2">
+                                            <Sparkles className="h-8 w-8 opacity-30" />
+                                            <span>暂无 Skills</span>
+                                            <span className="text-xs">点击 Add 添加</span>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-0.5">
+                                            <TooltipProvider delayDuration={60}>
+                                                {sortedSkills.map((skill) => {
+                                                    const rowClass = "group flex items-center justify-between px-3 py-0 rounded-lg transition-colors bg-muted/30 hover:bg-muted/50";
+                                                    const removeButton = (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            onClick={() => handleRemoveSkill(skill.id)}
+                                                            disabled={removingSkillId === skill.id}
+                                                            title="Remove Skill"
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                                        </Button>
+                                                    );
+                                                    if (!skill.description) {
+                                                        return (
+                                                            <div key={skill.id} className={rowClass}>
+                                                                <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                                                                    <span className="font-medium text-sm truncate">{skill.name}</span>
+                                                                </div>
+                                                                {removeButton}
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <Tooltip key={skill.id}>
+                                                            <TooltipTrigger asChild>
+                                                                <div className={rowClass}>
+                                                                    <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                                                                        <span className="font-medium text-sm truncate">{skill.name}</span>
+                                                                    </div>
+                                                                    {removeButton}
+                                                                </div>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent className="text-[15px] leading-snug">
+                                                                {skill.description}
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    );
+                                                })}
+                                            </TooltipProvider>
+                                        </div>
                                     )}
                                 </div>
                             </div>
-                        ) : skillsLoading && skills.length === 0 ? (
-                            <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
-                                加载中...
-                            </div>
-                        ) : skills.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-32 text-sm text-muted-foreground gap-2">
-                                <Sparkles className="h-8 w-8 opacity-30" />
-                                <span>暂无 Skills</span>
-                                <span className="text-xs">点击 Add 从库中添加</span>
-                            </div>
-                        ) : (
-                            <div className="space-y-1">
-                                {sortedSkills.map((skill) => {
-                                    return (
-                                        <div
-                                            key={skill.id}
-                                            className="group flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors bg-muted/30 hover:bg-muted/50"
-                                        >
-                                            <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                                                <span className="font-medium text-sm truncate">
-                                                    {skill.name}
-                                                </span>
-                                                <span className="text-xs text-muted-foreground truncate">
-                                                    {skill.description || "—"}
-                                                </span>
-                                            </div>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                onClick={() => handleRemoveSkill(skill.id)}
-                                                disabled={removingSkillId === skill.id}
-                                                title="Remove Skill"
-                                            >
-                                                <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                                            </Button>
-                                        </div>
-                                    );
-                                })}
-                            </div>
                         )}
                     </div>
-                    <div className="px-4 py-2 border-t text-xs text-muted-foreground text-center">
-                        Skills 根据上下文自动激活
-                    </div>
-                </Tabs.Content>
-
-                {/* Agents Tab Content */}
-                <Tabs.Content value="agents" className="flex flex-col flex-1 overflow-hidden data-[state=inactive]:hidden mt-0">
-                    <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/20 shrink-0">
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Available:</span>
-                            <Badge variant="secondary" className="text-xs">
-                                {subagents.length}
-                            </Badge>
-                        </div>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={loadAgents}
-                            disabled={agentsLoading}
-                            title="Refresh Agents"
-                        >
-                            <RefreshCw className={`h-3.5 w-3.5 ${agentsLoading ? "animate-spin" : ""}`} />
-                        </Button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto px-2 py-2">
-                        {agentsLoading && subagents.length === 0 ? (
-                            <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
-                                加载中...
-                            </div>
-                        ) : subagents.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-32 text-sm text-muted-foreground gap-2">
-                                <Bot className="h-8 w-8 opacity-30" />
-                                <span>暂无 Agents</span>
-                                <span className="text-xs">在 .claude/agents/ 添加</span>
-                            </div>
-                        ) : (
-                            <div className="space-y-1">
-                                {sortedAgents.map((agent) => {
-                                    const isLoaded = loadedAgents.has(agent.name);
-                                    return (
-                                        <div
-                                            key={agent.name}
-                                            className={`flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${isLoaded
-                                                ? "bg-purple-500/10 hover:bg-purple-500/15 border border-purple-500/20"
-                                                : "bg-muted/30 hover:bg-muted/50"
-                                                }`}
-                                        >
-                                            <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    {isLoaded && <CheckCircle2 className="h-3.5 w-3.5 text-purple-500" />}
-                                                    <span className="font-medium text-sm truncate">
-                                                        {agent.name}
-                                                    </span>
-                                                    <Badge
-                                                        variant="outline"
-                                                        className={`text-[10px] px-1.5 py-0 ${agent.is_builtin ? "border-purple-500/50 text-purple-600 dark:text-purple-400" : ""
-                                                            }`}
-                                                    >
-                                                        {agent.is_builtin ? "builtin" : agent.source}
-                                                    </Badge>
-                                                </div>
-                                                {agent.path && (
-                                                    <span className="text-xs text-muted-foreground truncate">
-                                                        {agent.path}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                    <div className="px-4 py-2 border-t text-xs text-muted-foreground text-center">
-                        使用 @agent 或 Task 工具调用
-                    </div>
-                </Tabs.Content>
-
-                {/* Files Tab Content */}
-                <Tabs.Content value="files" className="flex-1 overflow-hidden data-[state=inactive]:hidden mt-0">
-                    <FileExplorer
-                        className="h-full border-0 bg-transparent"
-                        onMentionFile={onMentionFile}
-                        onOpenFile={onOpenFile}
-                        onOpenInPanel={onOpenInPanel}
-                        onSelectFile={onSelectFile}
-                        onOpenImage={onOpenImage}
-                        isPreviewPanelActive={isPreviewPanelActive}
-                        workspaceId={currentWorkspace?.id}
-                        externalViewFilter={externalViewFilter}
-                    />
-                </Tabs.Content>
-            </Tabs.Root>
-
+                </div>
+            )}
         </div>
     );
 }
