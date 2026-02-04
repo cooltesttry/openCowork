@@ -25,6 +25,7 @@ interface ImageEditorPanelProps {
     onHasContentChange?: (hasContent: boolean) => void;
     onExportRequest?: (exporter: () => string | null) => void;
     autoFitToken?: number;
+    modeToggle?: React.ReactNode;
     onReferenceBarToggle?: (expanded: boolean) => void;
   };
 }
@@ -42,6 +43,7 @@ export function ImageEditorPanel({ params }: ImageEditorPanelProps) {
         onHasContentChange={params?.onHasContentChange}
         onExportRequest={params?.onExportRequest}
         autoFitToken={params?.autoFitToken}
+        modeToggle={params?.modeToggle}
         workspacePath={currentWorkspace?.path}
         onReferenceBarToggle={params?.onReferenceBarToggle}
       />

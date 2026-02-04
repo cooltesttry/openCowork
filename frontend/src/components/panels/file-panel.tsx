@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
-import { Eye, Pencil, Image as ImageIcon, Save } from 'lucide-react';
+import { Eye, Pencil, Image as ImageIcon, Save, Paintbrush2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { saveFile } from '@/lib/api';
@@ -150,63 +150,94 @@ export function FilePanel({ params }: FilePanelProps) {
         : '';
     const previewUri = isImage && imagePreviewDataUrl ? imagePreviewDataUrl : rawUri;
 
+    const imageModeToggle = (
+        <div className="flex items-center rounded-md bg-zinc-100 dark:bg-zinc-700/60 p-1">
+            <button
+                onClick={() => setMode('preview')}
+                className={cn(
+                    'flex items-center justify-center rounded px-2 py-1 transition-colors',
+                    mode === 'preview'
+                        ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+                )}
+                title="Preview"
+            >
+                <Eye className="h-4 w-4" />
+            </button>
+            <button
+                onClick={() => setMode('image')}
+                className={cn(
+                    'flex items-center justify-center rounded px-2 py-1 transition-colors',
+                    mode === 'image'
+                        ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+                )}
+                title="Image Editor"
+            >
+                <Paintbrush2 className="h-4 w-4" />
+            </button>
+        </div>
+    );
+
     return (
         <div className="h-full w-full flex flex-col">
-            <div className="flex items-center justify-between px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
-                <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 truncate">
-                        {fileName}
-                    </span>
-                    {isDirty && (
-                        <span className="text-[10px] text-amber-500 font-semibold" title="Unsaved changes">
-                            ●
+            {!(isImage && mode === 'image') && (
+                <div className="flex items-center justify-between px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 truncate">
+                            {fileName}
                         </span>
-                    )}
+                        {isDirty && (
+                            <span className="text-[10px] text-amber-500 font-semibold" title="Unsaved changes">
+                                ●
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {isEditable && (
+                            <button
+                                onClick={handleSave}
+                                disabled={isLoading}
+                                className={cn(
+                                    'p-1 rounded transition-colors',
+                                    'text-zinc-500 dark:text-zinc-400',
+                                    'hover:bg-zinc-200 dark:hover:bg-zinc-700',
+                                    'hover:text-zinc-700 dark:hover:text-zinc-200',
+                                    isLoading && 'opacity-60 cursor-not-allowed'
+                                )}
+                                title="Save (Cmd+S)"
+                            >
+                                <Save className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                        {isImage ? imageModeToggle : allowedModes.length > 1 && (
+                            <div className="flex items-center rounded-md bg-zinc-100 dark:bg-zinc-700/60 p-1 text-xs">
+                                {allowedModes.map((option) => {
+                                    const isActive = mode === option;
+                                    const label = option === 'editor' ? 'Editor' : option === 'image' ? 'Image Editor' : 'Preview';
+                                    const Icon = option === 'editor' ? Pencil : option === 'image' ? ImageIcon : Eye;
+                                    return (
+                                        <button
+                                            key={option}
+                                            onClick={() => setMode(option)}
+                                            className={cn(
+                                                'flex items-center gap-1 rounded px-2 py-1 transition-colors',
+                                                isActive
+                                                    ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
+                                                    : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+                                            )}
+                                            title={label}
+                                        >
+                                            <Icon className="h-3 w-3" />
+                                            <span>{label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    {isEditable && (
-                        <button
-                            onClick={handleSave}
-                            disabled={isLoading}
-                            className={cn(
-                                'p-1 rounded transition-colors',
-                                'text-zinc-500 dark:text-zinc-400',
-                                'hover:bg-zinc-200 dark:hover:bg-zinc-700',
-                                'hover:text-zinc-700 dark:hover:text-zinc-200',
-                                isLoading && 'opacity-60 cursor-not-allowed'
-                            )}
-                            title="Save (Cmd+S)"
-                        >
-                            <Save className="h-3.5 w-3.5" />
-                        </button>
-                    )}
-                    {allowedModes.length > 1 && (
-                        <div className="flex items-center rounded-md bg-zinc-100 dark:bg-zinc-700/60 p-1 text-xs">
-                            {allowedModes.map((option) => {
-                                const isActive = mode === option;
-                                const label = option === 'editor' ? 'Editor' : option === 'image' ? 'Image Editor' : 'Preview';
-                                const Icon = option === 'editor' ? Pencil : option === 'image' ? ImageIcon : Eye;
-                                return (
-                                    <button
-                                        key={option}
-                                        onClick={() => setMode(option)}
-                                        className={cn(
-                                            'flex items-center gap-1 rounded px-2 py-1 transition-colors',
-                                            isActive
-                                                ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
-                                                : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
-                                        )}
-                                        title={label}
-                                    >
-                                        <Icon className="h-3 w-3" />
-                                        <span>{label}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-            </div>
+            )}
 
             <div className="flex-1 min-h-0">
                 {isEditable && (
@@ -239,6 +270,7 @@ export function FilePanel({ params }: FilePanelProps) {
                                     }
                                 },
                                 autoFitToken: imageAutoFitToken,
+                                modeToggle: imageModeToggle,
                             }}
                         />
                     </div>

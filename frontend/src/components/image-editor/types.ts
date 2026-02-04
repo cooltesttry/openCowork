@@ -1,4 +1,5 @@
 import type { Canvas as FabricCanvas } from 'fabric';
+import type { ReactNode } from 'react';
 
 export type EditorTool = 'select' | 'crop' | 'brush' | 'text' | 'filter' | 'ai';
 
@@ -99,6 +100,7 @@ export interface ImageEditorProps {
   onExportRequest?: (exporter: () => string | null) => void;
   /** Trigger a one-off auto-fit zoom when the editor becomes visible */
   autoFitToken?: number;
+  modeToggle?: ReactNode;
   /** Optional workspace path for save dialog shortcut */
   workspacePath?: string;
   /** Callback when reference bar is expanded/collapsed */
@@ -115,6 +117,7 @@ export interface ToolbarProps {
   onAddReferenceFromFile?: () => void;
   /** Callback when reference bar is expanded/collapsed */
   onReferenceBarToggle?: (expanded: boolean) => void;
+  modeToggle?: ReactNode;
 }
 
 export interface SidebarProps {

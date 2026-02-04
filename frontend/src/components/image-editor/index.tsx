@@ -25,7 +25,7 @@ function getAspectPrompt(ratio: string): string {
   return prompts[ratio] || 'square format';
 }
 
-export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, onHasContentChange, onExportRequest, autoFitToken, workspacePath, onReferenceBarToggle }: ImageEditorProps) {
+export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, onHasContentChange, onExportRequest, autoFitToken, modeToggle, workspacePath, onReferenceBarToggle }: ImageEditorProps) {
   const [canvas, setCanvas] = useState<FabricCanvas | null>(null);
   const { state, actions } = useEditor(canvas);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -407,6 +407,7 @@ export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, 
         onAddReferenceFromClipboard={handleAddReferenceFromClipboard}
         onAddReferenceFromFile={handleAddReferenceFromFile}
         onReferenceBarToggle={onReferenceBarToggle}
+        modeToggle={modeToggle}
       />
 
       {/* Main content */}

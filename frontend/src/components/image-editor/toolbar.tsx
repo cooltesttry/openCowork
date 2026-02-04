@@ -438,7 +438,7 @@ function CropToolOptions({ state, actions }: { state: ToolbarProps['state']; act
   );
 }
 
-export function Toolbar({ state, actions, onSave, onGenerateAI, isGenerating, onAddReferenceFromClipboard, onAddReferenceFromFile, onReferenceBarToggle }: ToolbarProps) {
+export function Toolbar({ state, actions, onSave, onGenerateAI, isGenerating, onAddReferenceFromClipboard, onAddReferenceFromFile, onReferenceBarToggle, modeToggle }: ToolbarProps) {
   const [aiPrompt, setAiPrompt] = useState('');
 
   const handleGenerateAI = async () => {
@@ -769,6 +769,13 @@ export function Toolbar({ state, actions, onSave, onGenerateAI, isGenerating, on
                 <p>Save (Cmd+S)</p>
               </TooltipContent>
             </Tooltip>
+
+            {modeToggle && (
+              <>
+                <div className="w-px h-5 bg-zinc-300 dark:bg-zinc-600 mx-1" />
+                {modeToggle}
+              </>
+            )}
           </div>
         </div>
 

@@ -486,14 +486,14 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                     </div>
 
                     <div className="flex-1 overflow-y-auto px-2 py-2">
-                        {libraryOpen && (
-                            <div className="mb-3 rounded-lg border bg-background p-3 space-y-3">
+                        {libraryOpen ? (
+                            <div className="h-full flex flex-col gap-3">
                                 <Input
                                     value={libraryQuery}
                                     onChange={(e) => setLibraryQuery(e.target.value)}
                                     placeholder="搜索库里的 Skills"
                                 />
-                                <div className="max-h-[40vh] overflow-y-auto space-y-2">
+                                <div className="flex-1 overflow-y-auto space-y-2">
                                     {libraryLoading ? (
                                         <div className="text-sm text-muted-foreground">加载中...</div>
                                     ) : filteredLibraryEntries.length === 0 ? (
@@ -528,8 +528,7 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                                     )}
                                 </div>
                             </div>
-                        )}
-                        {skillsLoading && skills.length === 0 ? (
+                        ) : skillsLoading && skills.length === 0 ? (
                             <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
                                 加载中...
                             </div>
