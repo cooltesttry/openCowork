@@ -15,7 +15,7 @@ import {
     fetchGlobalMcpServers,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { Server, RefreshCw, Sparkles, Plus, Trash2 } from "lucide-react";
+import { Server, RefreshCw, Sparkles, Plus, Trash2, X, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -142,9 +142,10 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
             toast.error("未选择 Workspace");
             return;
         }
-        setAddingMcpId(server.id);
+        const payload = server.id ? { id: server.id } : { name: server.name };
+        setAddingMcpId(server.id || server.name);
         try {
-            const res = await addWorkspaceMcpServer(currentWorkspace.id, server.id);
+            const res = await addWorkspaceMcpServer(currentWorkspace.id, payload);
             setMcpServers(res.servers || []);
             toast.success("MCP 已添加", { description: server.name });
         } catch (err) {
@@ -154,14 +155,15 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
         }
     };
 
-    const handleDisableMcp = async (id: string) => {
+    const handleDisableMcp = async (idOrName: string, nameHint?: string) => {
         if (!currentWorkspace?.id) {
             toast.error("未选择 Workspace");
             return;
         }
-        setRemovingMcpId(id);
+        const payload = nameHint ? { name: nameHint } : { id: idOrName };
+        setRemovingMcpId(idOrName);
         try {
-            const res = await disableWorkspaceMcpServer(currentWorkspace.id, id);
+            const res = await disableWorkspaceMcpServer(currentWorkspace.id, payload);
             setMcpServers(res.servers || []);
             toast.success("MCP 已停用");
         } catch (err) {
@@ -335,10 +337,19 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                                     >
                                         Skills
                                     </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="ml-auto h-7 w-7"
+                                        onClick={() => setToolsMode("active")}
+                                        title="Close"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
                                 </div>
 
                                 {addTab === "mcp" ? (
-                                    <div className="flex-1 rounded-lg border bg-background p-3 space-y-3 flex flex-col">
+                                    <div className="flex-1 p-3 space-y-3 flex flex-col">
                                         <Input
                                             value={mcpQuery}
                                             onChange={(e) => setMcpQuery(e.target.value)}
@@ -351,29 +362,41 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                                                 <div className="text-sm text-muted-foreground">暂无可用 MCP 配置。</div>
                                             ) : (
                                                 filteredGlobalMcpServers.map((server) => {
-                                                    const installed = activeMcpIds.has(server.id);
-                                                    const isAdding = addingMcpId === server.id;
-                                                    const label = installed ? "Enabled" : "Add";
+                                                    const serverKey = server.id || server.name;
+                                                    const installed = server.id ? activeMcpIds.has(server.id) : false;
+                                                    const isAdding = addingMcpId === serverKey;
+                                                    const isRemoving = removingMcpId === serverKey;
                                                     return (
                                                         <div
-                                                            key={server.id || server.name}
-                                                        className="flex items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-0"
+                                                            key={serverKey}
+                                                            className="flex items-center justify-between gap-2 rounded-md px-3 py-1 hover:bg-muted/30 transition-colors"
                                                         >
                                                             <div className="min-w-0">
                                                                 <div className="text-sm font-medium truncate">{server.name}</div>
-                                                                <div className="text-xs text-muted-foreground truncate">
-                                                                    {server.type === "stdio"
-                                                                        ? `${server.command || ""} ${(server.args || []).join(" ")}`.trim() || "—"
-                                                                        : server.url || "—"}
-                                                                </div>
                                                             </div>
                                                             <Button
-                                                                size="sm"
-                                                                variant={installed ? "outline" : "secondary"}
-                                                                disabled={installed || isAdding}
-                                                                onClick={() => handleAddMcpFromGlobal(server)}
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                className="h-7 w-7 relative group"
+                                                                disabled={isAdding || isRemoving}
+                                                                onClick={() => {
+                                                                    if (installed) {
+                                                                        handleDisableMcp(serverKey, server.id ? undefined : server.name);
+                                                                    } else {
+                                                                        handleAddMcpFromGlobal(server);
+                                                                    }
+                                                                }}
                                                             >
-                                                                {isAdding ? "Adding..." : label}
+                                                                {isAdding || isRemoving ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : installed ? (
+                                                                    <span className="relative block h-4 w-4">
+                                                                        <Check className="h-4 w-4 transition-opacity group-hover:opacity-0" />
+                                                                        <Trash2 className="h-4 w-4 absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                                                                    </span>
+                                                                ) : (
+                                                                    <Plus className="h-4 w-4" />
+                                                                )}
                                                             </Button>
                                                         </div>
                                                     );
@@ -382,7 +405,7 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="flex-1 rounded-lg border bg-background p-3 space-y-3 flex flex-col">
+                                    <div className="flex-1 p-3 space-y-3 flex flex-col">
                                         <Input
                                             value={libraryQuery}
                                             onChange={(e) => setLibraryQuery(e.target.value)}
@@ -398,24 +421,41 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                                                     const entryId = resolveLibraryEntryId(entry);
                                                     const installed = installedSkillIds.has(entryId);
                                                     const isAdding = addingSkillId === entry.skill_id;
+                                                    const isRemoving = removingSkillId === entryId;
                                                     return (
                                                         <div
                                                             key={entry.skill_id}
-                                                        className="flex items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-0"
+                                                            className="flex items-center justify-between gap-2 rounded-md px-3 py-1 hover:bg-muted/30 transition-colors"
                                                         >
                                                             <div className="min-w-0">
                                                                 <div className="text-sm font-medium truncate">{entry.name}</div>
-                                                                <div className="text-xs text-muted-foreground truncate">
+                                                                <div className="text-xs text-muted-foreground line-clamp-3 leading-snug">
                                                                     {entry.description || "—"}
                                                                 </div>
                                                             </div>
                                                             <Button
-                                                                size="sm"
-                                                                variant={installed ? "outline" : "secondary"}
-                                                                disabled={installed || isAdding}
-                                                                onClick={() => handleAddSkill(entry)}
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                className="h-7 w-7 relative group"
+                                                                disabled={isAdding || isRemoving}
+                                                                onClick={() => {
+                                                                    if (installed) {
+                                                                        handleRemoveSkill(entryId);
+                                                                    } else {
+                                                                        handleAddSkill(entry);
+                                                                    }
+                                                                }}
                                                             >
-                                                                {installed ? "Installed" : isAdding ? "Adding..." : "Add"}
+                                                                {isAdding || isRemoving ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : installed ? (
+                                                                    <span className="relative block h-4 w-4">
+                                                                        <Check className="h-4 w-4 transition-opacity group-hover:opacity-0" />
+                                                                        <Trash2 className="h-4 w-4 absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                                                                    </span>
+                                                                ) : (
+                                                                    <Plus className="h-4 w-4" />
+                                                                )}
                                                             </Button>
                                                         </div>
                                                     );
@@ -463,8 +503,8 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                                                         variant="ghost"
                                                         size="icon"
                                                         className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                        onClick={() => handleDisableMcp(server.id)}
-                                                        disabled={removingMcpId === server.id}
+                                                        onClick={() => handleDisableMcp(server.id || server.name, server.id ? undefined : server.name)}
+                                                        disabled={removingMcpId === (server.id || server.name)}
                                                         title="Disable MCP"
                                                     >
                                                         <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />

@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import 'xterm/css/xterm.css';
 import { useTheme } from 'next-themes';
+import { useChat } from '@/lib/store';
 
 const LIGHT_THEME = {
     background: '#ffffff',      // white
@@ -58,7 +59,9 @@ export default function TerminalComponent() {
     const termRef = useRef<Terminal | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
+    const pendingInputRef = useRef<string[]>([]);
     const { resolvedTheme } = useTheme();
+    const { setTerminalInputCallback } = useChat();
 
     // Effect to update options when theme changes
     useEffect(() => {
@@ -110,6 +113,15 @@ export default function TerminalComponent() {
                 cols: term.cols,
                 rows: term.rows
             }));
+
+            if (pendingInputRef.current.length > 0) {
+                pendingInputRef.current.forEach((chunk) => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'input', data: chunk }));
+                    }
+                });
+                pendingInputRef.current = [];
+            }
         };
 
         ws.onmessage = (event) => {
@@ -138,6 +150,17 @@ export default function TerminalComponent() {
             }
         });
 
+        const sendInput = (input: string) => {
+            if (!input) return;
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'input', data: input }));
+            } else {
+                pendingInputRef.current.push(input);
+            }
+        };
+
+        setTerminalInputCallback(() => sendInput);
+
         // Handle window resizing
         const handleResize = () => {
             if (fitAddonRef.current && termRef.current) {
@@ -162,8 +185,9 @@ export default function TerminalComponent() {
             if (termRef.current) {
                 termRef.current.dispose();
             }
+            setTerminalInputCallback(null);
         };
-    }, []); // Run once on mount. Theme updates handled by other effect.
+    }, [setTerminalInputCallback]); // Run once on mount. Theme updates handled by other effect.
 
     return (
         <div

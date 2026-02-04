@@ -263,6 +263,8 @@ async def get_file_content(request: Request, path: str):
 
 
 from fastapi.responses import FileResponse, Response
+from datetime import datetime, timezone
+import hashlib
 
 @router.get("/raw")
 async def get_raw_file(request: Request, path: str):
@@ -287,6 +289,20 @@ async def get_thumbnail(request: Request, path: str, size: int = 256):
     if not target_path.exists() or not target_path.is_file():
         raise HTTPException(status_code=404, detail="File not found.")
 
+    # Build cache headers (ETag + Last-Modified) so browser can reuse thumbnails
+    stat = target_path.stat()
+    etag_seed = f"{stat.st_mtime_ns}:{stat.st_size}:{size}"
+    etag = hashlib.sha1(etag_seed.encode("utf-8")).hexdigest()
+    last_modified = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+    headers = {
+        "ETag": etag,
+        "Last-Modified": last_modified.strftime("%a, %d %b %Y %H:%M:%S GMT"),
+        "Cache-Control": "public, max-age=86400",
+    }
+
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+
     try:
         from PIL import Image
         try:
@@ -302,7 +318,7 @@ async def get_thumbnail(request: Request, path: str, size: int = 256):
             img.thumbnail((size, size))
             buf = io.BytesIO()
             img.convert("RGBA").save(buf, format="PNG")
-            return Response(content=buf.getvalue(), media_type="image/png")
+            return Response(content=buf.getvalue(), media_type="image/png", headers=headers)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -20,6 +20,7 @@ interface ChatPanelContentProps {
         onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
         onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
         onOpenImage?: (path: string, options?: OpenImageOptions) => void;
+        onOpenTerminal?: (content: string) => void;
         onPreviewHTML?: (htmlContent: string) => void;
     };
 }
@@ -58,6 +59,7 @@ export function ChatPanelContent({ params }: ChatPanelContentProps) {
                         onSelectFile={params?.onSelectFile}
                         onOpenInPanel={params?.onOpenInPanel}
                         onOpenImage={params?.onOpenImage}
+                        onOpenTerminal={params?.onOpenTerminal}
                         onPreviewHTML={params?.onPreviewHTML}
                     />
                 </div>

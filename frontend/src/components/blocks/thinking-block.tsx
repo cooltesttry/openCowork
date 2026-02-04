@@ -38,15 +38,15 @@ export function ThinkingBlock({ block, autoCollapseDelay = 500 }: ThinkingBlockP
     }, [block.status, autoCollapseDelay]);
 
     return (
-        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="my-1 min-w-0">
+        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="my-0.5 min-w-0">
             <CollapsibleTrigger
                 className={cn(
-                    "flex items-center gap-2 w-full px-3 py-2 rounded-md text-xs font-medium text-muted-foreground",
+                    "flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-xs font-medium text-muted-foreground",
                     "transition-colors duration-200",
-                    "hover:bg-muted/40",
+                    "hover:bg-transparent",
                     isStreaming
-                        ? "bg-muted/40"
-                        : "bg-muted/30"
+                        ? ""
+                        : ""
                 )}
             >
                 {isOpen ? (
@@ -67,7 +67,7 @@ export function ThinkingBlock({ block, autoCollapseDelay = 500 }: ThinkingBlockP
 
             <CollapsibleContent className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
                 <div className={cn(
-                    "mt-1 ml-6 pl-4 py-2 border-l-2 border-border",
+                    "mt-1 ml-5 pl-3 py-1.5 border-l-2 border-border",
                     "text-sm text-muted-foreground whitespace-pre-wrap break-words min-w-0 overflow-hidden"
                 )}>
                     {typeof block.content === 'string' ? block.content : JSON.stringify(block.content, null, 2)}

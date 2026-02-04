@@ -156,12 +156,16 @@ export function DockviewMain() {
     const filePanelModesRef = useRef<Map<string, FilePanelMode>>(new Map());
     const handlePreviewFileRef = useRef<((path: string, name: string, content?: string) => void) | null>(null);
     const handlePreviewHTMLRef = useRef<((htmlContent: string) => void) | null>(null);
+    const terminalInputCallbackRef = useRef<((input: string) => void) | null>(null);
     const {
         isSidebarOpen,
         setIsSidebarOpen,
         isSessionSidebarOpen,
         setIsSessionSidebarOpen,
         setPreviewHTMLCallback,
+        terminalInputCallback,
+        rightPanelView,
+        setRightPanelView,
         setCanvasGroupId,
     } = useChat();
 
@@ -176,6 +180,10 @@ export function DockviewMain() {
     useEffect(() => {
         chatLogicRef.current = chatLogic;
     }, [chatLogic]);
+
+    useEffect(() => {
+        terminalInputCallbackRef.current = terminalInputCallback;
+    }, [terminalInputCallback]);
 
     // Ref for Dockview container
     const containerRef = useRef<HTMLDivElement>(null);
@@ -233,6 +241,49 @@ export function DockviewMain() {
         if (!chatPanel) return null;
         return { referencePanel: chatPanel, direction: 'right' as const };
     }, [ensureCanvasAnchor]);
+
+    const sendToTerminal = useCallback((input: string) => {
+        if (!input) return;
+        const attemptSend = () => {
+            const callback = terminalInputCallbackRef.current;
+            if (callback) {
+                callback(input);
+                return true;
+            }
+            return false;
+        };
+
+        if (attemptSend()) return;
+
+        const start = Date.now();
+        const retry = () => {
+            if (attemptSend()) return;
+            if (Date.now() - start < 2000) {
+                setTimeout(retry, 50);
+            }
+        };
+        setTimeout(retry, 50);
+    }, []);
+
+    const handleOpenTerminalWithInput = useCallback((input: string) => {
+        if (!apiRef.current) return;
+        let terminalPanel = apiRef.current.getPanel('terminal-panel');
+        if (!terminalPanel) {
+            const reference = getCanvasReference();
+            if (!reference) return;
+            terminalPanel = apiRef.current.addPanel({
+                id: 'terminal-panel',
+                component: 'terminal',
+                title: 'Terminal',
+                position: reference,
+            });
+            if (terminalPanel?.group?.id) {
+                updateCanvasGroupId(terminalPanel.group.id);
+            }
+        }
+        terminalPanel?.api.setActive();
+        sendToTerminal(input);
+    }, [getCanvasReference, sendToTerminal, updateCanvasGroupId]);
 
     const handleSelectSession = useCallback((id: string) => {
         chatLogicRef.current?.handleSelectSession(id);
@@ -321,12 +372,14 @@ export function DockviewMain() {
     // Handle reference bar toggle in ImageEditor - switch FileExplorer to images mode
     const handleReferenceBarToggle = useCallback((expanded: boolean) => {
         if (expanded) {
+            setRightPanelView('files');
+            setIsSidebarOpen(true);
             // Switch file list to images mode when reference bar is expanded
             setFileExplorerViewFilter("images");
             setFileExplorerViewFilterToken((prev) => prev + 1);
         }
         // Note: Don't auto-switch back to "all" when collapsed, let user choose manually
-    }, []);
+    }, [setIsSidebarOpen, setRightPanelView]);
 
     const handleOpenFilePanel = useCallback((
         entry: FilePanelOpenEntry,
@@ -782,6 +835,7 @@ export function DockviewMain() {
                 onSelectFile: handleFileSelect,
                 onOpenInPanel: handleOpenFilePanel,
                 onOpenImage: handleOpenInImageEditor,
+                onOpenTerminal: handleOpenTerminalWithInput,
                 onPreviewHTML: (htmlContent: string) => {
                     handlePreviewHTMLRef.current?.(htmlContent);
                 },

@@ -6,9 +6,10 @@ import { TextBlock } from "@/components/blocks/text-block";
 import { useMemo } from "react";
 import type { OpenImageOptions } from "@/components/image-editor/types";
 import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
+import { useWorkspace } from "@/lib/workspace-store";
 
 interface FileOperation {
-    type: 'Write' | 'Edit' | 'ImageGen';
+    type: 'Write' | 'Edit' | 'ImageGen' | 'Reference';
     path: string;
 }
 
@@ -27,6 +28,7 @@ interface MessageItemProps {
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
     onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
+    onOpenTerminal?: (content: string) => void;
     onPreviewHTML?: (htmlContent: string) => void;
 }
 
@@ -53,9 +55,76 @@ function isPreviewableFile(path: string): boolean {
     return IMAGE_EXTENSIONS.includes(ext) || PREVIEWABLE_EXTENSIONS.includes(ext);
 }
 
-export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onSelectFile, onOpenInPanel, onOpenImage, onPreviewHTML }: MessageItemProps) {
+const DOCUMENT_EXTENSIONS = new Set([
+    '.md', '.markdown', '.txt', '.csv', '.rtf', '.pdf', '.html', '.htm'
+]);
+
+function isDocumentFile(path: string): boolean {
+    return DOCUMENT_EXTENSIONS.has(getFileExtension(path));
+}
+
+function isCodeFile(path: string): boolean {
+    const ext = getFileExtension(path);
+    return PREVIEWABLE_EXTENSIONS.includes(ext) && !DOCUMENT_EXTENSIONS.has(ext);
+}
+
+function normalizePath(input: string): string {
+    const normalized = input.replace(/\\+/g, '/').replace(/\/+/g, '/');
+    return normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
+}
+
+function trimEdgePunctuation(value: string): string {
+    return value
+        .replace(/^[\s"'`([{<]+/, '')
+        .replace(/[\s"'`)\]}>.,;:!?]+$/, '');
+}
+
+function stripLineAnchors(value: string): string {
+    let result = value;
+    result = result.replace(/#L\d+(?:C\d+)?$/, '');
+    result = result.replace(/:\d+(?::\d+)?$/, '');
+    return result;
+}
+
+function looksLikePath(value: string): boolean {
+    if (!value) return false;
+    if (value.endsWith('/')) return false;
+    const base = value.split('/').pop() || value;
+    if (/\.[A-Za-z0-9]{1,10}$/.test(base)) return true;
+    const specialNames = new Set(['README', 'LICENSE', 'Makefile', 'Dockerfile']);
+    return specialNames.has(base);
+}
+
+function extractWorkspaceFilePaths(text: string, workspaceRoot: string): string[] {
+    const root = normalizePath(workspaceRoot);
+    if (!root || !text) return [];
+    const results = new Set<string>();
+    const tokens = text.split(/\s+/);
+
+    for (const rawToken of tokens) {
+        let token = trimEdgePunctuation(rawToken);
+        if (!token) continue;
+        token = token.replace(/\\+/g, '/');
+        token = stripLineAnchors(token);
+        token = trimEdgePunctuation(token);
+        if (!looksLikePath(token)) continue;
+        if (token.includes('://') || token.startsWith('http') || token.startsWith('www.')) {
+            continue;
+        }
+
+        const normalizedToken = normalizePath(token);
+        if (normalizedToken.startsWith(`${root}/`)) {
+            results.add(normalizedToken);
+        }
+    }
+
+    return Array.from(results);
+}
+
+export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onSelectFile, onOpenInPanel, onOpenImage, onOpenTerminal, onPreviewHTML }: MessageItemProps) {
     const isUser = message.role === "user";
     const hasBlocks = message.blocks && message.blocks.length > 0;
+    const { currentWorkspace } = useWorkspace();
 
     // Check if there are text blocks in the message
     const hasTextBlocks = message.blocks?.some(b => b.type === 'text') || false;
@@ -103,6 +172,21 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
     // 2. Either there are no blocks OR there are no text blocks (to avoid duplication)
     const hasTextContent = cleanContent && cleanContent.trim().length > 0;
     const showLegacyContent = hasTextContent && !hasTextBlocks;
+
+    const combinedTextContent = useMemo(() => {
+        const chunks: string[] = [];
+        if (cleanContent) {
+            chunks.push(cleanContent);
+        }
+        if (message.blocks?.length) {
+            for (const block of message.blocks) {
+                if (block.type === 'text' && typeof block.content === 'string') {
+                    chunks.push(block.content);
+                }
+            }
+        }
+        return chunks.join('\n');
+    }, [cleanContent, message.blocks]);
 
     // Extract file operations from blocks (simple approach)
     // 1. Write/Edit operations
@@ -160,7 +244,16 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
         .filter(Boolean) as FileOperation[]) || [];
 
     // Combine all file operations
-    const fileOperations: FileOperation[] = [...writeEditOperations, ...imageGenOperations];
+    const writeEditPathSet = new Set(writeEditOperations.map(op => normalizePath(op.path)));
+    const inferredPaths = useMemo(() => {
+        if (!currentWorkspace?.path) return [];
+        return extractWorkspaceFilePaths(combinedTextContent, currentWorkspace.path);
+    }, [combinedTextContent, currentWorkspace?.path]);
+    const inferredOperations: FileOperation[] = inferredPaths
+        .filter(path => !writeEditPathSet.has(normalizePath(path)))
+        .map(path => ({ type: 'Reference' as const, path }));
+
+    const fileOperations: FileOperation[] = [...writeEditOperations, ...imageGenOperations, ...inferredOperations];
 
     // Extract filename from path
     const getFileName = (path: string) => {
@@ -173,7 +266,24 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
         if (!isPreviewable) return;
         const name = getFileName(path);
         if (onOpenInPanel) {
-            onOpenInPanel({ path, name, is_directory: false });
+            if (isImageFile(path)) {
+                onOpenInPanel(
+                    { path, name, is_directory: false },
+                    { initialMode: 'image', openInAITool: true }
+                );
+            } else if (isDocumentFile(path)) {
+                onOpenInPanel(
+                    { path, name, is_directory: false },
+                    { initialMode: 'preview' }
+                );
+            } else if (isCodeFile(path)) {
+                onOpenInPanel(
+                    { path, name, is_directory: false },
+                    { initialMode: 'editor' }
+                );
+            } else {
+                onOpenInPanel({ path, name, is_directory: false });
+            }
             return;
         }
         onSelectFile?.({ path, name, is_directory: false });
@@ -217,6 +327,7 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                             onAskUserSkip={onAskUserSkip}
                             onOpenImage={onOpenImage}
                             onOpenInPanel={onOpenInPanel}
+                            onOpenTerminal={onOpenTerminal}
                             onPreviewHTML={onPreviewHTML}
                         />
                     )}
@@ -230,6 +341,9 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                                 content: cleanContent,
                                 status: 'success',
                             }}
+                            onPreviewHTML={onPreviewHTML}
+                            onOpenInPanel={onOpenInPanel}
+                            onOpenTerminal={onOpenTerminal}
                         />
                     )}
 
@@ -304,10 +418,11 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                         // Deduplicate by path, keeping only the first occurrence
                         const seenPaths = new Set<string>();
                         const uniqueOperations = fileOperations.filter(op => {
-                            if (seenPaths.has(op.path)) {
+                            const normalizedPath = normalizePath(op.path);
+                            if (seenPaths.has(normalizedPath)) {
                                 return false;
                             }
-                            seenPaths.add(op.path);
+                            seenPaths.add(normalizedPath);
                             return true;
                         });
 
@@ -327,8 +442,10 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                                                 <FilePlus className="h-3 w-3 text-muted-foreground" />
                                             ) : op.type === 'ImageGen' ? (
                                                 <ImageIcon className="h-3 w-3 text-muted-foreground" />
-                                            ) : (
+                                            ) : op.type === 'Edit' ? (
                                                 <FileEdit className="h-3 w-3 text-muted-foreground" />
+                                            ) : (
+                                                <FileText className="h-3 w-3 text-muted-foreground" />
                                             )}
                                             <span className="underline underline-offset-2">{getFileName(op.path)}</span>
                                         </button>

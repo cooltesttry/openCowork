@@ -8,7 +8,7 @@ import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import { MessageBlock } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Copy, Check, Eye } from "lucide-react";
+import { Copy, Check, Eye, Pencil, Terminal } from "lucide-react";
 import { toast } from "sonner";
 import { useChat } from "@/lib/store";
 import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
@@ -20,6 +20,7 @@ interface TextBlockProps {
     block: MessageBlock;
     onPreviewHTML?: (htmlContent: string) => void;
     onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
+    onOpenTerminal?: (content: string) => void;
 }
 
 // Code block wrapper with Copy and Preview buttons
@@ -29,7 +30,8 @@ function CodeBlockWrapper({
     language,
     codeContent,
     onPreviewHTML,
-    onOpenInPanel
+    onOpenInPanel,
+    onOpenTerminal
 }: {
     children: React.ReactNode;
     className?: string;
@@ -37,11 +39,65 @@ function CodeBlockWrapper({
     codeContent: string;
     onPreviewHTML?: (htmlContent: string) => void;
     onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
+    onOpenTerminal?: (content: string) => void;
 }) {
     const [copied, setCopied] = useState(false);
     const preRef = useRef<HTMLPreElement>(null);
     const normalizedLanguage = language?.toLowerCase();
     const isHTML = normalizedLanguage === 'html' || normalizedLanguage === 'htm';
+    const isShell = ['bash', 'sh', 'shell', 'zsh'].includes(normalizedLanguage || '');
+
+    const languageToExtension = (lang?: string) => {
+        const normalized = (lang || '').toLowerCase();
+        const mapping: Record<string, string> = {
+            js: 'js',
+            javascript: 'js',
+            jsx: 'jsx',
+            ts: 'ts',
+            typescript: 'ts',
+            tsx: 'tsx',
+            python: 'py',
+            py: 'py',
+            json: 'json',
+            html: 'html',
+            htm: 'html',
+            css: 'css',
+            scss: 'scss',
+            less: 'less',
+            md: 'md',
+            markdown: 'md',
+            yaml: 'yml',
+            yml: 'yml',
+            toml: 'toml',
+            xml: 'xml',
+            bash: 'sh',
+            sh: 'sh',
+            shell: 'sh',
+            zsh: 'sh',
+            go: 'go',
+            rust: 'rs',
+            rs: 'rs',
+            java: 'java',
+            c: 'c',
+            cpp: 'cpp',
+            cxx: 'cpp',
+            h: 'h',
+            hpp: 'hpp',
+            ruby: 'rb',
+            rb: 'rb',
+            php: 'php',
+            swift: 'swift',
+            kt: 'kt',
+            kotlin: 'kt',
+            scala: 'scala',
+            lua: 'lua',
+            r: 'r',
+            sql: 'sql',
+        };
+
+        if (!normalized) return 'txt';
+        return mapping[normalized] || 'txt';
+    };
 
     const handleCopy = async () => {
         try {
@@ -76,15 +132,44 @@ function CodeBlockWrapper({
         }
     };
 
+    const handleEdit = () => {
+        const textToEdit = preRef.current?.textContent || codeContent;
+        const ext = languageToExtension(normalizedLanguage);
+        const filename = ext === 'Dockerfile' ? 'Dockerfile' : `Untitled.${ext}`;
+        if (onOpenInPanel) {
+            onOpenInPanel(
+                {
+                    content: textToEdit,
+                    name: filename,
+                    is_directory: false,
+                    language: normalizedLanguage,
+                },
+                { initialMode: 'editor' }
+            );
+        } else {
+            toast.error('Edit not available - callback missing');
+        }
+    };
+
+    const handleSendToTerminal = () => {
+        const rawText = preRef.current?.textContent || codeContent;
+        const textToSend = rawText.replace(/\r?\n$/, '');
+        if (onOpenTerminal) {
+            onOpenTerminal(textToSend);
+        } else {
+            toast.error('Terminal not available - callback missing');
+        }
+    };
+
     return (
         <div
-            className="my-4"
+            className="my-2"
             style={{ display: 'table', tableLayout: 'fixed', width: '100%' }}
         >
             <pre
                 ref={preRef}
                 className={cn(
-                    "bg-muted/40 dark:bg-muted/30 p-4 rounded-md overflow-x-auto",
+                    "bg-muted/40 dark:bg-muted/30 px-4 py-1.5 rounded-md overflow-x-auto",
                     "border border-border",
                     "text-sm font-mono leading-relaxed text-foreground",
                     className
@@ -102,6 +187,26 @@ function CodeBlockWrapper({
                     >
                         <Eye className="h-3.5 w-3.5 inline mr-1" />
                         Preview
+                    </button>
+                )}
+                {!isHTML && normalizedLanguage && (
+                    <button
+                        onClick={handleEdit}
+                        className="px-2 py-1 rounded text-xs bg-muted/50 hover:bg-muted/70 text-muted-foreground transition-colors"
+                        title="Edit in File Panel"
+                    >
+                        <Pencil className="h-3.5 w-3.5 inline mr-1" />
+                        Edit
+                    </button>
+                )}
+                {isShell && (
+                    <button
+                        onClick={handleSendToTerminal}
+                        className="px-2 py-1 rounded text-xs bg-muted/50 hover:bg-muted/70 text-muted-foreground transition-colors"
+                        title="Send to Terminal"
+                    >
+                        <Terminal className="h-3.5 w-3.5 inline mr-1" />
+                        Terminal
                     </button>
                 )}
                 <button
@@ -131,7 +236,7 @@ function filterLocalImages(markdown: string): string {
     return result;
 }
 
-export function TextBlock({ block, onPreviewHTML, onOpenInPanel }: TextBlockProps) {
+export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal }: TextBlockProps) {
     const rawContent = typeof block.content === 'string' ? block.content : '';
 
     // Filter out broken local file path images before rendering
@@ -192,6 +297,7 @@ export function TextBlock({ block, onPreviewHTML, onOpenInPanel }: TextBlockProp
                                     codeContent={codeContent}
                                     onPreviewHTML={previewCallback}
                                     onOpenInPanel={onOpenInPanel}
+                                    onOpenTerminal={onOpenTerminal}
                                 >
                                     {children}
                                 </CodeBlockWrapper>

@@ -58,8 +58,6 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
     }, [isComplete, isError, isExecuting, isStreaming, isPending]);
 
     // Get status background color
-    const getBgClass = () => "bg-muted/30";
-
     // Format input/output for display
     const formatContent = (data: any) => {
         if (typeof data === 'string') return data;
@@ -67,13 +65,12 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
     };
 
     return (
-        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="my-1 w-full min-w-0">
+        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="my-0.5 w-full min-w-0">
             <CollapsibleTrigger
                 className={cn(
-                    "flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm font-medium",
+                    "flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-sm font-medium",
                     "transition-colors duration-200",
-                    "hover:bg-muted/40",
-                    getBgClass()
+                    "hover:bg-transparent"
                 )}
             >
                 {isOpen ? (
@@ -95,7 +92,7 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
             </CollapsibleTrigger>
 
             <CollapsibleContent className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
-                <div className="mt-1 ml-6 pl-4 py-2 border-l-2 border-border text-xs font-mono space-y-2 min-w-0 overflow-hidden">
+                <div className="mt-1 ml-5 pl-3 py-1.5 border-l-2 border-border text-xs font-mono space-y-1.5 min-w-0 overflow-hidden">
                     {/* Streaming Input Buffer - show during streaming */}
                     {status === 'streaming' && content?.inputBuffer && (
                         <div className="min-w-0">
@@ -103,7 +100,7 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
                                 <span>Generating</span>
                                 <span className="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-pulse" />
                             </div>
-                            <pre className="bg-muted/40 p-2 rounded max-h-[200px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full text-foreground">
+                            <pre className="bg-muted/40 p-1.5 rounded max-h-[200px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full text-foreground">
                                 {content.inputBuffer}
                             </pre>
                         </div>
@@ -113,7 +110,7 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
                     {content?.input && !content?.inputBuffer && (
                         <div className="min-w-0">
                             <div className="text-muted-foreground mb-1 uppercase tracking-wider text-[10px]">Input</div>
-                            <pre className="bg-muted/40 p-2 rounded max-h-[100px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full text-foreground">
+                            <pre className="bg-muted/40 p-1.5 rounded max-h-[100px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full text-foreground">
                                 {formatContent(content.input)}
                             </pre>
                         </div>
@@ -126,7 +123,7 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
                                 {isError ? "Error" : "Result"}
                             </div>
                             <pre className={cn(
-                                "p-2 rounded max-h-[100px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full bg-muted/40",
+                                "p-1.5 rounded max-h-[100px] overflow-y-auto overflow-x-auto whitespace-pre-wrap break-all w-full bg-muted/40",
                                 isError ? "text-destructive" : "text-foreground"
                             )}>
                                 {formatContent(content.result)}

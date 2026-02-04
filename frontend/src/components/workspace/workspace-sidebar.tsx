@@ -231,26 +231,15 @@ export function WorkspaceSidebar({
                     {/* Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
                         <h2 className="font-semibold text-sm">Workspace</h2>
-                        <div className="flex items-center gap-1">
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setSessionSearchOpen((prev) => !prev)}
-                                className="h-8 w-8"
-                                title="Search sessions"
-                            >
-                                <Search className="h-4 w-4" />
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={onToggle}
-                                className="h-8 w-8"
-                                title="Collapse sidebar"
-                            >
-                                <PanelLeftClose className="h-4 w-4" />
-                            </Button>
-                        </div>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={onToggle}
+                            className="h-8 w-8"
+                            title="Collapse sidebar"
+                        >
+                            <PanelLeftClose className="h-4 w-4" />
+                        </Button>
                     </div>
 
                     {/* Workspace Selector */}
@@ -263,11 +252,20 @@ export function WorkspaceSidebar({
                         ) : currentWorkspace ? (
                             <div className="flex items-center gap-2 px-2 h-[30px] border-l-2 border-blue-500">
                                 <FolderIcon className="h-4 w-4 shrink-0 text-blue-500" />
-                                <div className="min-w-0">
+                                <div className="flex-1 min-w-0">
                                     <div className="text-sm font-medium truncate">
                                         {currentWorkspace.name}
                                     </div>
                                 </div>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setSessionSearchOpen((prev) => !prev)}
+                                    className="h-7 w-7"
+                                    title="Search sessions"
+                                >
+                                    <Search className="h-3.5 w-3.5" />
+                                </Button>
                             </div>
                         ) : (
                             <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
