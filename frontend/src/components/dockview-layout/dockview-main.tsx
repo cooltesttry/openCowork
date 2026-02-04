@@ -163,6 +163,7 @@ export function DockviewMain() {
         isSessionSidebarOpen,
         setIsSessionSidebarOpen,
         setPreviewHTMLCallback,
+        setOpenFilePanelCallback,
         terminalInputCallback,
         rightPanelView,
         setRightPanelView,
@@ -800,6 +801,11 @@ export function DockviewMain() {
         setPreviewHTMLCallback(() => handlePreviewHTML);
         return () => setPreviewHTMLCallback(null);
     }, [handlePreviewHTML, setPreviewHTMLCallback]);
+
+    useEffect(() => {
+        setOpenFilePanelCallback(() => handleOpenFilePanel);
+        return () => setOpenFilePanelCallback(null);
+    }, [handleOpenFilePanel, setOpenFilePanelCallback]);
 
     // Check if files-panel (Preview) is currently active
     const isPreviewPanelActive = useCallback(() => {

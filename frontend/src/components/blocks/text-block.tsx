@@ -244,8 +244,9 @@ export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal 
     const isStreaming = block.status === 'streaming';
 
     // Get preview callback from store (priority) or from props
-    const { previewHTMLCallback } = useChat();
+    const { previewHTMLCallback, openFilePanelCallback } = useChat();
     const previewCallback = previewHTMLCallback || onPreviewHTML;
+    const openPanel = onOpenInPanel || openFilePanelCallback;
 
 
 

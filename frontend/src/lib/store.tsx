@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Message, AgentStep, Session } from './types';
+import type { FilePanelOpenEntry } from '@/components/panels/file-panel';
 
 // Session execution status for task management
 export interface SessionStatus {
@@ -50,6 +51,10 @@ interface ChatContextType {
     // Preview HTML callback (set by dockview, used by code blocks)
     previewHTMLCallback: ((htmlContent: string) => void) | null;
     setPreviewHTMLCallback: React.Dispatch<React.SetStateAction<((htmlContent: string) => void) | null>>;
+
+    // File panel open callback (set by dockview, used for auto-open)
+    openFilePanelCallback: ((entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void) | null;
+    setOpenFilePanelCallback: React.Dispatch<React.SetStateAction<((entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void) | null>>;
 
     // Terminal input callback (set by terminal panel)
     terminalInputCallback: ((input: string) => void) | null;
@@ -109,6 +114,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     // Preview HTML callback (registered by dockview-main)
     const [previewHTMLCallback, setPreviewHTMLCallback] = useState<((htmlContent: string) => void) | null>(null);
+    const [openFilePanelCallback, setOpenFilePanelCallback] = useState<((entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void) | null>(null);
     const [terminalInputCallback, setTerminalInputCallback] = useState<((input: string) => void) | null>(null);
     const [canvasGroupId, setCanvasGroupId] = useState<string | null>(null);
 
@@ -242,6 +248,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             activeEndpoint, setActiveEndpoint,
             activeModel, setActiveModel,
             previewHTMLCallback, setPreviewHTMLCallback,
+            openFilePanelCallback, setOpenFilePanelCallback,
             terminalInputCallback, setTerminalInputCallback,
             canvasGroupId, setCanvasGroupId,
             sessionStatuses, setSessionStatus, getSessionStatus,

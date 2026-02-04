@@ -7,11 +7,8 @@ import { useMemo } from "react";
 import type { OpenImageOptions } from "@/components/image-editor/types";
 import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
 import { useWorkspace } from "@/lib/workspace-store";
-
-interface FileOperation {
-    type: 'Write' | 'Edit' | 'ImageGen' | 'Reference';
-    path: string;
-}
+import { useChat } from "@/lib/store";
+import { collectFileOperations, normalizePath } from "@/lib/file-links";
 
 interface AttachedFile {
     path: string;
@@ -68,63 +65,12 @@ function isCodeFile(path: string): boolean {
     return PREVIEWABLE_EXTENSIONS.includes(ext) && !DOCUMENT_EXTENSIONS.has(ext);
 }
 
-function normalizePath(input: string): string {
-    const normalized = input.replace(/\\+/g, '/').replace(/\/+/g, '/');
-    return normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
-}
-
-function trimEdgePunctuation(value: string): string {
-    return value
-        .replace(/^[\s"'`([{<]+/, '')
-        .replace(/[\s"'`)\]}>.,;:!?]+$/, '');
-}
-
-function stripLineAnchors(value: string): string {
-    let result = value;
-    result = result.replace(/#L\d+(?:C\d+)?$/, '');
-    result = result.replace(/:\d+(?::\d+)?$/, '');
-    return result;
-}
-
-function looksLikePath(value: string): boolean {
-    if (!value) return false;
-    if (value.endsWith('/')) return false;
-    const base = value.split('/').pop() || value;
-    if (/\.[A-Za-z0-9]{1,10}$/.test(base)) return true;
-    const specialNames = new Set(['README', 'LICENSE', 'Makefile', 'Dockerfile']);
-    return specialNames.has(base);
-}
-
-function extractWorkspaceFilePaths(text: string, workspaceRoot: string): string[] {
-    const root = normalizePath(workspaceRoot);
-    if (!root || !text) return [];
-    const results = new Set<string>();
-    const tokens = text.split(/\s+/);
-
-    for (const rawToken of tokens) {
-        let token = trimEdgePunctuation(rawToken);
-        if (!token) continue;
-        token = token.replace(/\\+/g, '/');
-        token = stripLineAnchors(token);
-        token = trimEdgePunctuation(token);
-        if (!looksLikePath(token)) continue;
-        if (token.includes('://') || token.startsWith('http') || token.startsWith('www.')) {
-            continue;
-        }
-
-        const normalizedToken = normalizePath(token);
-        if (normalizedToken.startsWith(`${root}/`)) {
-            results.add(normalizedToken);
-        }
-    }
-
-    return Array.from(results);
-}
 
 export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onSelectFile, onOpenInPanel, onOpenImage, onOpenTerminal, onPreviewHTML }: MessageItemProps) {
     const isUser = message.role === "user";
     const hasBlocks = message.blocks && message.blocks.length > 0;
     const { currentWorkspace } = useWorkspace();
+    const { openFilePanelCallback } = useChat();
 
     // Check if there are text blocks in the message
     const hasTextBlocks = message.blocks?.some(b => b.type === 'text') || false;
@@ -173,87 +119,12 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
     const hasTextContent = cleanContent && cleanContent.trim().length > 0;
     const showLegacyContent = hasTextContent && !hasTextBlocks;
 
-    const combinedTextContent = useMemo(() => {
-        const chunks: string[] = [];
-        if (cleanContent) {
-            chunks.push(cleanContent);
-        }
-        if (message.blocks?.length) {
-            for (const block of message.blocks) {
-                if (block.type === 'text' && typeof block.content === 'string') {
-                    chunks.push(block.content);
-                }
-            }
-        }
-        return chunks.join('\n');
-    }, [cleanContent, message.blocks]);
-
-    // Extract file operations from blocks (simple approach)
-    // 1. Write/Edit operations
-    const writeEditOperations: FileOperation[] = message.blocks
-        ?.filter(b =>
-            b.type === 'tool_use' &&
-            (b.content?.name === 'Write' || b.content?.name === 'Edit') &&
-            b.status === 'success' &&
-            b.content?.input?.file_path
-        )
-        .map(b => ({
-            type: b.content.name as 'Write' | 'Edit',
-            path: b.content.input.file_path as string
-        })) || [];
-
-    // 2. Image generation operations (mcp__imagegen__generate_image)
-    const imageGenOperations = (message.blocks
-        ?.filter(b =>
-            b.type === 'tool_use' &&
-            b.content?.name === 'mcp__imagegen__generate_image' &&
-            b.status === 'success' &&
-            b.content?.result
-        )
-        .map(b => {
-            try {
-                // MCP result structure: array of {type: "text", text: "..."}
-                // or could be a string directly
-                let jsonStr: string | null = null;
-                const resultData = b.content.result;
-
-                if (typeof resultData === 'string') {
-                    jsonStr = resultData;
-                } else if (Array.isArray(resultData) && resultData.length > 0) {
-                    // Extract text from first content block
-                    const firstBlock = resultData[0];
-                    if (firstBlock?.type === 'text' && typeof firstBlock.text === 'string') {
-                        jsonStr = firstBlock.text;
-                    }
-                }
-
-                if (jsonStr) {
-                    const parsed = JSON.parse(jsonStr);
-                    if (parsed?.file_path) {
-                        return {
-                            type: 'ImageGen' as const,
-                            path: parsed.file_path as string
-                        };
-                    }
-                }
-            } catch {
-                // Ignore parse errors
-            }
-            return null;
+    const fileOperations = useMemo(() => (
+        collectFileOperations({
+            blocks: message.blocks,
+            workspaceRoot: currentWorkspace?.path || null,
         })
-        .filter(Boolean) as FileOperation[]) || [];
-
-    // Combine all file operations
-    const writeEditPathSet = new Set(writeEditOperations.map(op => normalizePath(op.path)));
-    const inferredPaths = useMemo(() => {
-        if (!currentWorkspace?.path) return [];
-        return extractWorkspaceFilePaths(combinedTextContent, currentWorkspace.path);
-    }, [combinedTextContent, currentWorkspace?.path]);
-    const inferredOperations: FileOperation[] = inferredPaths
-        .filter(path => !writeEditPathSet.has(normalizePath(path)))
-        .map(path => ({ type: 'Reference' as const, path }));
-
-    const fileOperations: FileOperation[] = [...writeEditOperations, ...imageGenOperations, ...inferredOperations];
+    ), [message.blocks, currentWorkspace?.path]);
 
     // Extract filename from path
     const getFileName = (path: string) => {
@@ -265,24 +136,25 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
     const handleFileClick = (path: string, isPreviewable: boolean) => {
         if (!isPreviewable) return;
         const name = getFileName(path);
-        if (onOpenInPanel) {
+        const openPanel = onOpenInPanel || openFilePanelCallback;
+        if (openPanel) {
             if (isImageFile(path)) {
-                onOpenInPanel(
+                openPanel(
                     { path, name, is_directory: false },
                     { initialMode: 'image', openInAITool: true }
                 );
             } else if (isDocumentFile(path)) {
-                onOpenInPanel(
+                openPanel(
                     { path, name, is_directory: false },
                     { initialMode: 'preview' }
                 );
             } else if (isCodeFile(path)) {
-                onOpenInPanel(
+                openPanel(
                     { path, name, is_directory: false },
                     { initialMode: 'editor' }
                 );
             } else {
-                onOpenInPanel({ path, name, is_directory: false });
+                openPanel({ path, name, is_directory: false });
             }
             return;
         }

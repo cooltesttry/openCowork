@@ -16,7 +16,12 @@ import {
     ProcessableEvent,
 } from '@/lib/event-processor';
 import type { EventProcessorState } from '@/lib/event-processor';
-
+import {
+    collectFileOperations,
+    classifyFileKind,
+    normalizePath,
+    type FileKind,
+} from '@/lib/file-links';
 const normalizeUsage = (usage: any): Message["usage"] | null => {
     if (!usage || typeof usage !== "object") return null;
     const inputTokens = Number(usage.input_tokens ?? 0);
@@ -55,6 +60,7 @@ export function useChatLogic() {
         setSessionStatus,
         getSessionStatus,
         currentSessionIdRef,  // Use shared ref from Context
+        openFilePanelCallback,
     } = useChat();
 
     // Workspace context for session change notifications
@@ -78,6 +84,64 @@ export function useChatLogic() {
     const [askUserRequest, setAskUserRequest] = useState<AskUserContent | null>(null);
     const [securityMode, setSecurityMode] = useState<SecurityMode>('bypassPermissions');
     const [slashCommands, setSlashCommands] = useState<{ command: string; description: string }[]>([]);
+
+    const autoOpenFileForSession = useCallback((sessionId: string) => {
+        if (!openFilePanelCallback) return;
+
+        const state = processorStateRef.current.get(sessionId);
+        if (!state) return;
+
+        const operations = collectFileOperations({
+            blocks: state.blocks,
+            workspaceRoot: currentWorkspace?.path || null,
+        });
+
+        if (!operations.length) return;
+
+        const candidates: { path: string; kind: FileKind }[] = [];
+        const seen = new Set<string>();
+        for (const operation of operations) {
+            const path = operation.path;
+            if (!path) continue;
+            const normalized = normalizePath(path);
+            if (seen.has(normalized)) continue;
+            seen.add(normalized);
+            const kind = classifyFileKind(normalized);
+            if (!kind) continue;
+            candidates.push({ path: normalized, kind });
+        }
+
+        if (candidates.length === 0) return;
+
+        const priority: FileKind[] = ['html', 'image', 'document', 'code'];
+        const selected = priority
+            .map(kind => candidates.find(candidate => candidate.kind === kind))
+            .find(Boolean);
+
+        if (!selected) return;
+        const name = selected.path.split('/').pop() || selected.path;
+
+        if (selected.kind === 'image') {
+            openFilePanelCallback(
+                { path: selected.path, name, is_directory: false },
+                { initialMode: 'image', openInAITool: true }
+            );
+            return;
+        }
+
+        if (selected.kind === 'html' || selected.kind === 'document') {
+            openFilePanelCallback(
+                { path: selected.path, name, is_directory: false },
+                { initialMode: 'preview' }
+            );
+            return;
+        }
+
+        openFilePanelCallback(
+            { path: selected.path, name, is_directory: false },
+            { initialMode: 'editor' }
+        );
+    }, [openFilePanelCallback, currentWorkspace?.path]);
 
 
 
@@ -318,6 +382,8 @@ export function useChatLogic() {
                     return msg;
                 }));
 
+                autoOpenFileForSession(sessionId);
+
                 sessionsApi.markRead(sessionId).catch(err =>
                     console.warn(`Failed to mark session ${sessionId} as read:`, err)
                 );
@@ -430,7 +496,7 @@ export function useChatLogic() {
                 return [...prev, assistantMessage];
             });
         }
-    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, refreshWorkspaceSessions, CONTENT_EVENT_TYPES, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId]);
+    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, refreshWorkspaceSessions, CONTENT_EVENT_TYPES, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId, autoOpenFileForSession]);
 
     // Stable wrapper that always calls the latest handler
     const handleGlobalEvent = useCallback((event: StreamEvent) => {
