@@ -255,9 +255,11 @@ function ReferenceBar({
   return (
     <div className="flex items-center gap-3 py-2 px-3 bg-blue-50 dark:bg-blue-950/30 border-t border-blue-200 dark:border-blue-800">
       {/* Hint text */}
-      <span className="text-xs text-blue-600 dark:text-blue-400 shrink-0">
-        Double-click images in file browser to add
-      </span>
+      {images.length === 0 && (
+        <span className="text-xs text-blue-600 dark:text-blue-400 shrink-0">
+          Double-click images in file browser to add
+        </span>
+      )}
 
       {/* Thumbnail list */}
       <div className="flex items-center gap-2 flex-1 overflow-x-auto">

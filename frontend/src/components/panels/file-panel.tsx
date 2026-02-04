@@ -19,6 +19,11 @@ interface FilePanelParams {
     size?: number | null;
     modified_at?: number | null;
     initialMode?: FilePanelMode;
+    currentMode?: FilePanelMode;
+    addImage?: string;
+    openInAITool?: boolean;
+    onModeChange?: (panelId: string, mode: FilePanelMode) => void;
+    onReferenceBarToggle?: (expanded: boolean) => void;
 }
 
 interface FilePanelProps extends IDockviewPanelProps {
@@ -28,7 +33,7 @@ interface FilePanelProps extends IDockviewPanelProps {
 const isImageFile = (filename: string) => /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tif|tiff|heic|heif)$/i.test(filename);
 const isEditableFile = (filename: string) => /\.(txt|js|jsx|ts|tsx|py|json|html|htm|css|scss|less|md|markdown|xml|yaml|yml|toml|ini|cfg|conf|sh|bash|zsh|sql|go|rs|java|c|cpp|h|hpp|rb|php|swift|kt|scala|lua|r|vue|svelte|astro)$/i.test(filename);
 
-export function FilePanel({ params }: FilePanelProps) {
+export function FilePanel({ params, api }: FilePanelProps) {
     const filePath = params?.path;
     const fileName = params?.name || filePath?.split('/').pop() || 'Untitled';
     const fileExt = fileName.includes('.') ? fileName.split('.').pop() : undefined;
@@ -60,6 +65,16 @@ export function FilePanel({ params }: FilePanelProps) {
     const [imageHasContent, setImageHasContent] = useState(false);
     const imageExporterRef = useRef<null | (() => string | null)>(null);
     const [imageAutoFitToken, setImageAutoFitToken] = useState(0);
+
+    useEffect(() => {
+        if (params?.currentMode === mode) return;
+        api.updateParameters({ ...params, currentMode: mode });
+    }, [api, mode, params]);
+
+    useEffect(() => {
+        if (!params?.onModeChange) return;
+        params.onModeChange(api.id, mode);
+    }, [api.id, mode, params?.onModeChange]);
 
     useEffect(() => {
         setMode(defaultMode);
@@ -259,6 +274,8 @@ export function FilePanel({ params }: FilePanelProps) {
                         <ImageEditorPanel
                             params={{
                                 initialImage: filePath,
+                                addImage: params?.addImage,
+                                openInAITool: params?.openInAITool,
                                 onHasContentChange: setImageHasContent,
                                 onExportRequest: (exporter) => {
                                     imageExporterRef.current = exporter;
@@ -271,6 +288,7 @@ export function FilePanel({ params }: FilePanelProps) {
                                 },
                                 autoFitToken: imageAutoFitToken,
                                 modeToggle: imageModeToggle,
+                                onReferenceBarToggle: params?.onReferenceBarToggle,
                             }}
                         />
                     </div>

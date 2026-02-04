@@ -72,68 +72,19 @@ class Workspace:
 
 
 @dataclass
-class MCPServerConfig:
-    """MCP server configuration."""
-    name: str
-    type: str = "stdio"                 # stdio or sse
-    command: str = ""
-    args: List[str] = field(default_factory=list)
-    url: str = ""
-    env: dict = field(default_factory=dict)
-    enabled: bool = True
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "type": self.type,
-            "command": self.command,
-            "args": self.args,
-            "url": self.url,
-            "env": self.env,
-            "enabled": self.enabled,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "MCPServerConfig":
-        return cls(
-            name=data["name"],
-            type=data.get("type", "stdio"),
-            command=data.get("command", ""),
-            args=data.get("args", []),
-            url=data.get("url", ""),
-            env=data.get("env", {}),
-            enabled=data.get("enabled", True),
-        )
-
-
-@dataclass
 class WorkspaceConfig:
     """Workspace-level configuration stored in .opencowork/config.json."""
-    mcp_servers: List[MCPServerConfig] = field(default_factory=list)
-    disabled_global_mcp: List[str] = field(default_factory=list)  # Global MCP servers to disable
-    preferred_endpoint: Optional[str] = None
-    preferred_model: Optional[str] = None
-    allowed_tools: Optional[List[str]] = None  # Override global tool permissions
+    enabled_mcp_ids: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
-            "mcp_servers": [s.to_dict() for s in self.mcp_servers],
-            "disabled_global_mcp": self.disabled_global_mcp,
-            "model": {
-                "preferred_endpoint": self.preferred_endpoint,
-                "preferred_model": self.preferred_model,
-            } if self.preferred_endpoint or self.preferred_model else None,
-            "allowed_tools": self.allowed_tools,
+            "enabled_mcp_ids": self.enabled_mcp_ids,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "WorkspaceConfig":
-        mcp_servers = [MCPServerConfig.from_dict(s) for s in data.get("mcp_servers", [])]
-        model_config = data.get("model", {}) or {}
-        return cls(
-            mcp_servers=mcp_servers,
-            disabled_global_mcp=data.get("disabled_global_mcp", []),
-            preferred_endpoint=model_config.get("preferred_endpoint"),
-            preferred_model=model_config.get("preferred_model"),
-            allowed_tools=data.get("allowed_tools"),
-        )
+        enabled = data.get("enabled_mcp_ids") or []
+        if not isinstance(enabled, list):
+            enabled = []
+        enabled = [str(v) for v in enabled if v]
+        return cls(enabled_mcp_ids=enabled)

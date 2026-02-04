@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useCallback } from 'react';
+import type { Monaco } from '@monaco-editor/react';
 import { useTheme } from 'next-themes';
 import { IDockviewPanelProps } from "dockview";
 import { saveFile } from '../../lib/api';
@@ -93,6 +94,20 @@ export function EditorPanel({ params }: EditorPanelProps) {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [value, params.filename, handleSave]); // Re-bind when value/filename changes to ensure latest state is saved
 
+    const handleBeforeMount = useCallback((monaco: Monaco) => {
+        monaco.editor.defineTheme('cowork-light', {
+            base: 'vs',
+            inherit: true,
+            rules: [],
+            colors: {
+                'editor.background': '#f7f7f2',
+                'editorGutter.background': '#f7f7f2',
+                'editorLineHighlightBackground': '#f0f0eb',
+                'editorLineHighlightBorder': '#f0f0eb',
+            },
+        });
+    }, []);
+
     // Listen to dimension changes to layout monaco
     // Monaco React handles resizing automatically if width/height are 100%, 
     // but sometimes needs a trigger if container resizes.
@@ -133,7 +148,8 @@ export function EditorPanel({ params }: EditorPanelProps) {
                     height="100%"
                     width="100%"
                     language={language}
-                    theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
+                    theme={resolvedTheme === 'dark' ? 'vs-dark' : 'cowork-light'}
+                    beforeMount={handleBeforeMount}
                     value={value}
                     onChange={(val) => {
                         const nextValue = val || '';

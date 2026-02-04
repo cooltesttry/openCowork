@@ -17,6 +17,7 @@ from core.user_input_handler import user_input_handler
 from core import session_storage
 from core.workspace_storage import WorkspaceStorage
 from models.settings import AppSettings
+from core.mcp_registry import resolve_enabled_mcp_servers
 from models.session import SessionMessage, TokenUsage
 
 
@@ -772,9 +773,18 @@ async def websocket_multiplexed(websocket: WebSocket):
         async def task_coroutine():
             """Generator that yields events from session_manager.stream_message."""
             # Get or create managed session
+            session_settings = settings
+            if workspace_storage_obj:
+                session_settings = settings.model_copy(deep=True)
+                ws_config = workspace_storage_obj.get_config()
+                session_settings.mcp_servers = resolve_enabled_mcp_servers(
+                    settings,
+                    ws_config.enabled_mcp_ids,
+                )
+
             managed_session = await session_manager.get_or_create(
                 session_id=storage_session.id,
-                settings=settings,
+                settings=session_settings,
                 endpoint_name=effective_endpoint,
                 model_name=effective_model,
                 websocket=websocket,  # For can_use_tool callbacks

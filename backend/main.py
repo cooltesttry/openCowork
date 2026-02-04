@@ -17,6 +17,11 @@ from models.settings import AppSettings
 from core.session_manager import session_manager
 from core.task_runner import task_runner
 from core.workspace_storage import WorkspaceManager
+from core.mcp_registry import (
+    ensure_global_mcp_ids,
+    migrate_all_workspace_mcp_configs,
+    seed_workspace_mcp_defaults,
+)
 
 
 # Configure logging with file and console output
@@ -101,6 +106,9 @@ async def lifespan(app: FastAPI):
     # Initialize workspace manager
     app.state.workspace_manager = WorkspaceManager(CONFIG_FILE)
 
+    # Ensure global MCP servers have stable IDs
+    global_changed = ensure_global_mcp_ids(app.state.settings)
+
     # Restore default_workdir from current workspace (if any)
     current_ws = app.state.workspace_manager.get_current_workspace()
     if current_ws:
@@ -108,11 +116,31 @@ async def lifespan(app: FastAPI):
         logging.info(f"[Lifespan] Restored workdir from current workspace: {current_ws.path}")
 
     # Ensure default workspace exists and migrate legacy sessions
-    default_ws = app.state.workspace_manager.ensure_default_workspace(
-        app.state.settings.default_workdir
-    )
+    default_path = app.state.settings.default_workdir
+    default_storage = None
+    if default_path:
+        default_storage = app.state.workspace_manager.get_storage(default_path)
+        default_config_exists = default_storage.config_file.exists()
+    else:
+        default_config_exists = False
+
+    default_ws = app.state.workspace_manager.ensure_default_workspace(default_path)
     if default_ws:
         logging.info(f"[Lifespan] Default workspace: {default_ws.name} ({default_ws.path})")
+        # Seed defaults only when workspace config did not exist before creation
+        if default_storage and not default_config_exists:
+            seeded = seed_workspace_mcp_defaults(default_storage, app.state.settings)
+            if seeded:
+                logging.info("[Lifespan] Seeded default workspace MCP list from global settings")
+
+    # Migrate workspace MCP configs to ID-based enable lists
+    ws_changed, ws_global_changed = migrate_all_workspace_mcp_configs(
+        app.state.workspace_manager,
+        app.state.settings,
+    )
+
+    if global_changed or ws_global_changed:
+        save_settings(app.state.settings)
 
     # Start session manager for ClaudeSDKClient lifecycle management
     await session_manager.start()

@@ -463,7 +463,7 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
                                 onChange={(e) => handleContentChange(e.target.value)}
                                 onKeyDown={handleKeyDown}
                                 placeholder={isRunning ? "Session is running... (type here, press Stop to interrupt)" : "Type a message... (/ for commands, @ for files)"}
-                                className="min-h-[48px] max-h-[200px] w-full resize-none border-0 focus-visible:ring-0 shadow-none bg-transparent px-3 pt-1 pb-0 flex-1"
+                                className="min-h-[48px] max-h-[200px] w-full resize-none border-0 focus-visible:ring-0 shadow-none !bg-transparent px-3 pt-1 pb-0 flex-1"
                             />
                             {/* Send/Stop Button */}
                             <Button

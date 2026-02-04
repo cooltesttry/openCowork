@@ -153,6 +153,7 @@ const MiddleEllipsisTab = ({
 
 export function DockviewMain() {
     const apiRef = useRef<DockviewApi | null>(null);
+    const filePanelModesRef = useRef<Map<string, FilePanelMode>>(new Map());
     const handlePreviewFileRef = useRef<((path: string, name: string, content?: string) => void) | null>(null);
     const handlePreviewHTMLRef = useRef<((htmlContent: string) => void) | null>(null);
     const {
@@ -165,6 +166,7 @@ export function DockviewMain() {
 
     // State for controlling FileExplorer's viewFilter from ImageEditor
     const [fileExplorerViewFilter, setFileExplorerViewFilter] = useState<"all" | "images" | "documents" | "video" | "audio" | "code">("all");
+    const [fileExplorerViewFilterToken, setFileExplorerViewFilterToken] = useState(0);
 
     // Use shared chat logic hook
     const chatLogic = useChatLogic();
@@ -204,6 +206,10 @@ export function DockviewMain() {
 
     const handlePermissionResponse = useCallback((blockId: string, approved: boolean) => {
         chatLogicRef.current?.handlePermissionResponse(blockId, approved);
+    }, []);
+
+    const handleFilePanelModeChange = useCallback((panelId: string, mode: FilePanelMode) => {
+        filePanelModesRef.current.set(panelId, mode);
     }, []);
 
     const handleAskUserSubmit = useCallback((requestId: string, answers: Record<string, string>) => {
@@ -258,24 +264,85 @@ export function DockviewMain() {
         }
     }, []);
 
+    // Handle reference bar toggle in ImageEditor - switch FileExplorer to images mode
+    const handleReferenceBarToggle = useCallback((expanded: boolean) => {
+        if (expanded) {
+            // Switch file list to images mode when reference bar is expanded
+            setFileExplorerViewFilter("images");
+            setFileExplorerViewFilterToken((prev) => prev + 1);
+        }
+        // Note: Don't auto-switch back to "all" when collapsed, let user choose manually
+    }, []);
+
     const handleOpenFilePanel = useCallback((
         entry: { path: string; name: string; is_directory: boolean; size?: number | null; modified_at?: number | null },
-        options?: { initialMode?: FilePanelMode }
+        options?: { initialMode?: FilePanelMode; openInAITool?: boolean }
     ) => {
         if (!apiRef.current) return;
         if (entry.is_directory) return;
 
-        // If a file panel for this path already exists, activate it
-        for (const panel of apiRef.current.panels) {
-            const panelParams = (panel as { params?: { path?: string } }).params;
-            if (panelParams?.path === entry.path) {
-                if (options?.initialMode) {
-                    panel.api.updateParameters({
-                        initialMode: options.initialMode,
+        const updateFilePanelParams = (
+            panel: DockviewPanelApi,
+            updates: Partial<{
+                path: string;
+                name?: string;
+                size?: number;
+                modified_at?: number;
+                initialMode?: FilePanelMode;
+                currentMode?: FilePanelMode;
+                addImage?: string;
+                openInAITool?: boolean;
+                onModeChange?: (panelId: string, mode: FilePanelMode) => void;
+                onReferenceBarToggle?: (expanded: boolean) => void;
+            }>
+        ) => {
+            const current = panel.getParameters();
+            panel.updateParameters({
+                ...current,
+                ...updates,
+                currentMode: updates.currentMode ?? updates.initialMode ?? current?.currentMode,
+                onModeChange: updates.onModeChange ?? current?.onModeChange,
+                onReferenceBarToggle: updates.onReferenceBarToggle ?? current?.onReferenceBarToggle,
+            });
+        };
+
+        if (options?.initialMode === 'image') {
+            const editorGroup = apiRef.current.getPanel('editor-panel')?.group;
+            const activePanel = editorGroup?.activePanel;
+            if (activePanel?.api.component === 'filepanel') {
+                const activeParams = activePanel.api.getParameters() as { currentMode?: FilePanelMode } | undefined;
+                const activeMode = activeParams?.currentMode ?? filePanelModesRef.current.get(activePanel.api.id);
+                if (activeMode === 'image') {
+                    updateFilePanelParams(activePanel.api, {
+                        addImage: entry.path,
+                        openInAITool: false,
+                        onModeChange: handleFilePanelModeChange,
+                        onReferenceBarToggle: handleReferenceBarToggle,
                     });
+                    activePanel.api.setActive();
+                    return;
                 }
-                panel.api.setActive();
-                return;
+            }
+        }
+
+        const shouldReuseByPath = options?.initialMode !== 'image';
+        if (shouldReuseByPath) {
+            // If a file panel for this path already exists, activate it
+            for (const panel of apiRef.current.panels) {
+                const panelParams = (panel as { params?: { path?: string } }).params;
+                if (panelParams?.path === entry.path) {
+                    if (options?.initialMode || options?.openInAITool !== undefined) {
+                        updateFilePanelParams(panel.api, {
+                            initialMode: options?.initialMode,
+                            openInAITool: options?.openInAITool,
+                            currentMode: options?.initialMode,
+                            onModeChange: handleFilePanelModeChange,
+                            onReferenceBarToggle: handleReferenceBarToggle,
+                        });
+                    }
+                    panel.api.setActive();
+                    return;
+                }
             }
         }
 
@@ -296,11 +363,15 @@ export function DockviewMain() {
                 size: entry.size ?? undefined,
                 modified_at: entry.modified_at ?? undefined,
                 initialMode: options?.initialMode,
+                currentMode: options?.initialMode,
+                openInAITool: options?.openInAITool,
+                onModeChange: handleFilePanelModeChange,
+                onReferenceBarToggle: handleReferenceBarToggle,
             },
         });
 
         newPanel?.api.setActive();
-    }, []);
+    }, [handleFilePanelModeChange, handleReferenceBarToggle]);
 
     // Handle opening an image in ImageEditor panel
     const handleOpenInImageEditor = useCallback((imagePath: string, options?: OpenImageOptions) => {
@@ -341,15 +412,6 @@ export function DockviewMain() {
 
         // Activate the panel
         imageEditorPanel?.api.setActive();
-    }, []);
-
-    // Handle reference bar toggle in ImageEditor - switch FileExplorer to images mode
-    const handleReferenceBarToggle = useCallback((expanded: boolean) => {
-        if (expanded) {
-            // Switch file list to images mode when reference bar is expanded
-            setFileExplorerViewFilter("images");
-        }
-        // Note: Don't auto-switch back to "all" when collapsed, let user choose manually
     }, []);
 
     // Handle opening a file in editor from Preview panel
@@ -567,6 +629,10 @@ export function DockviewMain() {
         const api = event.api;
         apiRef.current = api;
 
+        api.onDidRemovePanel((panel) => {
+            filePanelModesRef.current.delete(panel.api.id);
+        });
+
         // Panel 1: Chat (Center Left) - Anchor
         const chatPanel = api.addPanel({
             id: 'chat-panel',
@@ -647,6 +713,7 @@ export function DockviewMain() {
             editorPanel.api.setActive();
         }
 
+
         // Panel 3: Workspaces (Left)
         const workspaceWidth = isSessionSidebarOpen ? SESSION_PANEL_WIDTH : COLLAPSED_PANEL_WIDTH;
         const workspacesPanel = api.addPanel({
@@ -697,6 +764,7 @@ export function DockviewMain() {
                 onToggle: () => setIsSidebarOpen(!isSidebarOpen),
                 isOpen: isSidebarOpen,
                 externalViewFilter: fileExplorerViewFilter,
+                externalViewFilterToken: fileExplorerViewFilterToken,
             }
         });
         if (toolsPanel?.group?.api) {
@@ -760,6 +828,7 @@ export function DockviewMain() {
                         onToggle: () => setIsSidebarOpen(!isSidebarOpen),
                         isOpen: isSidebarOpen,
                         externalViewFilter: fileExplorerViewFilter,
+                        externalViewFilterToken: fileExplorerViewFilterToken,
                     }
                 });
                 if (newToolsPanel?.group?.api) {
@@ -791,10 +860,11 @@ export function DockviewMain() {
                 onToggle: () => setIsSidebarOpen(!isSidebarOpen),
                 isOpen: isSidebarOpen,
                 externalViewFilter: fileExplorerViewFilter,
+                externalViewFilterToken: fileExplorerViewFilterToken,
             });
             relayout();
         }
-    }, [isSidebarOpen, handleMentionFile, handleOpenFile, handleOpenFilePanel, handleFileSelect, handleOpenInImageEditor, isPreviewPanelActive, setIsSidebarOpen, relayout, fileExplorerViewFilter]);
+    }, [isSidebarOpen, handleMentionFile, handleOpenFile, handleOpenFilePanel, handleFileSelect, handleOpenInImageEditor, isPreviewPanelActive, setIsSidebarOpen, relayout, fileExplorerViewFilter, fileExplorerViewFilterToken]);
 
     // Handle toggle of workspaces panel
     useEffect(() => {

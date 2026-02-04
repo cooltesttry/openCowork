@@ -42,6 +42,7 @@ class ModelAPIConfig(BaseModel):
 
 class MCPServerConfig(BaseModel):
     """Configuration for an MCP server."""
+    id: Optional[str] = None
     name: str
     type: Literal["stdio", "sse", "http", "sdk"] = "stdio"  # sse=legacy SSE, http=Streamable HTTP
     command: Optional[str] = None

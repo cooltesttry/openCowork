@@ -9,9 +9,11 @@ import { SettingsShell } from "@/components/settings/settings-shell";
 
 interface SettingsDialogProps {
     trigger?: ReactNode;
+    buttonClassName?: string;
+    iconClassName?: string;
 }
 
-export function SettingsDialog({ trigger }: SettingsDialogProps) {
+export function SettingsDialog({ trigger, buttonClassName, iconClassName }: SettingsDialogProps) {
     const [open, setOpen] = useState(false);
 
     return (
@@ -19,8 +21,8 @@ export function SettingsDialog({ trigger }: SettingsDialogProps) {
             {trigger ? (
                 <div onClick={() => setOpen(true)}>{trigger}</div>
             ) : (
-                <Button variant="ghost" size="icon" onClick={() => setOpen(true)}>
-                    <Settings className="h-5 w-5" />
+                <Button variant="ghost" size="icon" onClick={() => setOpen(true)} className={buttonClassName}>
+                    <Settings className={iconClassName || "h-5 w-5"} />
                 </Button>
             )}
             <DialogContent className="h-screen !w-screen !max-w-none max-h-none sm:!max-w-none rounded-none m-0 !p-0 !gap-0">

@@ -28,14 +28,15 @@ import type { OpenImageOptions } from "@/components/image-editor/types";
 interface McpSidebarPanelProps {
     onMentionFile?: (path: string) => void;
     onOpenFile?: (path: string) => void;
-    onOpenInPanel?: (entry: { path: string; name: string; is_directory: boolean; size?: number | null; modified_at?: number | null }, options?: { initialMode?: 'editor' | 'preview' | 'image' }) => void;
+    onOpenInPanel?: (entry: { path: string; name: string; is_directory: boolean; size?: number | null; modified_at?: number | null }, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     isPreviewPanelActive?: () => boolean;
     externalViewFilter?: "all" | "images" | "documents" | "video" | "audio" | "code";
+    externalViewFilterToken?: number;
 }
 
-export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSelectFile, onOpenImage, isPreviewPanelActive, externalViewFilter }: McpSidebarPanelProps) {
+export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSelectFile, onOpenImage, isPreviewPanelActive, externalViewFilter, externalViewFilterToken }: McpSidebarPanelProps) {
     const { currentWorkspace } = useWorkspace();
     const { rightPanelView } = useChat();
     const [toolsMode, setToolsMode] = useState<"active" | "add">("active");
@@ -45,8 +46,8 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
     const [mcpLoading, setMcpLoading] = useState(true);
     const [globalMcpServers, setGlobalMcpServers] = useState<WorkspaceMcpServer[]>([]);
     const [globalMcpLoading, setGlobalMcpLoading] = useState(false);
-    const [addingMcpName, setAddingMcpName] = useState<string | null>(null);
-    const [removingMcp, setRemovingMcp] = useState<string | null>(null);
+    const [addingMcpId, setAddingMcpId] = useState<string | null>(null);
+    const [removingMcpId, setRemovingMcpId] = useState<string | null>(null);
     const [mcpQuery, setMcpQuery] = useState("");
 
     // Skills state
@@ -140,41 +141,32 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
             toast.error("未选择 Workspace");
             return;
         }
-        setAddingMcpName(server.name);
+        setAddingMcpId(server.id);
         try {
-            const payload: WorkspaceMcpServer = {
-                name: server.name,
-                type: server.type,
-                command: server.command,
-                args: server.args || [],
-                url: server.url,
-                env: server.env || {},
-                enabled: true,
-            };
-            const res = await addWorkspaceMcpServer(currentWorkspace.id, payload);
+            const res = await addWorkspaceMcpServer(currentWorkspace.id, server.id);
             setMcpServers(res.servers || []);
             toast.success("MCP 已添加", { description: server.name });
         } catch (err) {
             toast.error("添加失败", { description: String(err) });
         } finally {
-            setAddingMcpName(null);
+            setAddingMcpId(null);
         }
     };
 
-    const handleDisableMcp = async (name: string) => {
+    const handleDisableMcp = async (id: string) => {
         if (!currentWorkspace?.id) {
             toast.error("未选择 Workspace");
             return;
         }
-        setRemovingMcp(name);
+        setRemovingMcpId(id);
         try {
-            const res = await disableWorkspaceMcpServer(currentWorkspace.id, name);
+            const res = await disableWorkspaceMcpServer(currentWorkspace.id, id);
             setMcpServers(res.servers || []);
-            toast.success("MCP 已停用", { description: name });
+            toast.success("MCP 已停用");
         } catch (err) {
             toast.error("停用失败", { description: String(err) });
         } finally {
-            setRemovingMcp(null);
+            setRemovingMcpId(null);
         }
     };
 
@@ -212,17 +204,11 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
         }
     };
 
-    const activeMcpServers = useMemo(() => {
-        return mcpServers.filter((server) => server.enabled !== false);
-    }, [mcpServers]);
+    const activeMcpServers = useMemo(() => mcpServers, [mcpServers]);
 
-    const activeMcpNames = useMemo(() => {
-        return new Set(activeMcpServers.map((server) => server.name));
+    const activeMcpIds = useMemo(() => {
+        return new Set(activeMcpServers.map((server) => server.id));
     }, [activeMcpServers]);
-
-    const workspaceMcpNames = useMemo(() => {
-        return new Set(mcpServers.map((server) => server.name));
-    }, [mcpServers]);
 
     const sortedSkills = useMemo(() => {
         return [...skills].sort((a, b) => a.name.localeCompare(b.name));
@@ -274,6 +260,7 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                     isPreviewPanelActive={isPreviewPanelActive}
                     workspaceId={currentWorkspace?.id}
                     externalViewFilter={externalViewFilter}
+                    externalViewFilterToken={externalViewFilterToken}
                 />
             ) : (
                 <div className="flex flex-col flex-1 overflow-hidden">
@@ -363,13 +350,12 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                                                 <div className="text-sm text-muted-foreground">暂无可用 MCP 配置。</div>
                                             ) : (
                                                 filteredGlobalMcpServers.map((server) => {
-                                                    const installed = activeMcpNames.has(server.name);
-                                                    const exists = workspaceMcpNames.has(server.name);
-                                                    const isAdding = addingMcpName === server.name;
-                                                    const label = installed ? "Enabled" : exists ? "Enable" : "Add";
+                                                    const installed = activeMcpIds.has(server.id);
+                                                    const isAdding = addingMcpId === server.id;
+                                                    const label = installed ? "Enabled" : "Add";
                                                     return (
                                                         <div
-                                                            key={server.name}
+                                                            key={server.id || server.name}
                                                         className="flex items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-0"
                                                         >
                                                             <div className="min-w-0">
@@ -461,7 +447,7 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                                         <div className="space-y-0.5">
                                             {activeMcpServers.map((server) => (
                                                 <div
-                                                    key={server.name}
+                                                    key={server.id || server.name}
                                                     className="group flex items-center justify-between px-3 py-0 rounded-lg transition-colors bg-muted/30 hover:bg-muted/50"
                                                 >
                                                     <div className="flex flex-col gap-0.5 min-w-0 flex-1">
@@ -476,8 +462,8 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                                                         variant="ghost"
                                                         size="icon"
                                                         className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                        onClick={() => handleDisableMcp(server.name)}
-                                                        disabled={removingMcp === server.name}
+                                                        onClick={() => handleDisableMcp(server.id)}
+                                                        disabled={removingMcpId === server.id}
                                                         title="Disable MCP"
                                                     >
                                                         <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -542,7 +528,7 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                                                                     {removeButton}
                                                                 </div>
                                                             </TooltipTrigger>
-                                                            <TooltipContent className="text-[15px] leading-snug">
+                                                            <TooltipContent className="max-w-[240px] whitespace-normal break-words bg-popover text-popover-foreground border border-border shadow-sm text-sm leading-snug">
                                                                 {skill.description}
                                                             </TooltipContent>
                                                         </Tooltip>

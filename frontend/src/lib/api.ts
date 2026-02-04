@@ -316,6 +316,7 @@ export interface WorkspaceSkillsResponse {
 }
 
 export interface WorkspaceMcpServer {
+    id: string;
     name: string;
     type: string;
     command?: string;
@@ -393,22 +394,22 @@ export async function fetchWorkspaceMcpServers(workspaceId: string): Promise<Wor
 
 export async function addWorkspaceMcpServer(
     workspaceId: string,
-    payload: WorkspaceMcpServer
+    mcpId: string
 ): Promise<WorkspaceMcpResponse> {
     const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/mcp-servers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ id: mcpId }),
     });
     if (!res.ok) throw new Error("Failed to add workspace MCP server");
     return res.json();
 }
 
-export async function disableWorkspaceMcpServer(workspaceId: string, name: string): Promise<WorkspaceMcpResponse> {
+export async function disableWorkspaceMcpServer(workspaceId: string, mcpId: string): Promise<WorkspaceMcpResponse> {
     const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/mcp-servers/disable`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ id: mcpId }),
     });
     if (!res.ok) throw new Error("Failed to disable workspace MCP server");
     return res.json();

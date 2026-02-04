@@ -12,8 +12,8 @@ from pydantic import BaseModel
 
 from core.workspace_storage import WorkspaceManager
 from core.skills_catalog import SKILLS_DIR, load_catalog, rebuild_catalog
-from models.workspace import WorkspaceConfig, MCPServerConfig
-from routers.config import save_workdir
+from core.mcp_registry import resolve_enabled_mcp_servers, migrate_workspace_mcp_config, seed_workspace_mcp_defaults
+from routers.config import save_workdir, save_settings
 
 
 logger = logging.getLogger(__name__)
@@ -36,24 +36,15 @@ class UpdateWorkspaceRequest(BaseModel):
     color: Optional[str] = None
 
 
-class MCPServerRequest(BaseModel):
-    """MCP server configuration."""
-    name: str
-    type: str = "stdio"
-    command: str = ""
-    args: List[str] = []
-    url: str = ""
-    env: dict = {}
-    enabled: bool = True
+class WorkspaceMcpAddRequest(BaseModel):
+    """Request to enable an MCP server from the global library."""
+    id: Optional[str] = None
+    name: Optional[str] = None
 
 
 class UpdateWorkspaceConfigRequest(BaseModel):
     """Request to update workspace configuration."""
-    mcp_servers: Optional[List[MCPServerRequest]] = None
-    disabled_global_mcp: Optional[List[str]] = None
-    preferred_endpoint: Optional[str] = None
-    preferred_model: Optional[str] = None
-    allowed_tools: Optional[List[str]] = None
+    enabled_mcp_ids: Optional[List[str]] = None
 
 
 class WorkspaceSkillInfo(BaseModel):
@@ -73,7 +64,8 @@ class WorkspaceSkillRemoveRequest(BaseModel):
 
 
 class WorkspaceMcpDisableRequest(BaseModel):
-    name: str
+    id: Optional[str] = None
+    name: Optional[str] = None
 
 # ==================== Helper ====================
 
@@ -157,6 +149,19 @@ def _list_workspace_skills(skills_dir: Path) -> List[WorkspaceSkillInfo]:
     return results
 
 
+def _sync_workspace_mcp_config(storage, settings, config_existed: bool) -> None:
+    """Migrate workspace MCP config and seed defaults for new workspaces."""
+    ws_changed, global_changed = migrate_workspace_mcp_config(storage, settings)
+    if not config_existed:
+        seed_workspace_mcp_defaults(storage, settings)
+    if global_changed:
+        save_settings(settings)
+
+
+def _serialize_workspace_mcp_servers(servers) -> List[dict]:
+    return [{**server.model_dump(), "enabled": True} for server in servers]
+
+
 # ==================== Endpoints ====================
 
 @router.get("/recent")
@@ -204,7 +209,12 @@ async def open_workspace(request: Request, body: OpenWorkspaceRequest):
         raise HTTPException(status_code=400, detail=f"Path is not a directory: {body.path}")
 
     manager = get_workspace_manager(request)
+    storage = manager.get_storage(str(path))
+    config_existed = storage.config_file.exists()
     workspace = manager.open_workspace(str(path), body.name)
+
+    # Migrate/seed MCP config for this workspace
+    _sync_workspace_mcp_config(storage, request.app.state.settings, config_existed)
 
     # Update app settings with new workdir and sync to config.json
     settings = request.app.state.settings
@@ -221,10 +231,16 @@ async def switch_workspace(request: Request, workspace_id: str):
     Updates current workspace and returns workspace data.
     """
     manager = get_workspace_manager(request)
+    storage = manager.get_storage_by_id(workspace_id)
+    config_existed = storage.config_file.exists() if storage else False
     workspace = manager.switch_workspace(workspace_id)
 
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
+
+    storage = storage or manager.get_storage_by_id(workspace_id)
+    if storage:
+        _sync_workspace_mcp_config(storage, request.app.state.settings, config_existed)
 
     # Update app settings with new workdir and sync to config.json
     settings = request.app.state.settings
@@ -379,31 +395,8 @@ async def update_workspace_config(request: Request, workspace_id: str, body: Upd
 
     config = storage.get_config()
 
-    if body.mcp_servers is not None:
-        config.mcp_servers = [
-            MCPServerConfig(
-                name=s.name,
-                type=s.type,
-                command=s.command,
-                args=s.args,
-                url=s.url,
-                env=s.env,
-                enabled=s.enabled,
-            )
-            for s in body.mcp_servers
-        ]
-
-    if body.disabled_global_mcp is not None:
-        config.disabled_global_mcp = body.disabled_global_mcp
-
-    if body.preferred_endpoint is not None:
-        config.preferred_endpoint = body.preferred_endpoint
-
-    if body.preferred_model is not None:
-        config.preferred_model = body.preferred_model
-
-    if body.allowed_tools is not None:
-        config.allowed_tools = body.allowed_tools
+    if body.enabled_mcp_ids is not None:
+        config.enabled_mcp_ids = [str(v) for v in body.enabled_mcp_ids if v]
 
     storage.update_config(config)
 
@@ -531,69 +524,80 @@ async def list_workspace_mcp_servers(request: Request, workspace_id: str):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
     config = storage.get_config()
-    return {"servers": [server.to_dict() for server in config.mcp_servers]}
+    settings = request.app.state.settings
+    servers = resolve_enabled_mcp_servers(settings, config.enabled_mcp_ids)
+    return {"servers": _serialize_workspace_mcp_servers(servers)}
 
 
 @router.post("/{workspace_id}/mcp-servers")
-async def add_workspace_mcp_server(request: Request, workspace_id: str, body: MCPServerRequest):
-    """Add or enable an MCP server for a workspace."""
+async def add_workspace_mcp_server(request: Request, workspace_id: str, body: WorkspaceMcpAddRequest):
+    """Enable an MCP server for a workspace by ID (from global library)."""
     manager = get_workspace_manager(request)
     storage = manager.get_storage_by_id(workspace_id)
 
     if not storage:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    name = body.name.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="MCP server name is required")
+    mcp_id = (body.id or "").strip()
+    mcp_name = (body.name or "").strip()
+    if not mcp_id and not mcp_name:
+        raise HTTPException(status_code=400, detail="MCP server id or name is required")
+
+    settings = request.app.state.settings
+    target = None
+    if mcp_id:
+        target = next((s for s in settings.mcp_servers if s.id == mcp_id), None)
+    if not target and mcp_name:
+        target = next((s for s in settings.mcp_servers if s.name == mcp_name), None)
+        if target:
+            mcp_id = target.id
+
+    if not target or not mcp_id:
+        raise HTTPException(status_code=404, detail="MCP server not found in global library")
 
     config = storage.get_config()
-    existing = next((server for server in config.mcp_servers if server.name == name), None)
-    if existing:
-        existing.type = body.type
-        existing.command = body.command
-        existing.args = body.args
-        existing.url = body.url
-        existing.env = body.env
-        existing.enabled = True
-    else:
-        config.mcp_servers.append(
-            MCPServerConfig(
-                name=name,
-                type=body.type,
-                command=body.command,
-                args=body.args,
-                url=body.url,
-                env=body.env,
-                enabled=True,
-            )
-        )
+    enabled = list(config.enabled_mcp_ids or [])
+    if mcp_id not in enabled:
+        enabled.append(mcp_id)
+        config.enabled_mcp_ids = enabled
+        storage.update_config(config)
 
-    storage.update_config(config)
-    return {"servers": [server.to_dict() for server in config.mcp_servers]}
+    servers = resolve_enabled_mcp_servers(settings, config.enabled_mcp_ids)
+    return {"servers": _serialize_workspace_mcp_servers(servers)}
 
 
 @router.post("/{workspace_id}/mcp-servers/disable")
 async def disable_workspace_mcp_server(request: Request, workspace_id: str, body: WorkspaceMcpDisableRequest):
-    """Disable an MCP server for a workspace without deleting its config."""
+    """Disable an MCP server for a workspace (remove from enabled list)."""
     manager = get_workspace_manager(request)
     storage = manager.get_storage_by_id(workspace_id)
 
     if not storage:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    name = body.name.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="MCP server name is required")
+    mcp_id = (body.id or "").strip()
+    mcp_name = (body.name or "").strip()
+    if not mcp_id and not mcp_name:
+        raise HTTPException(status_code=400, detail="MCP server id or name is required")
 
-    config = storage.get_config()
-    existing = next((server for server in config.mcp_servers if server.name == name), None)
-    if not existing:
+    settings = request.app.state.settings
+    if not mcp_id and mcp_name:
+        target = next((s for s in settings.mcp_servers if s.name == mcp_name), None)
+        if target:
+            mcp_id = target.id
+
+    if not mcp_id:
         raise HTTPException(status_code=404, detail="MCP server not found")
 
-    existing.enabled = False
+    config = storage.get_config()
+    enabled = [v for v in (config.enabled_mcp_ids or []) if v != mcp_id]
+    if len(enabled) == len(config.enabled_mcp_ids or []):
+        raise HTTPException(status_code=404, detail="MCP server not enabled in workspace")
+
+    config.enabled_mcp_ids = enabled
     storage.update_config(config)
-    return {"servers": [server.to_dict() for server in config.mcp_servers]}
+    servers = resolve_enabled_mcp_servers(settings, config.enabled_mcp_ids)
+    return {"servers": _serialize_workspace_mcp_servers(servers)}
 
 
 # ==================== Effective MCP Servers ====================
@@ -603,9 +607,7 @@ async def get_effective_mcp_servers(request: Request, workspace_id: str):
     """
     Get effective MCP servers for a workspace.
 
-    Merges global MCP servers with workspace-specific config:
-    - Global servers are included unless disabled in workspace config
-    - Workspace servers are added (can override global servers with same name)
+    Uses workspace-enabled MCP IDs to select servers from the global library.
     """
     manager = get_workspace_manager(request)
     storage = manager.get_storage_by_id(workspace_id)
@@ -613,26 +615,7 @@ async def get_effective_mcp_servers(request: Request, workspace_id: str):
     if not storage:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    # Get global MCP servers from app settings
     settings = request.app.state.settings
-    global_servers = settings.mcp_servers or []
-
-    # Get workspace config
     ws_config = storage.get_config()
-    disabled = set(ws_config.disabled_global_mcp)
-
-    # Build server map: workspace servers override global servers with same name
-    server_map = {}
-
-    # Add enabled global servers
-    for server in global_servers:
-        server_dict = server.model_dump() if hasattr(server, 'model_dump') else server
-        if server_dict.get("name") not in disabled and server_dict.get("enabled", True):
-            server_map[server_dict["name"]] = {**server_dict, "source": "global"}
-
-    # Add workspace servers (override if same name)
-    for server in ws_config.mcp_servers:
-        if server.enabled:
-            server_map[server.name] = {**server.to_dict(), "source": "workspace"}
-
-    return {"servers": list(server_map.values())}
+    servers = resolve_enabled_mcp_servers(settings, ws_config.enabled_mcp_ids)
+    return {"servers": _serialize_workspace_mcp_servers(servers)}

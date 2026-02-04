@@ -67,24 +67,28 @@ export function DocksideToolbars({ toolsPanelWidth }: { toolsPanelWidth: number 
                         </div>
                     </div>
                 ) : (
-                    <div className="flex h-full flex-col items-center gap-2 py-3">
+                    <div className="flex h-full flex-col items-stretch gap-5 py-5">
                         <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => setIsSidebarOpen(true)}
                             title="显示 MCP Servers"
+                            className="w-full !h-11 !rounded-none px-0"
                         >
-                            <PanelRightOpen className="h-5 w-5" />
+                            <PanelRightOpen className="h-7 w-7" />
                         </Button>
 
-                        <div className="flex h-8 w-8 items-center justify-center" title={isProcessing ? "Active" : "Idle"}>
+                        <ThemeToggle buttonClassName="w-full !h-11 !rounded-none px-0" iconClassName="h-7 w-7" />
+                        <SettingsDialog buttonClassName="w-full !h-11 !rounded-none px-0" iconClassName="h-7 w-7" />
+
+                        <div
+                            className="mt-auto flex h-11 w-full items-center justify-center"
+                            title={isProcessing ? "Active" : "Idle"}
+                        >
                             <div
                                 className={`h-2 w-2 rounded-full ${isProcessing ? "bg-green-500 animate-pulse" : "bg-muted-foreground/40"}`}
                             />
                         </div>
-
-                        <ThemeToggle />
-                        <SettingsDialog />
                     </div>
                 )}
             </aside>

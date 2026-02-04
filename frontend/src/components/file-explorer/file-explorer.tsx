@@ -77,7 +77,7 @@ interface FileExplorerProps {
     className?: string;
     onMentionFile?: (path: string) => void;
     onOpenFile?: (path: string) => void;
-    onOpenInPanel?: (entry: FileEntry, options?: { initialMode?: 'editor' | 'preview' | 'image' }) => void;
+    onOpenInPanel?: (entry: FileEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
     onOpenImage?: (path: string, options?: OpenImageOptions) => void;
     isPreviewPanelActive?: () => boolean;
@@ -85,9 +85,10 @@ interface FileExplorerProps {
     workspaceId?: string | null;
     /** External control for viewFilter - when provided, syncs to internal state */
     externalViewFilter?: ViewFilter;
+    externalViewFilterToken?: number;
 }
 
-export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPanel, onSelectFile, onOpenImage, isPreviewPanelActive, workspaceId, externalViewFilter }: FileExplorerProps) {
+export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPanel, onSelectFile, onOpenImage, isPreviewPanelActive, workspaceId, externalViewFilter, externalViewFilterToken }: FileExplorerProps) {
     const { currentWorkspace } = useWorkspace();
     const [flatFiles, setFlatFiles] = useState<FileEntry[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -187,7 +188,7 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
         if (externalViewFilter !== undefined) {
             setViewFilter(externalViewFilter);
         }
-    }, [externalViewFilter]);
+    }, [externalViewFilter, externalViewFilterToken]);
 
     // File watcher integration - auto-refresh on file system changes
     useEffect(() => {
@@ -1035,9 +1036,16 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
             return;
         }
 
-        // Image files - open in Image Editor
-        if (IMAGE_EXTS.has(ext) && onOpenImage) {
-            onOpenImage(entry.path);
+        // Image files - open in File Panel image mode
+        if (IMAGE_EXTS.has(ext)) {
+            if (onOpenInPanel) {
+                onOpenInPanel(entry, { initialMode: 'image', openInAITool: true });
+                return;
+            }
+            if (onOpenImage) {
+                onOpenImage(entry.path);
+                return;
+            }
             return;
         }
 

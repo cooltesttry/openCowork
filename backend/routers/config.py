@@ -103,6 +103,11 @@ async def get_mcp_servers(request: Request):
 async def add_mcp_server(request: Request, config: MCPServerConfig):
     """Add a new MCP server configuration."""
     settings = request.app.state.settings
+
+    # Ensure ID
+    if not config.id:
+        import uuid
+        config.id = str(uuid.uuid4())
     
     # Check for duplicate name
     for server in settings.mcp_servers:
@@ -121,6 +126,11 @@ async def update_mcp_server(request: Request, name: str, config: MCPServerConfig
     
     for i, server in enumerate(settings.mcp_servers):
         if server.name == name:
+            # Preserve existing ID to keep workspace references stable
+            config.id = server.id or config.id
+            if not config.id:
+                import uuid
+                config.id = str(uuid.uuid4())
             settings.mcp_servers[i] = config
             save_settings(settings)
             return {"status": "success"}

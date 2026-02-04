@@ -4,7 +4,7 @@ Workspace storage service for managing workspace data.
 Each workspace stores its data in a .opencowork/ directory within the workspace path:
 - .opencowork/workspace.json      - Workspace metadata
 - .opencowork/sessions/           - Session data files
-- .opencowork/config.json         - Workspace-level config (MCP servers, etc.)
+- .opencowork/config.json         - Workspace-level config (enabled MCP IDs)
 - .opencowork/memory/             - AI memory storage
 """
 import json
