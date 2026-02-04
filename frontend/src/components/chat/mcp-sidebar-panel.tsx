@@ -1,11 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { fetchConfig, toggleMcpServer, toggleSearch, fetchSkillsAgents, warmupSession, SkillInfo, SubagentInfo } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import {
+    fetchConfig,
+    toggleMcpServer,
+    toggleSearch,
+    fetchSkillsAgents,
+    warmupSession,
+    SubagentInfo,
+    fetchWorkspaceSkills,
+    addWorkspaceSkill,
+    removeWorkspaceSkill,
+    fetchSkillsCatalog,
+    SkillsCatalogEntry,
+    WorkspaceSkillInfo,
+} from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Server, RefreshCw, Search, FolderOpen, Sparkles, Bot, CheckCircle2 } from "lucide-react";
+import { Server, RefreshCw, Search, FolderOpen, Sparkles, Bot, CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import * as Tabs from "@radix-ui/react-tabs";
 import { FileExplorer } from "../file-explorer/file-explorer";
@@ -51,11 +65,17 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
     const [toggling, setToggling] = useState<string | null>(null);
 
     // Skills & Subagents state
-    const [skills, setSkills] = useState<SkillInfo[]>([]);
+    const [skills, setSkills] = useState<WorkspaceSkillInfo[]>([]);
     const [subagents, setSubagents] = useState<SubagentInfo[]>([]);
-    const [loadedSkills, setLoadedSkills] = useState<Set<string>>(new Set());
     const [loadedAgents, setLoadedAgents] = useState<Set<string>>(new Set());
     const [skillsLoading, setSkillsLoading] = useState(true);
+    const [agentsLoading, setAgentsLoading] = useState(true);
+    const [libraryOpen, setLibraryOpen] = useState(false);
+    const [libraryLoading, setLibraryLoading] = useState(false);
+    const [libraryQuery, setLibraryQuery] = useState("");
+    const [libraryEntries, setLibraryEntries] = useState<SkillsCatalogEntry[]>([]);
+    const [addingSkillId, setAddingSkillId] = useState<string | null>(null);
+    const [removingSkillId, setRemovingSkillId] = useState<string | null>(null);
 
     const loadData = async () => {
         try {
@@ -75,36 +95,78 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
         }
     };
 
-    const loadSkillsAgents = async () => {
+    const loadWorkspaceSkills = async () => {
+        if (!currentWorkspace?.id) {
+            setSkills([]);
+            setSkillsLoading(false);
+            return;
+        }
         try {
             setSkillsLoading(true);
-            // Load filesystem data
-            const fsData = await fetchSkillsAgents();
-            setSkills(fsData.skills);
-            setSubagents(fsData.agents);
-
-            // Try warmup to get loaded skills/agents
-            try {
-                const warmupData = await warmupSession({});
-                if (warmupData.status === "success") {
-                    setLoadedSkills(new Set(warmupData.skills));
-                    setLoadedAgents(new Set(warmupData.agents));
-                }
-            } catch (warmupErr) {
-                // Warmup may fail if no active session, that's ok
-                console.debug("Warmup skipped:", warmupErr);
-            }
+            const res = await fetchWorkspaceSkills(currentWorkspace.id);
+            setSkills(res.skills || []);
         } catch (err) {
-            console.error("Failed to load skills/agents:", err);
+            console.error("Failed to load workspace skills:", err);
         } finally {
             setSkillsLoading(false);
         }
     };
 
+    const loadAgents = async () => {
+        try {
+            setAgentsLoading(true);
+            const fsData = await fetchSkillsAgents();
+            setSubagents(fsData.agents);
+
+            try {
+                const warmupData = await warmupSession({});
+                if (warmupData.status === "success") {
+                    const agentNames = Array.isArray(warmupData.agents)
+                        ? warmupData.agents
+                            .map((agent: any) => (typeof agent === "string" ? agent : agent?.name))
+                            .filter(Boolean)
+                        : [];
+                    setLoadedAgents(new Set(agentNames as string[]));
+                }
+            } catch (warmupErr) {
+                console.debug("Warmup skipped:", warmupErr);
+            }
+        } catch (err) {
+            console.error("Failed to load agents:", err);
+        } finally {
+            setAgentsLoading(false);
+        }
+    };
+
+    const loadLibrary = async () => {
+        try {
+            setLibraryLoading(true);
+            const res = await fetchSkillsCatalog();
+            const entries = Object.values(res.catalog?.skills || {}).filter(
+                (entry) => entry.status?.state !== "removed"
+            );
+            setLibraryEntries(entries);
+        } catch (err) {
+            console.error("Failed to load skills library:", err);
+        } finally {
+            setLibraryLoading(false);
+        }
+    };
+
     useEffect(() => {
         loadData();
-        loadSkillsAgents();
+        loadAgents();
     }, []);
+
+    useEffect(() => {
+        loadWorkspaceSkills();
+    }, [currentWorkspace?.id]);
+
+    useEffect(() => {
+        if (libraryOpen) {
+            loadLibrary();
+        }
+    }, [libraryOpen]);
 
     const handleToggleMcp = async (name: string) => {
         setToggling(name);
@@ -141,6 +203,40 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
         }
     };
 
+    const handleAddSkill = async (entry: SkillsCatalogEntry) => {
+        if (!currentWorkspace?.id) {
+            toast.error("未选择 Workspace");
+            return;
+        }
+        setAddingSkillId(entry.skill_id);
+        try {
+            const res = await addWorkspaceSkill(currentWorkspace.id, entry.skill_id);
+            setSkills(res.skills || []);
+            toast.success("Skill 已添加", { description: entry.name });
+        } catch (err) {
+            toast.error("添加失败", { description: String(err) });
+        } finally {
+            setAddingSkillId(null);
+        }
+    };
+
+    const handleRemoveSkill = async (skillId: string) => {
+        if (!currentWorkspace?.id) {
+            toast.error("未选择 Workspace");
+            return;
+        }
+        setRemovingSkillId(skillId);
+        try {
+            const res = await removeWorkspaceSkill(currentWorkspace.id, skillId);
+            setSkills(res.skills || []);
+            toast.success("Skill 已移除");
+        } catch (err) {
+            toast.error("移除失败", { description: String(err) });
+        } finally {
+            setRemovingSkillId(null);
+        }
+    };
+
     // Check if search is configured (has provider and api_key)
     const isSearchConfigured = searchConfig &&
         searchConfig.provider !== "none" &&
@@ -152,14 +248,30 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
     const totalItems = (isSearchConfigured ? 1 : 0) + servers.length;
     const enabledCount = searchEnabled + mcpEnabled;
 
-    // Sort skills: loaded first
-    const sortedSkills = [...skills].sort((a, b) => {
-        const aLoaded = loadedSkills.has(a.name);
-        const bLoaded = loadedSkills.has(b.name);
-        if (aLoaded && !bLoaded) return -1;
-        if (!aLoaded && bLoaded) return 1;
-        return a.name.localeCompare(b.name);
-    });
+    const sortedSkills = useMemo(() => {
+        return [...skills].sort((a, b) => a.name.localeCompare(b.name));
+    }, [skills]);
+
+    const installedSkillIds = useMemo(() => {
+        return new Set(skills.map((skill) => skill.id));
+    }, [skills]);
+
+    const resolveLibraryEntryId = (entry: SkillsCatalogEntry) => {
+        const sourcePath = entry.source?.path || "";
+        const parts = sourcePath.split("/").filter(Boolean);
+        return parts[parts.length - 1] || entry.name || entry.skill_id;
+    };
+
+    const filteredLibraryEntries = useMemo(() => {
+        if (!libraryQuery.trim()) return libraryEntries;
+        const q = libraryQuery.trim().toLowerCase();
+        return libraryEntries.filter((entry) => {
+            const name = (entry.name || "").toLowerCase();
+            const desc = (entry.description || "").toLowerCase();
+            const skillId = (entry.skill_id || "").toLowerCase();
+            return name.includes(q) || desc.includes(q) || skillId.includes(q);
+        });
+    }, [libraryEntries, libraryQuery]);
 
     // Sort subagents: loaded first, then builtin
     const sortedAgents = [...subagents].sort((a, b) => {
@@ -345,24 +457,78 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                 <Tabs.Content value="skills" className="flex flex-col flex-1 overflow-hidden data-[state=inactive]:hidden mt-0">
                     <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/20 shrink-0">
                         <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Available:</span>
+                            <span className="text-xs text-muted-foreground">Installed:</span>
                             <Badge variant="secondary" className="text-xs">
                                 {skills.length}
                             </Badge>
                         </div>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={loadSkillsAgents}
-                            disabled={skillsLoading}
-                            title="Refresh Skills"
-                        >
-                            <RefreshCw className={`h-3.5 w-3.5 ${skillsLoading ? "animate-spin" : ""}`} />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setLibraryOpen((prev) => !prev)}
+                                disabled={!currentWorkspace?.id}
+                            >
+                                <Plus className="h-3.5 w-3.5 mr-1" />
+                                {libraryOpen ? "Close" : "Add"}
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={loadWorkspaceSkills}
+                                disabled={skillsLoading}
+                                title="Refresh Skills"
+                            >
+                                <RefreshCw className={`h-3.5 w-3.5 ${skillsLoading ? "animate-spin" : ""}`} />
+                            </Button>
+                        </div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto px-2 py-2">
+                        {libraryOpen && (
+                            <div className="mb-3 rounded-lg border bg-background p-3 space-y-3">
+                                <Input
+                                    value={libraryQuery}
+                                    onChange={(e) => setLibraryQuery(e.target.value)}
+                                    placeholder="搜索库里的 Skills"
+                                />
+                                <div className="max-h-[40vh] overflow-y-auto space-y-2">
+                                    {libraryLoading ? (
+                                        <div className="text-sm text-muted-foreground">加载中...</div>
+                                    ) : filteredLibraryEntries.length === 0 ? (
+                                        <div className="text-sm text-muted-foreground">库里暂无可用 Skills。</div>
+                                    ) : (
+                                        filteredLibraryEntries.map((entry) => {
+                                            const entryId = resolveLibraryEntryId(entry);
+                                            const installed = installedSkillIds.has(entryId);
+                                            const isAdding = addingSkillId === entry.skill_id;
+                                            return (
+                                                <div
+                                                    key={entry.skill_id}
+                                                    className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2"
+                                                >
+                                                    <div className="min-w-0">
+                                                        <div className="text-sm font-medium truncate">{entry.name}</div>
+                                                        <div className="text-xs text-muted-foreground truncate">
+                                                            {entry.description || "—"}
+                                                        </div>
+                                                    </div>
+                                                    <Button
+                                                        size="sm"
+                                                        variant={installed ? "outline" : "secondary"}
+                                                        disabled={installed || isAdding}
+                                                        onClick={() => handleAddSkill(entry)}
+                                                    >
+                                                        {installed ? "Installed" : isAdding ? "Adding..." : "Add"}
+                                                    </Button>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+                        )}
                         {skillsLoading && skills.length === 0 ? (
                             <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
                                 加载中...
@@ -371,34 +537,34 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                             <div className="flex flex-col items-center justify-center h-32 text-sm text-muted-foreground gap-2">
                                 <Sparkles className="h-8 w-8 opacity-30" />
                                 <span>暂无 Skills</span>
-                                <span className="text-xs">在 .claude/skills/ 添加</span>
+                                <span className="text-xs">点击 Add 从库中添加</span>
                             </div>
                         ) : (
                             <div className="space-y-1">
                                 {sortedSkills.map((skill) => {
-                                    const isLoaded = loadedSkills.has(skill.name);
                                     return (
                                         <div
-                                            key={skill.name}
-                                            className={`flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${isLoaded
-                                                ? "bg-green-500/10 hover:bg-green-500/15 border border-green-500/20"
-                                                : "bg-muted/30 hover:bg-muted/50"
-                                                }`}
+                                            key={skill.id}
+                                            className="group flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors bg-muted/30 hover:bg-muted/50"
                                         >
                                             <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    {isLoaded && <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />}
-                                                    <span className="font-medium text-sm truncate">
-                                                        {skill.name}
-                                                    </span>
-                                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                                                        {skill.source}
-                                                    </Badge>
-                                                </div>
+                                                <span className="font-medium text-sm truncate">
+                                                    {skill.name}
+                                                </span>
                                                 <span className="text-xs text-muted-foreground truncate">
-                                                    {skill.path}
+                                                    {skill.description || "—"}
                                                 </span>
                                             </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={() => handleRemoveSkill(skill.id)}
+                                                disabled={removingSkillId === skill.id}
+                                                title="Remove Skill"
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                            </Button>
                                         </div>
                                     );
                                 })}
@@ -423,16 +589,16 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                             variant="ghost"
                             size="icon"
                             className="h-6 w-6"
-                            onClick={loadSkillsAgents}
-                            disabled={skillsLoading}
+                            onClick={loadAgents}
+                            disabled={agentsLoading}
                             title="Refresh Agents"
                         >
-                            <RefreshCw className={`h-3.5 w-3.5 ${skillsLoading ? "animate-spin" : ""}`} />
+                            <RefreshCw className={`h-3.5 w-3.5 ${agentsLoading ? "animate-spin" : ""}`} />
                         </Button>
                     </div>
 
                     <div className="flex-1 overflow-y-auto px-2 py-2">
-                        {skillsLoading && subagents.length === 0 ? (
+                        {agentsLoading && subagents.length === 0 ? (
                             <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
                                 加载中...
                             </div>
@@ -500,6 +666,7 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                     />
                 </Tabs.Content>
             </Tabs.Root>
+
         </div>
     );
 }

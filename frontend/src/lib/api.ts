@@ -108,6 +108,7 @@ export async function fetchWorkingDirectoryFiles(subdir: string = ""): Promise<F
 
 
 export const API_ROOT = "http://localhost:8000/api";
+export const WORKSPACE_API_BASE = "http://localhost:8000/api/workspace";
 
 export async function saveFile(path: string, content: string): Promise<any> {
     const res = await fetch(`${API_ROOT}/files/save`, {
@@ -170,12 +171,148 @@ export async function resolvePath(relativePath: string): Promise<ResolvePathResp
 
 
 // ============== Skills & Agents ==============
+export interface SkillsCatalogEntry {
+    skill_id: string;
+    name: string;
+    description?: string;
+    source?: {
+        type?: string;
+        id?: string;
+        repo_url?: string | null;
+        path?: string | null;
+        ref?: string | null;
+        fetched_at?: string | null;
+    };
+    content?: {
+        hash?: string;
+        file_count?: number;
+        size_bytes?: number;
+    };
+    risk?: {
+        level?: string;
+        signals?: string[];
+    };
+    dependency_hints?: {
+        summary?: string;
+        signals?: Array<{
+            kind?: string;
+            value?: string;
+            confidence?: string;
+        }>;
+    };
+    status?: {
+        state?: string;
+        reason?: string;
+    };
+    timestamps?: {
+        imported_at?: string;
+        updated_at?: string;
+    };
+    local?: Record<string, any>;
+}
+
+export interface SkillsCatalog {
+    schema_version: number;
+    generated_at: string;
+    skills: Record<string, SkillsCatalogEntry>;
+    sources?: Record<string, number>;
+}
+
+export interface SkillsCatalogResponse {
+    status: string;
+    catalog: SkillsCatalog;
+    path: string;
+    skills_dir: string;
+}
+
+export async function fetchSkillsCatalog(): Promise<SkillsCatalogResponse> {
+    const res = await fetch(`${API_ROOT}/skills/catalog`);
+    if (!res.ok) throw new Error("Failed to fetch skills catalog");
+    return res.json();
+}
+
+export async function rebuildSkillsCatalog(): Promise<SkillsCatalogResponse> {
+    const res = await fetch(`${API_ROOT}/skills/catalog/rebuild`, {
+        method: "POST",
+    });
+    if (!res.ok) throw new Error("Failed to rebuild skills catalog");
+    return res.json();
+}
+
+export interface SkillSourceSearchResult {
+    name: string;
+    slug: string;
+    source?: string;
+    package: string;
+    installs?: number | string;
+    detail_url?: string;
+}
+
+export interface SkillSourceSearchResponse {
+    status: string;
+    source: string;
+    results: SkillSourceSearchResult[];
+}
+
+export async function searchSkillSources(options: {
+    source: string;
+    query?: string;
+    page?: number;
+    limit?: number;
+}): Promise<SkillSourceSearchResponse> {
+    const params = new URLSearchParams();
+    params.set("source", options.source);
+    if (options.query) params.set("query", options.query);
+    if (options.page) params.set("page", options.page.toString());
+    if (options.limit) params.set("limit", options.limit.toString());
+    const res = await fetch(`${API_ROOT}/skills/sources/search?${params.toString()}`);
+    if (!res.ok) throw new Error("Failed to search skill sources");
+    return res.json();
+}
+
+export async function installSkillFromSource(payload: {
+    package: string;
+    skill?: string | null;
+    full_depth?: boolean;
+}): Promise<{ status: string; installed: string[]; catalog: SkillsCatalog }> {
+    const res = await fetch(`${API_ROOT}/skills/sources/install`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error("Failed to install skill");
+    return res.json();
+}
+
+export async function removeSkillFromLibrary(payload: { skill_id: string }): Promise<{ status: string; catalog: SkillsCatalog }> {
+    const res = await fetch(`${API_ROOT}/skills/library/remove`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error("Failed to remove skill");
+    return res.json();
+}
 
 export interface SkillInfo {
     name: string;
     path: string;
     source: 'user' | 'project';
     isLoaded?: boolean;  // Whether currently loaded by SDK
+}
+
+export interface WorkspaceSkillInfo {
+    id: string;
+    name: string;
+    description?: string;
+    path: string;
+}
+
+export interface WorkspaceSkillsResponse {
+    skills: WorkspaceSkillInfo[];
+    workdir?: string;
+    status?: string;
+    mode?: string;
 }
 
 export interface SubagentInfo {
@@ -205,6 +342,32 @@ export interface WarmupResponse {
 export async function fetchSkillsAgents(): Promise<SkillsAgentsResponse> {
     const res = await fetch(`${API_BASE}/skills-agents`);
     if (!res.ok) throw new Error("Failed to fetch skills and agents");
+    return res.json();
+}
+
+export async function fetchWorkspaceSkills(workspaceId: string): Promise<WorkspaceSkillsResponse> {
+    const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/skills`);
+    if (!res.ok) throw new Error("Failed to fetch workspace skills");
+    return res.json();
+}
+
+export async function addWorkspaceSkill(workspaceId: string, skillId: string): Promise<WorkspaceSkillsResponse> {
+    const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/skills/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skill_id: skillId }),
+    });
+    if (!res.ok) throw new Error("Failed to add workspace skill");
+    return res.json();
+}
+
+export async function removeWorkspaceSkill(workspaceId: string, skillId: string): Promise<WorkspaceSkillsResponse> {
+    const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/skills/remove`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skill_id: skillId }),
+    });
+    if (!res.ok) throw new Error("Failed to remove workspace skill");
     return res.json();
 }
 

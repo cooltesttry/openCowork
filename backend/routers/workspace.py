@@ -2,13 +2,16 @@
 Workspace management REST API endpoints.
 """
 import logging
+import os
+import shutil
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from core.workspace_storage import WorkspaceManager
+from core.skills_catalog import SKILLS_DIR, load_catalog, rebuild_catalog
 from models.workspace import WorkspaceConfig, MCPServerConfig
 from routers.config import save_workdir
 
@@ -53,6 +56,22 @@ class UpdateWorkspaceConfigRequest(BaseModel):
     allowed_tools: Optional[List[str]] = None
 
 
+class WorkspaceSkillInfo(BaseModel):
+    """Workspace-installed skill info."""
+    id: str
+    name: str
+    description: str = ""
+    path: str
+
+
+class WorkspaceSkillAddRequest(BaseModel):
+    skill_id: str
+
+
+class WorkspaceSkillRemoveRequest(BaseModel):
+    skill_id: str
+
+
 # ==================== Helper ====================
 
 def get_workspace_manager(request: Request) -> WorkspaceManager:
@@ -63,6 +82,76 @@ def get_workspace_manager(request: Request) -> WorkspaceManager:
         config_path = Path(__file__).parent.parent.parent / "storage" / "config.json"
         request.app.state.workspace_manager = WorkspaceManager(config_path)
     return request.app.state.workspace_manager
+
+
+SKILL_FILENAME = "SKILL.md"
+
+
+def _parse_frontmatter_text(text: str) -> Dict[str, str]:
+    if not text.startswith("---"):
+        return {}
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return {}
+    frontmatter = parts[1].strip("\n")
+    data: Dict[str, str] = {}
+    lines = frontmatter.splitlines()
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx].rstrip()
+        idx += 1
+        if not line or line.lstrip().startswith("#"):
+            continue
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if value in {"|", ">", "|-", ">-"}:
+            block_lines: List[str] = []
+            while idx < len(lines):
+                block_line = lines[idx]
+                if block_line.startswith(" ") or block_line.startswith("\t"):
+                    block_lines.append(block_line.lstrip())
+                    idx += 1
+                else:
+                    break
+            data[key] = "\n".join(block_lines).strip()
+        else:
+            if value.startswith("\"") and value.endswith("\""):
+                value = value[1:-1]
+            if value.startswith("'") and value.endswith("'"):
+                value = value[1:-1]
+            data[key] = value
+    return data
+
+
+def _list_workspace_skills(skills_dir: Path) -> List[WorkspaceSkillInfo]:
+    if not skills_dir.exists():
+        return []
+    results: List[WorkspaceSkillInfo] = []
+    for path in sorted(skills_dir.iterdir()):
+        if not path.is_dir():
+            continue
+        skill_md = path / SKILL_FILENAME
+        if not skill_md.exists():
+            continue
+        try:
+            text = skill_md.read_text(encoding="utf-8")
+        except Exception:
+            text = ""
+        frontmatter = _parse_frontmatter_text(text)
+        name = frontmatter.get("name") or path.name
+        description = frontmatter.get("description") or ""
+        results.append(
+            WorkspaceSkillInfo(
+                id=path.name,
+                name=name,
+                description=description,
+                path=str(skill_md),
+            )
+        )
+    return results
 
 
 # ==================== Endpoints ====================
@@ -316,6 +405,115 @@ async def update_workspace_config(request: Request, workspace_id: str, body: Upd
     storage.update_config(config)
 
     return {"config": config.to_dict()}
+
+
+# ==================== Workspace Skills ====================
+
+@router.get("/{workspace_id}/skills")
+async def list_workspace_skills(request: Request, workspace_id: str):
+    """
+    List skills installed in the workspace (.claude/skills).
+    """
+    manager = get_workspace_manager(request)
+    storage = manager.get_storage_by_id(workspace_id)
+
+    if not storage:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    storage.skills_dir.mkdir(parents=True, exist_ok=True)
+    skills = _list_workspace_skills(storage.skills_dir)
+    return {
+        "skills": [skill.model_dump() for skill in skills],
+        "workdir": str(storage.workspace_path),
+    }
+
+
+@router.post("/{workspace_id}/skills/add")
+async def add_workspace_skill(request: Request, workspace_id: str, body: WorkspaceSkillAddRequest):
+    """
+    Add a skill to the workspace by linking/copying from storage/skills.
+    Attempts symlink first, falls back to copy.
+    """
+    manager = get_workspace_manager(request)
+    storage = manager.get_storage_by_id(workspace_id)
+
+    if not storage:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    catalog = load_catalog()
+    if not catalog:
+        catalog = rebuild_catalog()
+    entry = (catalog.get("skills") or {}).get(body.skill_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Skill not found in library")
+    if entry.get("status", {}).get("state") == "removed":
+        raise HTTPException(status_code=400, detail="Skill is removed from library")
+
+    source = entry.get("source", {})
+    source_path = source.get("path")
+    if not source_path:
+        raise HTTPException(status_code=400, detail="Skill source path missing")
+
+    source_dir = (SKILLS_DIR / source_path).resolve()
+    if not str(source_dir).startswith(str(SKILLS_DIR.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid skill source path")
+    if not source_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Skill source directory missing")
+
+    dest_name = Path(source_path).name
+    if not dest_name:
+        raise HTTPException(status_code=400, detail="Invalid skill destination name")
+
+    storage.skills_dir.mkdir(parents=True, exist_ok=True)
+    dest_dir = storage.skills_dir / dest_name
+
+    if dest_dir.exists() or dest_dir.is_symlink():
+        raise HTTPException(status_code=400, detail="Skill already installed in workspace")
+
+    mode = "symlink"
+    try:
+        os.symlink(source_dir, dest_dir, target_is_directory=True)
+    except Exception:
+        mode = "copy"
+        shutil.copytree(source_dir, dest_dir)
+
+    skills = _list_workspace_skills(storage.skills_dir)
+    return {
+        "status": "success",
+        "mode": mode,
+        "skills": [skill.model_dump() for skill in skills],
+    }
+
+
+@router.post("/{workspace_id}/skills/remove")
+async def remove_workspace_skill(request: Request, workspace_id: str, body: WorkspaceSkillRemoveRequest):
+    """
+    Remove a skill from the workspace (.claude/skills). Does not touch library.
+    """
+    manager = get_workspace_manager(request)
+    storage = manager.get_storage_by_id(workspace_id)
+
+    if not storage:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    skill_id = body.skill_id.strip()
+    if not skill_id or "/" in skill_id or "\\" in skill_id or skill_id in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid skill id")
+
+    target = storage.skills_dir / skill_id
+    if not target.exists() and not target.is_symlink():
+        raise HTTPException(status_code=404, detail="Skill not found in workspace")
+
+    if target.is_symlink() or target.is_file():
+        target.unlink()
+    else:
+        shutil.rmtree(target)
+
+    skills = _list_workspace_skills(storage.skills_dir)
+    return {
+        "status": "success",
+        "skills": [skill.model_dump() for skill in skills],
+    }
 
 
 # ==================== Effective MCP Servers ====================

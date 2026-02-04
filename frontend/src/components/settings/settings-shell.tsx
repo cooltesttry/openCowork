@@ -6,7 +6,8 @@ import { ModelConfig } from "@/components/settings/model-config";
 import { McpConfig } from "@/components/settings/mcp-config";
 import { SearchConfig } from "@/components/settings/search-config";
 import { AgentConfig } from "@/components/settings/agent-config";
-import { Bot, Cpu, Plug, Search, Settings } from "lucide-react";
+import { SkillsConfig } from "@/components/settings/skills-config";
+import { Bot, Cpu, Library, Plug, Search, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SettingsShellProps {
@@ -38,6 +39,12 @@ const SECTIONS = [
         title: "Search",
         description: "Retrieval and indexing",
         icon: Search,
+    },
+    {
+        value: "skills",
+        title: "Skills",
+        description: "Library, manage, import",
+        icon: Library,
     },
 ] as const;
 
@@ -104,6 +111,9 @@ export function SettingsShell({ header, className }: SettingsShellProps) {
                     </TabsContent>
                     <TabsContent value="search" className="mt-0 space-y-6">
                         <SearchConfig />
+                    </TabsContent>
+                    <TabsContent value="skills" className="mt-0 space-y-6">
+                        <SkillsConfig />
                     </TabsContent>
                 </div>
             </main>

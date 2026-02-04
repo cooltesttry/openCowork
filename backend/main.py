@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import agent, config, sessions, files, terminal, agents, super_agent, workspace, search, imagegen
+from routers import agent, config, sessions, files, terminal, agents, super_agent, workspace, search, imagegen, skills
 from models.settings import AppSettings
 from core.session_manager import session_manager
 from core.task_runner import task_runner
@@ -197,6 +197,7 @@ app.include_router(super_agent.router, prefix="/api/super-agent", tags=["super-a
 app.include_router(workspace.router, prefix="/api/workspace", tags=["workspace"])
 app.include_router(search.router, prefix="/api", tags=["search"])
 app.include_router(imagegen.router, prefix="/api/imagegen", tags=["imagegen"])
+app.include_router(skills.router, prefix="/api", tags=["skills"])
 
 # Configure CORS - must be after include_router to work correctly
 app.add_middleware(
