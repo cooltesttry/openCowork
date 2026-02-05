@@ -837,6 +837,7 @@ export function DockviewMain() {
                 onInterrupt: handleInterrupt,
                 securityMode: chatLogic.securityMode,
                 onSecurityModeChange: handleSecurityModeChange,
+                slashCommands: chatLogic.slashCommands,
                 inputAreaRef: chatLogic.inputAreaRef,
                 onSelectFile: handleFileSelect,
                 onOpenInPanel: handleOpenFilePanel,
@@ -1118,8 +1119,9 @@ export function DockviewMain() {
         if (!panel) return;
         panel.api.updateParameters({
             securityMode: chatLogic.securityMode,
+            slashCommands: chatLogic.slashCommands,
         });
-    }, [chatLogic.securityMode]);
+    }, [chatLogic.securityMode, chatLogic.slashCommands]);
 
     return (
         <div className="h-screen flex flex-col bg-background">

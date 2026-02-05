@@ -3,6 +3,7 @@
 import { useChat } from '@/lib/store';
 import { MessageList } from '@/components/chat/message-list';
 import { InputArea, InputAreaRef, SecurityMode } from '@/components/chat/input-area';
+import type { SlashCommand } from '@/components/chat/quick-panel';
 import { useRef } from 'react';
 import type { OpenImageOptions } from '@/components/image-editor/types';
 import type { FilePanelOpenEntry } from '@/components/panels/file-panel';
@@ -16,6 +17,7 @@ interface ChatPanelContentProps {
         onInterrupt?: () => void;
         securityMode?: SecurityMode;
         onSecurityModeChange?: (mode: SecurityMode) => void;
+        slashCommands?: SlashCommand[];
         inputAreaRef?: React.RefObject<InputAreaRef>;
         onSelectFile?: (entry: { path: string, name: string, is_directory: boolean }) => void;
         onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
@@ -74,6 +76,7 @@ export function ChatPanelContent({ params }: ChatPanelContentProps) {
                         onInterrupt={params?.onInterrupt}
                         securityMode={params?.securityMode || 'bypassPermissions'}
                         onSecurityModeChange={params?.onSecurityModeChange || (() => { })}
+                        slashCommands={params?.slashCommands && params.slashCommands.length > 0 ? params.slashCommands : undefined}
                     />
                 </div>
             </div>
