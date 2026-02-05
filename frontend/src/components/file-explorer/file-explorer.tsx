@@ -1212,34 +1212,7 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
             onDragLeave={handleExternalDragLeave}
             onDrop={handleExternalDrop}
         >
-            {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
-                <select
-                    value={viewFilter}
-                    onChange={(e) => setViewFilter(e.target.value as ViewFilter)}
-                    className="h-6 px-2 rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-[11px] font-medium text-zinc-700 dark:text-zinc-200"
-                >
-                    <option value="all">All</option>
-                    <option value="documents">Documents</option>
-                    <option value="images">Images</option>
-                    <option value="video">Video</option>
-                    <option value="audio">Audio</option>
-                    <option value="code">Code</option>
-                </select>
-                <div className="flex items-center gap-1.5">
-                    <button
-                        onClick={() => setSortIndex((prev) => (prev + 1) % SORT_CYCLE.length)}
-                        className="h-6 px-2 rounded text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 leading-none"
-                        title="Toggle sort"
-                    >
-                        {sortMode.label}
-                    </button>
-                    <button onClick={fetchFiles} className="hover:bg-zinc-200 dark:hover:bg-zinc-800 p-1 rounded">
-                        <RefreshCw size={14} />
-                    </button>
-                </div>
-            </div>
-            <div className="px-3 pb-2">
+            <div className="px-3 py-2">
                 <div className="relative">
                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400" />
                     <input
@@ -1507,6 +1480,33 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
                 )
             )}
 
+            {/* Footer controls */}
+            <div className="flex items-center justify-between px-3 py-2 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider border-t border-zinc-200 dark:border-zinc-800">
+                <select
+                    value={viewFilter}
+                    onChange={(e) => setViewFilter(e.target.value as ViewFilter)}
+                    className="h-6 px-2 rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-[11px] font-medium text-zinc-700 dark:text-zinc-200"
+                >
+                    <option value="all">All</option>
+                    <option value="documents">Documents</option>
+                    <option value="images">Images</option>
+                    <option value="video">Video</option>
+                    <option value="audio">Audio</option>
+                    <option value="code">Code</option>
+                </select>
+                <div className="flex items-center gap-1.5">
+                    <button
+                        onClick={() => setSortIndex((prev) => (prev + 1) % SORT_CYCLE.length)}
+                        className="h-6 px-2 rounded text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 leading-none"
+                        title="Toggle sort"
+                    >
+                        {sortMode.label}
+                    </button>
+                    <button onClick={fetchFiles} className="hover:bg-zinc-200 dark:hover:bg-zinc-800 p-1 rounded">
+                        <RefreshCw size={14} />
+                    </button>
+                </div>
+            </div>
 
             {/* Custom Context Menu */}
             {
