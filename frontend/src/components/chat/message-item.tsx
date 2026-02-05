@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Message } from "@/lib/types";
-import { User, FilePlus, FileEdit, FileText, Image as ImageIcon, Copy } from "lucide-react";
+import { User, FilePlus, FileEdit, FileText, Image as ImageIcon, Copy, ChevronDown, ChevronRight } from "lucide-react";
 import { BlockList } from "@/components/blocks/block-renderer";
 import { TextBlock } from "@/components/blocks/text-block";
 import { useMemo, useState } from "react";
@@ -10,6 +10,7 @@ import { useWorkspace } from "@/lib/workspace-store";
 import { useChat } from "@/lib/store";
 import { collectFileOperations, normalizePath } from "@/lib/file-links";
 import { toast } from "sonner";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface AttachedFile {
     path: string;
@@ -116,11 +117,16 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
     const imageFiles = attachedFiles.filter(f => f.isImage);
     const otherFiles = attachedFiles.filter(f => !f.isImage);
 
+    const isUserCommand = isUser && (() => {
+        const normalized = cleanContent.trim().toLowerCase();
+        return normalized === '/context' || normalized === '/compact' || normalized === '/campact';
+    })();
+
     // Only show legacy content if:
     // 1. There's actual text content
     // 2. Either there are no blocks OR there are no text blocks (to avoid duplication)
     const hasTextContent = cleanContent && cleanContent.trim().length > 0;
-    const showLegacyContent = hasTextContent && !hasTextBlocks;
+    const showLegacyContent = hasTextContent && !hasTextBlocks && !isUserCommand;
 
     const compactSummaryContent = useMemo(() => {
         if (isUser) return null;
@@ -260,10 +266,10 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
     };
 
     return (
-        <div className="w-full py-3">
+        <div className={cn("w-full", isUserCommand ? "py-0" : isSpecialSummary ? "py-0" : "py-3")}>
             <div className="mx-auto flex gap-4 px-4 w-full">
                 {/* User avatar - only for user messages */}
-                {isUser && (
+                {isUser && !isUserCommand && (
                     <div className="shrink-0">
                         <div className="h-7 w-7 rounded-full flex items-center justify-center bg-muted/40 text-muted-foreground">
                             <User className="h-4 w-4" />
@@ -280,6 +286,19 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                                     <span className="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-pulse" />
                                 </span>
                             )}
+                        </div>
+                    )}
+
+                    {/* User command display (/context, /compact) */}
+                    {isUserCommand && (
+                        <div
+                            className={cn(
+                                "flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-xs font-medium text-muted-foreground",
+                                "transition-colors duration-200",
+                                "hover:bg-transparent"
+                            )}
+                        >
+                            <span className="flex-1 text-left text-muted-foreground">{cleanContent.trim()}</span>
                         </div>
                     )}
 
@@ -300,21 +319,26 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
 
                     {/* Compacted summary (load-only) */}
                     {!isUser && compactSummaryContent && (
-                        <div className="mt-2">
-                            <button
-                                type="button"
-                                onClick={() => setIsCompactExpanded((prev) => !prev)}
+                        <Collapsible open={isCompactExpanded} onOpenChange={setIsCompactExpanded} className="my-0.5 min-w-0">
+                            <CollapsibleTrigger
                                 className={cn(
-                                    "inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium",
-                                    "border border-border bg-muted/40 text-foreground",
-                                    "hover:bg-muted/60 transition-colors"
+                                    "flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-xs font-medium text-muted-foreground",
+                                    "transition-colors duration-200",
+                                    "hover:bg-transparent"
                                 )}
                                 title={isCompactExpanded ? "Hide compacted summary" : "Show compacted summary"}
                             >
-                                {isCompactExpanded ? "Hide compacted summary" : "Show compacted summary"}
-                            </button>
-                            {isCompactExpanded && (
-                                <div className="mt-3">
+                                {isCompactExpanded ? (
+                                    <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                                ) : (
+                                    <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                                )}
+                                <span className="flex-1 text-left text-muted-foreground">
+                                    Compacted summary
+                                </span>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
+                                <div className="mt-1 ml-5 pl-3 py-1.5 border-l-2 border-border">
                                     <TextBlock
                                         block={{
                                             id: `compact-summary-${message.id}`,
@@ -325,42 +349,54 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                                         onPreviewHTML={onPreviewHTML}
                                         onOpenInPanel={onOpenInPanel}
                                         onOpenTerminal={onOpenTerminal}
+                                        containerClassName="text-sm text-muted-foreground prose-headings:text-muted-foreground prose-strong:text-muted-foreground prose-a:text-muted-foreground"
                                     />
                                 </div>
-                            )}
-                        </div>
+                            </CollapsibleContent>
+                        </Collapsible>
                     )}
 
                     {/* Context summary (load-only) */}
-                    {!isUser && contextSummary && (
-                        <div className="mt-2">
-                            <button
-                                type="button"
-                                onClick={() => setIsContextExpanded((prev) => !prev)}
-                                className={cn(
-                                    "inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium",
-                                    "border border-border bg-muted/40 text-foreground",
-                                    "hover:bg-muted/60 transition-colors"
-                                )}
-                                title={isContextExpanded ? "Hide context details" : "Show context details"}
-                            >
-                                {isContextExpanded ? "Hide context details" : "Show context details"}
-                            </button>
-                            <div className="mt-3">
-                                <TextBlock
-                                    block={{
-                                        id: isContextExpanded ? `context-full-${message.id}` : `context-tokens-${message.id}`,
-                                        type: 'text',
-                                        content: isContextExpanded ? contextSummary.fullContent : contextSummary.tokenLine,
-                                        status: 'success',
-                                    }}
-                                    onPreviewHTML={onPreviewHTML}
-                                    onOpenInPanel={onOpenInPanel}
-                                    onOpenTerminal={onOpenTerminal}
-                                />
-                            </div>
-                        </div>
-                    )}
+                    {!isUser && contextSummary && (() => {
+                        const tokenLabel = contextSummary.tokenLine.replace(/\*\*/g, '').trim();
+                        return (
+                            <Collapsible open={isContextExpanded} onOpenChange={setIsContextExpanded} className="my-0.5 min-w-0">
+                                <CollapsibleTrigger
+                                    className={cn(
+                                        "flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-xs font-medium text-muted-foreground",
+                                        "transition-colors duration-200",
+                                        "hover:bg-transparent"
+                                    )}
+                                    title={isContextExpanded ? "Hide context details" : "Show context details"}
+                                >
+                                    {isContextExpanded ? (
+                                        <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                                    ) : (
+                                        <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                                    )}
+                                    <span className="flex-1 text-left text-muted-foreground">
+                                        {tokenLabel}
+                                    </span>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
+                                    <div className="mt-1 ml-5 pl-3 py-1.5 border-l-2 border-border">
+                                        <TextBlock
+                                            block={{
+                                                id: `context-full-${message.id}`,
+                                                type: 'text',
+                                                content: contextSummary.fullContent,
+                                                status: 'success',
+                                            }}
+                                            onPreviewHTML={onPreviewHTML}
+                                            onOpenInPanel={onOpenInPanel}
+                                            onOpenTerminal={onOpenTerminal}
+                                            containerClassName="text-sm text-muted-foreground prose-headings:text-muted-foreground prose-strong:text-muted-foreground prose-a:text-muted-foreground"
+                                        />
+                                    </div>
+                                </CollapsibleContent>
+                            </Collapsible>
+                        );
+                    })()}
 
                     {/* Only render legacy text content if no text blocks exist (to avoid duplication) */}
                     {showLegacyContent && (
@@ -438,7 +474,7 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                         </div>
                     )}
 
-                    {!isUser && message.usage && (
+                    {!isUser && message.usage && !isSpecialSummary && (
                         <div className="mt-2 flex items-center justify-end gap-2 text-xs text-muted-foreground/60">
                             <span>{message.usage.total_tokens.toLocaleString()} tokens</span>
                             <button
@@ -485,7 +521,7 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                                             key={`file-${op.path}-${index}`}
                                             onClick={() => handleFileClick(op.path, true)}
                                             className={cn(
-                                                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer border border-border bg-muted/40 text-foreground hover:bg-muted/60"
+                                                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer bg-muted/40 text-foreground hover:bg-muted/60"
                                             )}
                                             title={`Click to preview: ${op.path}`}
                                         >

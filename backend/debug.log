@@ -7344,3 +7344,143 @@
 2026-02-05 03:14:08 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
 2026-02-05 03:14:08 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
 2026-02-05 03:14:08 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:43:12 - routers.agent - INFO - [Multiplexed] Using workspace storage for session f53253ac-823b-4cbe-a86e-13ce4f007f0e
+2026-02-05 03:43:12 - routers.agent - INFO - [Multiplexed] Using workspace path as cwd: /Users/huawang/Documents/test
+2026-02-05 03:43:12 - core.task_runner - INFO - [TaskRunner] Started task 46f6719b-f2e8-41ff-910a-2a0262eb500b for session f53253ac-823b-4cbe-a86e-13ce4f007f0e
+2026-02-05 03:43:12 - core.agent_client - INFO - [AgentOptions] permission_mode=bypassPermissions, can_use_tool=SET
+2026-02-05 03:43:12 - core.session_manager - INFO - [SessionManager] Resuming SDK session: 31551bb3-4eb8-4221-9c4c-c7968669ce0b
+2026-02-05 03:43:12 - core.session_manager - INFO - [SessionManager] Created session: f53253ac-823b-4cbe-a86e-13ce4f007f0e (endpoint=Local, model=gemini-claude-opus-4-5-thinking, security=bypassPermissions)
+2026-02-05 03:43:12 - claude_agent_sdk._internal.transport.subprocess_cli - INFO - Using bundled Claude Code CLI: /Users/huawang/pyproject/openCowork/backend/.venv/lib/python3.13/site-packages/claude_agent_sdk/_bundled/claude
+2026-02-05 03:43:12 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/sessions/f53253ac-823b-4cbe-a86e-13ce4f007f0e.json", inode=31169642, flags=11400, id=151530374): is_file, is_inode_meta_mod, is_modified
+2026-02-05 03:43:12 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/sessions/f53253ac-823b-4cbe-a86e-13ce4f007f0e.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:43:13 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 2 clients: file_change
+2026-02-05 03:43:17 - core.session_manager - INFO - [SessionManager] Captured SDK session_id: 31551bb3-4eb8-4221-9c4c-c7968669ce0b
+2026-02-05 03:43:17 - core.session_manager - INFO - [SessionManager] Captured slash_commands: ['keybindings-help', 'compact', 'context', 'cost', 'init', 'pr-comments', 'release-notes', 'review', 'security-review']
+2026-02-05 03:43:17 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/sessions/f53253ac-823b-4cbe-a86e-13ce4f007f0e.json", inode=31169642, flags=11400, id=151531098): is_file, is_inode_meta_mod, is_modified
+2026-02-05 03:43:17 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/sessions/f53253ac-823b-4cbe-a86e-13ce4f007f0e.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:43:17 - core.task_runner - INFO - [TaskRunner] Task completed for session f53253ac-823b-4cbe-a86e-13ce4f007f0e
+2026-02-05 03:43:17 - routers.agent - INFO - [Multiplexed] Task completed for session f53253ac-823b-4cbe-a86e-13ce4f007f0e
+2026-02-05 03:43:17 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/sessions/f53253ac-823b-4cbe-a86e-13ce4f007f0e.json", inode=31169642, flags=11400, id=151531125): is_file, is_inode_meta_mod, is_modified
+2026-02-05 03:43:17 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/sessions/f53253ac-823b-4cbe-a86e-13ce4f007f0e.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:43:18 - core.task_runner - INFO - [TaskRunner] Session f53253ac-823b-4cbe-a86e-13ce4f007f0e marked as viewed
+2026-02-05 03:43:18 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 2 clients: file_change
+2026-02-05 03:43:24 - routers.agent - INFO - [Multiplexed] Using workspace storage for session f53253ac-823b-4cbe-a86e-13ce4f007f0e
+2026-02-05 03:43:24 - routers.agent - INFO - [Multiplexed] Using workspace path as cwd: /Users/huawang/Documents/test
+2026-02-05 03:43:24 - core.task_runner - INFO - [TaskRunner] Started task 23d182b5-f901-4ad4-80fa-e0b534d76d25 for session f53253ac-823b-4cbe-a86e-13ce4f007f0e
+2026-02-05 03:43:24 - core.session_manager - INFO - [SessionManager] Reusing session: f53253ac-823b-4cbe-a86e-13ce4f007f0e (pending security_mode: bypassPermissions)
+2026-02-05 03:43:24 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/sessions/f53253ac-823b-4cbe-a86e-13ce4f007f0e.json", inode=31169642, flags=11400, id=151531329): is_file, is_inode_meta_mod, is_modified
+2026-02-05 03:43:24 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/sessions/f53253ac-823b-4cbe-a86e-13ce4f007f0e.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:43:25 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 2 clients: file_change
+2026-02-05 03:43:51 - core.session_manager - INFO - [SessionManager] Captured SDK session_id: 31551bb3-4eb8-4221-9c4c-c7968669ce0b
+2026-02-05 03:43:51 - core.session_manager - INFO - [SessionManager] Captured slash_commands: ['keybindings-help', 'compact', 'context', 'cost', 'init', 'pr-comments', 'release-notes', 'review', 'security-review']
+2026-02-05 03:43:51 - core.task_runner - INFO - [TaskRunner] Task completed for session f53253ac-823b-4cbe-a86e-13ce4f007f0e
+2026-02-05 03:43:51 - routers.agent - INFO - [Multiplexed] Task completed for session f53253ac-823b-4cbe-a86e-13ce4f007f0e
+2026-02-05 03:43:51 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/sessions/f53253ac-823b-4cbe-a86e-13ce4f007f0e.json", inode=31169642, flags=11400, id=151531816): is_file, is_inode_meta_mod, is_modified
+2026-02-05 03:43:51 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/sessions/f53253ac-823b-4cbe-a86e-13ce4f007f0e.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:43:51 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/sessions/f53253ac-823b-4cbe-a86e-13ce4f007f0e.json", inode=31169642, flags=11400, id=151531849): is_file, is_inode_meta_mod, is_modified
+2026-02-05 03:43:51 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/sessions/f53253ac-823b-4cbe-a86e-13ce4f007f0e.json', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:43:51 - core.task_runner - INFO - [TaskRunner] Session f53253ac-823b-4cbe-a86e-13ce4f007f0e marked as viewed
+2026-02-05 03:43:51 - core.file_watcher - DEBUG - [FileWatcher] Broadcasting to 2 clients: file_change
+2026-02-05 03:44:18 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-05 03:44:18 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "GET /health HTTP/1.1" 200 15
+2026-02-05 03:44:19 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-05 03:44:19 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "GET /health HTTP/1.1" 200 15
+2026-02-05 03:44:19 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm", inode=31191851, flags=19700, id=151532121): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-05 03:44:19 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal", inode=31191850, flags=19300, id=151532127): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-05 03:44:19 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm", inode=31191853, flags=19700, id=151532157): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-05 03:44:19 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal", inode=31191852, flags=19300, id=151532163): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-05 03:44:19 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite", inode=30361417, flags=11400, id=151532166): is_file, is_inode_meta_mod, is_modified
+2026-02-05 03:44:19 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-05 03:44:19 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal", inode=31191854, flags=18100, id=151532172): is_created, is_file, is_xattr_mod
+2026-02-05 03:44:19 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm", inode=31191855, flags=18500, id=151532181): is_created, is_file, is_inode_meta_mod, is_xattr_mod
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:19 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:20 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "POST /v1/embeddings HTTP/1.1" 200 851301
+2026-02-05 03:44:20 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm", inode=31191855, flags=19700, id=151532190): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-05 03:44:20 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal", inode=31191854, flags=19300, id=151532196): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-05 03:44:20 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite", inode=30361417, flags=11400, id=151532199): is_file, is_inode_meta_mod, is_modified
+2026-02-05 03:44:20 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:20 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:20 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:20 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:20 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:20 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:20 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-05 03:44:52 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "GET /health HTTP/1.1" 200 15
+2026-02-05 03:44:52 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-05 03:44:52 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "GET /health HTTP/1.1" 200 15
+2026-02-05 03:44:52 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm", inode=31191928, flags=19700, id=151533219): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-05 03:44:52 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:39289
+2026-02-05 03:44:52 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal", inode=31191927, flags=19300, id=151533225): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-05 03:44:52 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm", inode=31191930, flags=19700, id=151533255): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-05 03:44:52 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal", inode=31191929, flags=19300, id=151533261): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-05 03:44:52 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite", inode=30361417, flags=11400, id=151533264): is_file, is_inode_meta_mod, is_modified
+2026-02-05 03:44:52 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal", inode=31191931, flags=18100, id=151533270): is_created, is_file, is_xattr_mod
+2026-02-05 03:44:52 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm", inode=31191932, flags=18500, id=151533279): is_created, is_file, is_inode_meta_mod, is_xattr_mod
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileCreatedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='created', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:52 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:53 - urllib3.connectionpool - DEBUG - http://127.0.0.1:39289 "POST /v1/embeddings HTTP/1.1" 200 851196
+2026-02-05 03:44:53 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm", inode=31191932, flags=19700, id=151533506): is_coalesced, is_created, is_file, is_inode_meta_mod, is_modified, is_removed, is_xattr_mod
+2026-02-05 03:44:53 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal", inode=31191931, flags=19300, id=151533512): is_coalesced, is_created, is_file, is_modified, is_removed, is_xattr_mod
+2026-02-05 03:44:53 - fsevents - DEBUG - NativeEvent(path="/Users/huawang/Documents/test/.opencowork/search/search.sqlite", inode=30361417, flags=11400, id=151533515): is_file, is_inode_meta_mod, is_modified
+2026-02-05 03:44:53 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:53 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-shm', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:53 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:53 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:53 - fsevents - DEBUG - queue_event FileDeletedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite-wal', dest_path='', event_type='deleted', is_directory=False, is_synthetic=False)
+2026-02-05 03:44:53 - fsevents - DEBUG - queue_event DirModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search', dest_path='', event_type='modified', is_directory=True, is_synthetic=False)
+2026-02-05 03:44:53 - fsevents - DEBUG - queue_event FileModifiedEvent(src_path='/Users/huawang/Documents/test/.opencowork/search/search.sqlite', dest_path='', event_type='modified', is_directory=False, is_synthetic=False)
+2026-02-05 03:48:54 - core.session_manager - INFO - [SessionManager] Cleaning up idle session: f53253ac-823b-4cbe-a86e-13ce4f007f0e
+2026-02-05 03:48:54 - claude_agent_sdk._internal.query - DEBUG - Read task cancelled
+2026-02-05 03:48:54 - core.session_manager - WARNING - [SessionManager] Cross-task cleanup for f53253ac-823b-4cbe-a86e-13ce4f007f0e: Attempted to exit cancel scope in a different task than it was entered in
