@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Message } from "@/lib/types";
-import { User, FilePlus, FileEdit, FileText, Image as ImageIcon } from "lucide-react";
+import { User, FilePlus, FileEdit, FileText, Image as ImageIcon, Copy } from "lucide-react";
 import { BlockList } from "@/components/blocks/block-renderer";
 import { TextBlock } from "@/components/blocks/text-block";
 import { useMemo, useState } from "react";
@@ -9,6 +9,7 @@ import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
 import { useWorkspace } from "@/lib/workspace-store";
 import { useChat } from "@/lib/store";
 import { collectFileOperations, normalizePath } from "@/lib/file-links";
+import { toast } from "sonner";
 
 interface AttachedFile {
     path: string;
@@ -167,10 +168,66 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
         })
     ), [message.blocks, currentWorkspace?.path]);
 
+    const userBubbleClassName = "inline-block max-w-full rounded-lg bg-foreground/10 dark:bg-foreground/12 px-3 py-0";
+
+    const assistantText = useMemo(() => {
+        if (isUser) return '';
+        const blocks = message.blocks || [];
+        const parts: string[] = [];
+        for (const block of blocks) {
+            if (block.type === 'text' && typeof block.content === 'string') {
+                parts.push(block.content);
+            } else if (block.type === 'error' && typeof block.content === 'string') {
+                parts.push(block.content);
+            }
+        }
+        if (
+            parts.length === 1 &&
+            parts[0].trim().toLowerCase() === 'compacted' &&
+            typeof message.content === 'string' &&
+            message.content.trim().length > 0
+        ) {
+            parts.splice(0, parts.length, message.content);
+        } else if (parts.length === 0 && typeof message.content === 'string') {
+            parts.push(message.content);
+        }
+        return parts.join('\n\n').trim();
+    }, [isUser, message.blocks, message.content]);
+
     // Extract filename from path
     const getFileName = (path: string) => {
         const parts = path.split('/');
         return parts[parts.length - 1];
+    };
+
+    const hasAssistantText = assistantText.length > 0;
+
+    const handleCopyAssistantText = async () => {
+        if (!hasAssistantText) return;
+        try {
+            await navigator.clipboard.writeText(assistantText);
+            toast.success('Copied to clipboard');
+        } catch {
+            toast.error('Failed to copy');
+        }
+    };
+
+    const handleOpenAssistantText = () => {
+        if (!hasAssistantText) return;
+        const openPanel = onOpenInPanel || openFilePanelCallback;
+        if (!openPanel) {
+            toast.error('File Panel not available');
+            return;
+        }
+        openPanel(
+            {
+                content: assistantText,
+                name: 'Untitled.md',
+                is_directory: false,
+                language: 'markdown',
+            },
+            { initialMode: 'editor' }
+        );
     };
 
     // Handle file click - open in Preview panel
@@ -203,12 +260,7 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
     };
 
     return (
-        <div
-            className={cn(
-                "w-full py-8 border-b border-border",
-                isUser ? "bg-muted/20" : "bg-background"
-            )}
-        >
+        <div className="w-full py-3">
             <div className="mx-auto flex gap-4 px-4 w-full">
                 {/* User avatar - only for user messages */}
                 {isUser && (
@@ -242,6 +294,7 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                             onOpenInPanel={onOpenInPanel}
                             onOpenTerminal={onOpenTerminal}
                             onPreviewHTML={onPreviewHTML}
+                            textBlockClassName={isUser ? userBubbleClassName : undefined}
                         />
                     )}
 
@@ -321,6 +374,7 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                             onPreviewHTML={onPreviewHTML}
                             onOpenInPanel={onOpenInPanel}
                             onOpenTerminal={onOpenTerminal}
+                            containerClassName={isUser ? userBubbleClassName : undefined}
                         />
                     )}
 
@@ -385,8 +439,28 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                     )}
 
                     {!isUser && message.usage && (
-                        <div className="mt-2 text-right text-xs text-muted-foreground/60">
-                            {message.usage.total_tokens.toLocaleString()} tokens
+                        <div className="mt-2 flex items-center justify-end gap-2 text-xs text-muted-foreground/60">
+                            <span>{message.usage.total_tokens.toLocaleString()} tokens</span>
+                            <button
+                                type="button"
+                                onClick={handleCopyAssistantText}
+                                disabled={!hasAssistantText}
+                                className="inline-flex items-center justify-center text-muted-foreground/70 hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-default"
+                                title="Copy message text"
+                                aria-label="Copy message text"
+                            >
+                                <Copy className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleOpenAssistantText}
+                                disabled={!hasAssistantText}
+                                className="inline-flex items-center justify-center text-muted-foreground/70 hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-default"
+                                title="Open message as markdown"
+                                aria-label="Open message as markdown"
+                            >
+                                <FileEdit className="h-3.5 w-3.5" />
+                            </button>
                         </div>
                     )}
 

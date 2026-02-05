@@ -21,6 +21,7 @@ interface TextBlockProps {
     onPreviewHTML?: (htmlContent: string) => void;
     onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onOpenTerminal?: (content: string) => void;
+    containerClassName?: string;
 }
 
 // Code block wrapper with Copy and Preview buttons
@@ -236,7 +237,7 @@ function filterLocalImages(markdown: string): string {
     return result;
 }
 
-export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal }: TextBlockProps) {
+export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal, containerClassName }: TextBlockProps) {
     const rawContent = typeof block.content === 'string' ? block.content : '';
 
     // Filter out broken local file path images before rendering
@@ -265,7 +266,8 @@ export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal 
             "prose-th:border prose-th:border-border prose-th:p-2 prose-th:bg-muted/30",
             "prose-td:border prose-td:border-border prose-td:p-2",
             "prose-a:text-foreground hover:prose-a:underline",
-            "prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5"
+            "prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5",
+            containerClassName
         )}>
             <div className="markdown-content min-w-0 overflow-hidden">
                 <ReactMarkdown

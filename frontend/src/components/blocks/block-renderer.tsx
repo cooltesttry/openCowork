@@ -21,9 +21,10 @@ interface BlockRendererProps {
     onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onOpenTerminal?: (content: string) => void;
     onPreviewHTML?: (htmlContent: string) => void;
+    textBlockClassName?: string;
 }
 
-export function BlockRenderer({ block, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onOpenImage, onOpenInPanel, onOpenTerminal, onPreviewHTML }: BlockRendererProps) {
+export function BlockRenderer({ block, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onOpenImage, onOpenInPanel, onOpenTerminal, onPreviewHTML, textBlockClassName }: BlockRendererProps) {
     // Check if this is a permission request
     if (block.metadata?.requiresPermission && block.status === 'pending') {
         return (
@@ -90,7 +91,7 @@ export function BlockRenderer({ block, onPermissionResponse, onAskUserSubmit, on
             return <PlanBlock block={block} />;
 
         case 'text':
-            return <TextBlock block={block} onPreviewHTML={onPreviewHTML} onOpenInPanel={onOpenInPanel} onOpenTerminal={onOpenTerminal} />;
+            return <TextBlock block={block} onPreviewHTML={onPreviewHTML} onOpenInPanel={onOpenInPanel} onOpenTerminal={onOpenTerminal} containerClassName={textBlockClassName} />;
 
         case 'ask_user':
             return (
@@ -123,9 +124,10 @@ interface BlockListProps {
     onOpenInPanel?: (entry: FilePanelOpenEntry, options?: { initialMode?: 'editor' | 'preview' | 'image'; openInAITool?: boolean }) => void;
     onOpenTerminal?: (content: string) => void;
     onPreviewHTML?: (htmlContent: string) => void;
+    textBlockClassName?: string;
 }
 
-export function BlockList({ blocks, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onOpenImage, onOpenInPanel, onOpenTerminal, onPreviewHTML }: BlockListProps) {
+export function BlockList({ blocks, onPermissionResponse, onAskUserSubmit, onAskUserSkip, onOpenImage, onOpenInPanel, onOpenTerminal, onPreviewHTML, textBlockClassName }: BlockListProps) {
     return (
         <div className="space-y-1 min-w-0 max-w-full overflow-hidden">
             {blocks.map((block, index) => (
@@ -139,6 +141,7 @@ export function BlockList({ blocks, onPermissionResponse, onAskUserSubmit, onAsk
                     onOpenInPanel={onOpenInPanel}
                     onOpenTerminal={onOpenTerminal}
                     onPreviewHTML={onPreviewHTML}
+                    textBlockClassName={textBlockClassName}
                 />
             ))}
         </div>
