@@ -66,6 +66,7 @@ export function FloatingAudioPlayer() {
     const currentIndexRef = useRef(currentIndex);
     const shuffleRef = useRef(isShuffle);
     const loopRef = useRef(isLoop);
+    const isPlayingRef = useRef(isPlaying);
 
     useEffect(() => {
         queueRef.current = queue;
@@ -82,6 +83,10 @@ export function FloatingAudioPlayer() {
     useEffect(() => {
         loopRef.current = isLoop;
     }, [isLoop]);
+
+    useEffect(() => {
+        isPlayingRef.current = isPlaying;
+    }, [isPlaying]);
 
     useEffect(() => {
         const audio = new Audio();
@@ -149,7 +154,7 @@ export function FloatingAudioPlayer() {
 
         audio.src = buildTrackUrl(current.path);
         audio.load();
-        if (isPlaying) {
+        if (isPlayingRef.current) {
             audio.play().catch(() => setIsPlaying(false));
         }
     }, [queue, currentIndex]);
@@ -164,7 +169,6 @@ export function FloatingAudioPlayer() {
         }
     }, [isPlaying]);
 
-    const currentTrack = queue[currentIndex];
     const showPrevNext = queue.length > 1;
     const controlsCount = (showPrevNext ? 2 : 0) + 2; // close + playlist
     const expandedWidth = BASE_SIZE + controlsCount * (CONTROL_SIZE + CONTROL_GAP) + CONTROL_GAP;

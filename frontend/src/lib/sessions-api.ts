@@ -229,7 +229,7 @@ export const sessionsApi = {
      * Get cached events for a session (for replay on reconnect).
      */
     async getEvents(id: string): Promise<{
-        events: any[];
+        events: unknown[];
         status: string;
         error: string | null;
     }> {

@@ -37,7 +37,7 @@ export function IDELayout({ initialLayout }: IDELayoutProps) {
             });
 
             // Column 2: Editor (with header for tabs)
-            const col2 = api.addPanel({
+            api.addPanel({
                 id: 'col2-editor',
                 component: 'editor',
                 title: 'App.tsx',

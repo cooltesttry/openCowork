@@ -74,7 +74,6 @@ export function WorkspaceSidebar({
     currentWorkspace,
     isWorkspacesLoading,
     onSwitchWorkspace,
-    onRemoveWorkspace,
     onOpenFolder,
     sessions,
     currentSessionId,
@@ -152,7 +151,7 @@ export function WorkspaceSidebar({
                 if (!cancelled) {
                     setSessionResults(data.results || []);
                 }
-            } catch (err) {
+            } catch {
                 if (!cancelled) {
                     setSessionResults([]);
                 }

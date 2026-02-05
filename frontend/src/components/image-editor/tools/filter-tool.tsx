@@ -32,7 +32,7 @@ export function useFilterTool({
     const fabric = await import('fabric');
 
     for (const img of images) {
-      const filters: any[] = [];
+      const filters: NonNullable<FabricImage['filters']> = [];
 
       // Add preset filter
       switch (filter) {

@@ -88,6 +88,39 @@ export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, 
     setCurrentSavePath(initialImage);
   }, [initialImage]);
 
+  // Helper function to load an image URL as a data URL
+  const loadImageAsDataUrl = useCallback(async (url: string): Promise<string | null> => {
+    try {
+      // For backend /api/files/raw URLs, use read-base64 endpoint
+      if (url.includes('/api/files/raw')) {
+        const urlObj = new URL(url, window.location.origin);
+        const path = urlObj.searchParams.get('path');
+        if (path) {
+          const response = await fetch(`http://localhost:8000/api/files/read-base64?path=${encodeURIComponent(path)}`);
+          if (!response.ok) return null;
+          const data = await response.json();
+          return data.data_url;
+        }
+      }
+      // Already a data URL
+      if (url.startsWith('data:')) {
+        return url;
+      }
+      // For other URLs, fetch and convert to data URL
+      const response = await fetch(url);
+      const blob = await response.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error('Failed to load image as data URL:', error);
+      return null;
+    }
+  }, []);
+
   // Handle adding image from file explorer
   useEffect(() => {
     if (canvas && addImagePath && addImagePath !== addImagePathRef.current) {
@@ -118,7 +151,7 @@ export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, 
         actions.setTool('ai');
       }
     }
-  }, [canvas, addImagePath, openInAITool, actions, state.hasContent, state.isSelectingReference]);
+  }, [canvas, addImagePath, openInAITool, actions, state.hasContent, state.isSelectingReference, loadImageAsDataUrl]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -223,39 +256,6 @@ export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, 
     return () => window.removeEventListener('paste', handlePaste);
   }, [actions]);
 
-  // Helper function to load an image URL as a data URL
-  const loadImageAsDataUrl = useCallback(async (url: string): Promise<string | null> => {
-    try {
-      // For backend /api/files/raw URLs, use read-base64 endpoint
-      if (url.includes('/api/files/raw')) {
-        const urlObj = new URL(url, window.location.origin);
-        const path = urlObj.searchParams.get('path');
-        if (path) {
-          const response = await fetch(`http://localhost:8000/api/files/read-base64?path=${encodeURIComponent(path)}`);
-          if (!response.ok) return null;
-          const data = await response.json();
-          return data.data_url;
-        }
-      }
-      // Already a data URL
-      if (url.startsWith('data:')) {
-        return url;
-      }
-      // For other URLs, fetch and convert to data URL
-      const response = await fetch(url);
-      const blob = await response.blob();
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(blob);
-      });
-    } catch (error) {
-      console.error('Failed to load image as data URL:', error);
-      return null;
-    }
-  }, []);
-
   // Handle adding reference from clipboard
   const handleAddReferenceFromClipboard = useCallback(async () => {
     try {
@@ -275,7 +275,7 @@ export function ImageEditor({ initialImage, addImagePath, openInAITool, onSave, 
         }
       }
       toast.error('No image found in clipboard');
-    } catch (error) {
+    } catch {
       toast.error('Failed to read clipboard');
     }
   }, [actions]);

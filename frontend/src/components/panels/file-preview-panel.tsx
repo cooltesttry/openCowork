@@ -260,11 +260,14 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
                 {isImage ? (
                     <div className="flex items-center justify-center p-4 h-full">
                         {currentDoc.uri ? (
-                            <img
-                                src={currentDoc.uri}
-                                alt={fileName}
-                                className="max-w-full max-h-full object-contain"
-                            />
+                            <>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                    src={currentDoc.uri}
+                                    alt={fileName}
+                                    className="max-w-full max-h-full object-contain"
+                                />
+                            </>
                         ) : (
                             <div className="text-zinc-400">No image source</div>
                         )}

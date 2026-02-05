@@ -8,6 +8,13 @@ export interface FileOperation {
     path: string;
 }
 
+const asRecord = (value: unknown): Record<string, unknown> => {
+    if (value && typeof value === 'object') {
+        return value as Record<string, unknown>;
+    }
+    return {};
+};
+
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.heic', '.bmp', '.ico'];
 const PREVIEWABLE_EXTENSIONS = [
     '.txt', '.md', '.json', '.py', '.js', '.ts', '.jsx', '.tsx', '.css', '.html',
@@ -130,24 +137,28 @@ export const collectFileOperations = (options: {
     const seenWriteEdit = new Set<string>();
     for (const block of blocks || []) {
         if (block.type !== 'tool_use') continue;
-        const name = (block.content as any)?.name;
+        const content = asRecord(block.content);
+        const name = content.name;
         if (name !== 'Write' && name !== 'Edit') continue;
         if (block.status === 'error') continue;
-        const path = (block.content as any)?.input?.file_path as string | undefined;
+        const input = asRecord(content.input);
+        const pathValue = input.file_path;
+        const path = typeof pathValue === 'string' ? pathValue : undefined;
         if (!path) continue;
         const normalized = normalizePath(path);
         if (seenWriteEdit.has(normalized)) continue;
         seenWriteEdit.add(normalized);
-        writeEditOperations.push({ type: name as 'Write' | 'Edit', path });
+        writeEditOperations.push({ type: name, path });
     }
 
     const imageGenOperations: FileOperation[] = [];
     for (const block of blocks || []) {
         if (block.type !== 'tool_use') continue;
-        const name = (block.content as any)?.name;
+        const content = asRecord(block.content);
+        const name = content.name;
         if (name !== 'mcp__imagegen__generate_image') continue;
         if (block.status === 'error') continue;
-        const path = parseImageGenPath((block.content as any)?.result);
+        const path = parseImageGenPath(content.result);
         if (!path) continue;
         imageGenOperations.push({ type: 'ImageGen', path });
     }

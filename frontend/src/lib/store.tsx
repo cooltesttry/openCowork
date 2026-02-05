@@ -163,6 +163,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         try {
             const savedOpen = localStorage.getItem(SIDEBAR_OPEN_KEY);
             if (savedOpen !== null) {
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setIsSidebarOpen(JSON.parse(savedOpen));
             }
 

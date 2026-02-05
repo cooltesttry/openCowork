@@ -1,5 +1,7 @@
 'use client';
 
+/* eslint-disable react-hooks/immutability */
+
 import { useEffect } from 'react';
 import type { Canvas as FabricCanvas } from 'fabric';
 
@@ -13,35 +15,36 @@ interface UseBrushToolOptions {
 export function useBrushTool({ canvas, isActive, color, width }: UseBrushToolOptions) {
   useEffect(() => {
     if (!canvas) return;
+    const currentCanvas = canvas;
 
     if (isActive) {
-      canvas.isDrawingMode = true;
+      currentCanvas.isDrawingMode = true;
 
       // Configure the brush
-      if (canvas.freeDrawingBrush) {
-        canvas.freeDrawingBrush.color = color;
-        canvas.freeDrawingBrush.width = width;
+      if (currentCanvas.freeDrawingBrush) {
+        currentCanvas.freeDrawingBrush.color = color;
+        currentCanvas.freeDrawingBrush.width = width;
       }
     } else {
-      canvas.isDrawingMode = false;
+      currentCanvas.isDrawingMode = false;
     }
 
     return () => {
-      if (canvas) {
-        canvas.isDrawingMode = false;
-      }
+      currentCanvas.isDrawingMode = false;
     };
   }, [canvas, isActive, color, width]);
 
   useEffect(() => {
     if (!canvas || !isActive || !canvas.freeDrawingBrush) return;
 
-    canvas.freeDrawingBrush.color = color;
+    const brush = canvas.freeDrawingBrush;
+    brush.color = color;
   }, [canvas, isActive, color]);
 
   useEffect(() => {
     if (!canvas || !isActive || !canvas.freeDrawingBrush) return;
 
-    canvas.freeDrawingBrush.width = width;
+    const brush = canvas.freeDrawingBrush;
+    brush.width = width;
   }, [canvas, isActive, width]);
 }

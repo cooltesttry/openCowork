@@ -2,7 +2,7 @@
 
 import { MessageBlock } from "@/lib/types";
 import { Image as ImageIcon, Loader2, AlertCircle, Download, Sparkles } from "lucide-react";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { OpenImageOptions } from "@/components/image-editor/types";
 import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
 
@@ -53,8 +53,8 @@ function parseImageGenResult(block: MessageBlock): ImageGenResult | null {
 }
 
 export function ImageGenBlock({ block, onOpenImage, onOpenInPanel }: ImageGenBlockProps) {
-    const [imageLoaded, setImageLoaded] = useState(false);
-    const [imageError, setImageError] = useState(false);
+    const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
+    const [errorUrl, setErrorUrl] = useState<string | null>(null);
 
     const isRunning = block.status === 'executing' || block.status === 'pending' || block.status === 'streaming';
     const isError = block.status === 'error' || block.content?.is_error;
@@ -62,7 +62,7 @@ export function ImageGenBlock({ block, onOpenImage, onOpenInPanel }: ImageGenBlo
 
     // Parse result - always try to parse for preloading
     // Use block.content and block.status as dependencies to detect in-place mutations
-    const result = useMemo(() => parseImageGenResult(block), [block.content, block.status]);
+    const result = useMemo(() => parseImageGenResult(block), [block]);
     const prompt = block.content?.input?.prompt || '';
 
     // Get image URL from backend
@@ -72,26 +72,16 @@ export function ImageGenBlock({ block, onOpenImage, onOpenInPanel }: ImageGenBlo
             : null;
     }, [result?.file_path]);
 
+    const imageLoaded = Boolean(imageUrl && loadedUrl === imageUrl);
+    const imageError = Boolean(imageUrl && errorUrl === imageUrl);
+
     // Preload image when URL becomes available (even before success status)
-    // Also reset states when URL changes
-    const prevImageUrlRef = useRef<string | null>(null);
     useEffect(() => {
-        // Reset if URL changed
-        if (imageUrl !== prevImageUrlRef.current) {
-            prevImageUrlRef.current = imageUrl;
-            if (!imageUrl) {
-                setImageLoaded(false);
-                setImageError(false);
-                return;
-            }
-            // Start preloading
-            setImageLoaded(false);
-            setImageError(false);
-            const img = new Image();
-            img.onload = () => setImageLoaded(true);
-            img.onerror = () => setImageError(true);
-            img.src = imageUrl;
-        }
+        if (!imageUrl) return;
+        const img = new Image();
+        img.onload = () => setLoadedUrl(imageUrl);
+        img.onerror = () => setErrorUrl(imageUrl);
+        img.src = imageUrl;
     }, [imageUrl]);
 
     // Handle download
@@ -238,13 +228,14 @@ export function ImageGenBlock({ block, onOpenImage, onOpenInPanel }: ImageGenBlo
                             <span className="text-xs mt-1 opacity-60">{result.file_path}</span>
                         </div>
                     ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                             src={imageUrl!}
                             alt={prompt || "Generated image"}
                             className={`w-full max-h-[500px] object-contain bg-muted/30 transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'
                                 }`}
-                            onLoad={() => setImageLoaded(true)}
-                            onError={() => setImageError(true)}
+                            onLoad={() => setLoadedUrl(imageUrl!)}
+                            onError={() => setErrorUrl(imageUrl!)}
                         />
                     )}
                 </div>

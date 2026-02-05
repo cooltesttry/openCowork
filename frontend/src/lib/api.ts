@@ -6,7 +6,7 @@ export async function fetchConfig<T>(endpoint: string): Promise<T> {
     return res.json();
 }
 
-export async function updateConfig<T>(endpoint: string, data: any): Promise<T> {
+export async function updateConfig<T>(endpoint: string, data: unknown): Promise<T> {
     const res = await fetch(`${API_BASE}${endpoint}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -16,7 +16,7 @@ export async function updateConfig<T>(endpoint: string, data: any): Promise<T> {
     return res.json();
 }
 
-export async function addMcpServer(data: any): Promise<any> {
+export async function addMcpServer(data: unknown): Promise<unknown> {
     const res = await fetch(`${API_BASE}/mcp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -26,7 +26,7 @@ export async function addMcpServer(data: any): Promise<any> {
     return res.json();
 }
 
-export async function deleteMcpServer(name: string): Promise<any> {
+export async function deleteMcpServer(name: string): Promise<unknown> {
     const res = await fetch(`${API_BASE}/mcp/${encodeURIComponent(name)}`, {
         method: "DELETE",
     });
@@ -50,7 +50,7 @@ export async function toggleSearch(): Promise<{ status: string; enabled: boolean
     return res.json();
 }
 
-export async function fetchModels(config: any): Promise<string[]> {
+export async function fetchModels(config: Record<string, unknown>): Promise<string[]> {
     const res = await fetch(`${API_BASE}/model/list`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -60,7 +60,7 @@ export async function fetchModels(config: any): Promise<string[]> {
         try {
             const err = await res.json();
             throw new Error(err.detail || "Failed to fetch models");
-        } catch (e) {
+        } catch {
             throw new Error("Failed to fetch models");
         }
     }
@@ -111,7 +111,7 @@ export async function fetchWorkingDirectoryFiles(subdir: string = ""): Promise<F
 export const API_ROOT = "http://localhost:8000/api";
 export const WORKSPACE_API_BASE = "http://localhost:8000/api/workspace";
 
-export async function saveFile(path: string, content: string): Promise<any> {
+export async function saveFile(path: string, content: string): Promise<unknown> {
     const res = await fetch(`${API_ROOT}/files/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,7 +209,7 @@ export interface SkillsCatalogEntry {
         imported_at?: string;
         updated_at?: string;
     };
-    local?: Record<string, any>;
+    local?: Record<string, unknown>;
 }
 
 export interface SkillsCatalog {

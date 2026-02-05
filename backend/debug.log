@@ -44993,3 +44993,302 @@ sqlite3.OperationalError: database is locked
 2026-02-05 05:36:03 - routers.terminal - INFO - Closing terminal session 75222
 2026-02-05 05:36:03 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
 2026-02-05 05:36:03 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 05:45:58 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 05:45:58 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 05:45:58 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 05:45:58 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 05:45:58 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 05:45:58 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 05:45:58 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 05:45:58 - routers.terminal - INFO - Closing terminal session 74375
+2026-02-05 05:45:59 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 05:45:59 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 05:45:59 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 05:45:59 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 05:45:59 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 05:45:59 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 05:45:59 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 05:45:59 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 05:45:59 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 05:45:59 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 05:45:59 - routers.terminal - INFO - Terminal session started with PID 86168
+2026-02-05 05:45:59 - routers.terminal - INFO - Terminal session started with PID 86170
+2026-02-05 05:45:59 - routers.terminal - INFO - Terminal session started with PID 86172
+2026-02-05 05:46:00 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 05:46:00 - routers.terminal - INFO - Closing terminal session 86170
+2026-02-05 05:46:02 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 05:46:02 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 05:46:02 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 05:46:02 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-05 05:57:53 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-05 05:57:53 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 05:57:53 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 05:57:53 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 05:57:53 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 05:57:53 - routers.terminal - INFO - Closing terminal session 86168
+2026-02-05 05:57:53 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 05:57:53 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 05:57:53 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 05:57:53 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 05:57:53 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 05:57:53 - routers.terminal - INFO - Closing terminal session 86172
+2026-02-05 05:57:53 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 05:57:53 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 05:57:53 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 05:57:53 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 05:57:53 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 05:57:53 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 05:57:53 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 05:57:53 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 05:57:53 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 05:57:53 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 05:57:53 - routers.terminal - INFO - Terminal session started with PID 96169
+2026-02-05 05:57:54 - routers.terminal - INFO - Terminal session started with PID 96171
+2026-02-05 05:57:54 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 05:57:54 - routers.terminal - INFO - Closing terminal session 96171
+2026-02-05 05:57:54 - routers.terminal - INFO - Terminal session started with PID 96172
+2026-02-05 05:57:56 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 05:57:56 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 05:57:56 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 05:57:56 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-05 06:00:51 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-05 06:00:51 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:00:51 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:00:51 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:00:51 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:00:51 - routers.terminal - INFO - Closing terminal session 96169
+2026-02-05 06:00:51 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:00:51 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:00:51 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:00:51 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:00:51 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:00:51 - routers.terminal - INFO - Closing terminal session 96172
+2026-02-05 06:00:51 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:00:51 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:00:51 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:00:51 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:00:51 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:00:51 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:00:51 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:00:51 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:00:51 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:00:51 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:00:51 - routers.terminal - INFO - Terminal session started with PID 1168
+2026-02-05 06:00:51 - routers.terminal - INFO - Terminal session started with PID 1170
+2026-02-05 06:00:51 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:00:51 - routers.terminal - INFO - Closing terminal session 1168
+2026-02-05 06:00:52 - routers.terminal - INFO - Terminal session started with PID 1172
+2026-02-05 06:00:52 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:00:52 - routers.terminal - INFO - Closing terminal session 1172
+2026-02-05 06:00:52 - routers.terminal - INFO - Terminal session started with PID 1173
+2026-02-05 06:00:54 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:00:54 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:00:54 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:00:54 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-05 06:15:13 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-05 06:15:13 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:13 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:15:13 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:13 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:13 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:15:13 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:13 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-05 06:15:24 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:15:24 - routers.terminal - INFO - Closing terminal session 1170
+2026-02-05 06:15:24 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-05 06:15:24 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:24 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:15:24 - routers.terminal - INFO - Closing terminal session 1173
+2026-02-05 06:15:24 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:15:24 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:24 - routers.terminal - INFO - Terminal session started with PID 21023
+2026-02-05 06:15:24 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:24 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:15:24 - routers.terminal - INFO - Terminal session started with PID 21047
+2026-02-05 06:15:24 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:15:24 - routers.terminal - INFO - Closing terminal session 21023
+2026-02-05 06:15:24 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:15:24 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:24 - routers.terminal - INFO - Terminal session started with PID 21049
+2026-02-05 06:15:24 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:24 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:15:24 - routers.terminal - INFO - Terminal session started with PID 21051
+2026-02-05 06:15:25 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:15:25 - routers.terminal - INFO - Closing terminal session 21049
+2026-02-05 06:15:25 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:15:25 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:27 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:27 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:15:28 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:28 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-05 06:15:48 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:15:48 - routers.terminal - INFO - Closing terminal session 21047
+2026-02-05 06:15:48 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-05 06:15:48 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:48 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:15:48 - routers.terminal - INFO - Closing terminal session 21051
+2026-02-05 06:15:48 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:15:48 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:48 - routers.terminal - INFO - Terminal session started with PID 21962
+2026-02-05 06:15:48 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:48 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:15:48 - routers.terminal - INFO - Terminal session started with PID 22006
+2026-02-05 06:15:48 - routers.terminal - INFO - Terminal session started with PID 22008
+2026-02-05 06:15:48 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:15:48 - routers.terminal - INFO - Closing terminal session 21962
+2026-02-05 06:15:48 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:15:48 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:48 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:48 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:15:48 - routers.terminal - INFO - Terminal session started with PID 22010
+2026-02-05 06:15:49 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:15:49 - routers.terminal - INFO - Closing terminal session 22008
+2026-02-05 06:15:49 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:15:49 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:51 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:51 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:15:52 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:52 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-05 06:15:53 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:15:53 - routers.terminal - INFO - Closing terminal session 22010
+2026-02-05 06:15:53 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-05 06:15:53 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:53 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:15:53 - routers.terminal - INFO - Closing terminal session 22006
+2026-02-05 06:15:53 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:15:53 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:54 - routers.terminal - INFO - Terminal session started with PID 22281
+2026-02-05 06:15:54 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:54 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:15:54 - routers.terminal - INFO - Terminal session started with PID 22333
+2026-02-05 06:15:54 - routers.terminal - INFO - Terminal session started with PID 22335
+2026-02-05 06:15:54 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:15:54 - routers.terminal - INFO - Closing terminal session 22281
+2026-02-05 06:15:54 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:15:54 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:54 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:54 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:15:54 - routers.terminal - INFO - Terminal session started with PID 22337
+2026-02-05 06:15:54 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:15:54 - routers.terminal - INFO - Closing terminal session 22335
+2026-02-05 06:15:54 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:15:54 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:15:57 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:57 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:15:57 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:15:57 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-05 06:17:51 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-05 06:17:51 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:17:51 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:17:51 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-05 06:17:51 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:17:51 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 3
+2026-02-05 06:17:51 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 2
+2026-02-05 06:17:51 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:18:02 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-05 06:18:02 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:18:02 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:18:02 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:18:02 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:18:02 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:18:02 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:18:02 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-05 06:18:07 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-05 06:18:07 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:18:07 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:18:07 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-05 06:18:07 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:18:07 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 3
+2026-02-05 06:18:07 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 2
+2026-02-05 06:18:07 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:18:27 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-05 06:18:27 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:18:27 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:18:27 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 2
+2026-02-05 06:18:27 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:18:27 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 3
+2026-02-05 06:18:27 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 2
+2026-02-05 06:18:27 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:27:49 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:27:49 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:27:49 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:27:49 - routers.terminal - INFO - Closing terminal session 22333
+2026-02-05 06:27:49 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 1
+2026-02-05 06:27:49 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:27:50 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:27:50 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:27:50 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:27:50 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:27:50 - routers.terminal - INFO - Closing terminal session 22337
+2026-02-05 06:27:50 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:27:50 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:27:50 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:27:50 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:27:50 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:27:50 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:27:50 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:27:50 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:27:50 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:27:50 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:27:50 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:28:21 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:28:21 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:28:21 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:28:21 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:28:21 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:28:21 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:28:21 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:28:21 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:28:21 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:28:21 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:28:22 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:28:22 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:28:22 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:28:22 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:28:36 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:28:36 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:28:36 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:28:36 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:28:36 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:28:36 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:28:36 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-05 06:28:36 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-05 06:28:36 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-05 06:28:36 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-05 06:31:50 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:31:50 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:31:50 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:31:50 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:31:51 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:31:52 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:43:53 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:43:57 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:43:57 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:43:58 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:44:46 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:44:46 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:44:46 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:44:46 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:44:46 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:44:46 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:44:46 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:44:46 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:44:46 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:44:47 - routers.terminal - INFO - Terminal session started with PID 53591
+2026-02-05 06:44:47 - routers.terminal - INFO - Terminal session started with PID 53593
+2026-02-05 06:44:47 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:44:47 - routers.terminal - INFO - Closing terminal session 53591
+2026-02-05 06:44:47 - routers.terminal - INFO - Terminal session started with PID 53595
+2026-02-05 06:44:47 - routers.terminal - INFO - Terminal session started with PID 53597
+2026-02-05 06:44:47 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:44:47 - routers.terminal - INFO - Closing terminal session 53597
+2026-02-05 06:44:47 - routers.terminal - INFO - Terminal session started with PID 53598
+2026-02-05 06:45:33 - routers.agent - INFO - [Multiplexed] WebSocket disconnected by client
+2026-02-05 06:45:33 - routers.agent - INFO - [Multiplexed] WebSocket closed, subscriptions cancelled
+2026-02-05 06:45:33 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:45:33 - routers.terminal - INFO - Closing terminal session 53595
+2026-02-05 06:45:33 - routers.agent - INFO - [Multiplexed] WebSocket connection accepted
+2026-02-05 06:45:34 - routers.terminal - INFO - Terminal session started with PID 53856
+2026-02-05 06:45:34 - routers.terminal - INFO - Terminal session started with PID 53858
+2026-02-05 06:45:34 - routers.terminal - INFO - WebSocket disconnected
+2026-02-05 06:45:34 - routers.terminal - INFO - Closing terminal session 53856

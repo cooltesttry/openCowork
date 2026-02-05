@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useRef, useState, useMemo } from 'react';
 import { Message, MessageBlock, AgentStep } from '@/lib/types';
-import { sessionClient, AskUserContent, StreamEvent } from '@/lib/websocket';
+import { sessionClient, StreamEvent } from '@/lib/websocket';
 import { sessionsApi, setWorkspaceMode } from '@/lib/sessions-api';
 import { useChat } from '@/lib/store';
 import { useWorkspace } from '@/lib/workspace-store';
@@ -23,12 +23,23 @@ import {
     type FileKind,
 } from '@/lib/file-links';
 import { buildContextUsageCalibration } from '@/lib/context-usage';
-const normalizeUsage = (usage: any): Message["usage"] | null => {
+
+const asRecord = (value: unknown): Record<string, unknown> => {
+    if (value && typeof value === 'object') {
+        return value as Record<string, unknown>;
+    }
+    return {};
+};
+
+const asString = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
+
+const normalizeUsage = (usage: unknown): Message["usage"] | null => {
     if (!usage || typeof usage !== "object") return null;
-    const inputTokens = Number(usage.input_tokens ?? 0);
-    const outputTokens = Number(usage.output_tokens ?? 0);
+    const usageRecord = usage as Record<string, unknown>;
+    const inputTokens = Number(usageRecord.input_tokens ?? 0);
+    const outputTokens = Number(usageRecord.output_tokens ?? 0);
     const totalTokens = Number(
-        typeof usage.total_tokens === "number" ? usage.total_tokens : inputTokens + outputTokens
+        typeof usageRecord.total_tokens === "number" ? usageRecord.total_tokens : inputTokens + outputTokens
     );
     if (!Number.isFinite(totalTokens)) return null;
     return {
@@ -39,7 +50,7 @@ const normalizeUsage = (usage: any): Message["usage"] | null => {
 };
 
 const extractUsage = (event: StreamEvent): Message["usage"] | null => {
-    return normalizeUsage(event?.usage ?? (event as any)?.content?.usage);
+    return normalizeUsage(event?.usage ?? asRecord(event.content).usage);
 };
 
 /**
@@ -49,13 +60,13 @@ const extractUsage = (event: StreamEvent): Message["usage"] | null => {
 export function useChatLogic() {
     const {
         messages, setMessages,
-        steps, setSteps,
+        setSteps,
         isProcessing, setIsProcessing,
         setIsAwaitingFirstToken,
         setAwaitingFirstTokenSessionId,
         sessions, setSessions,
         currentSessionId, setCurrentSessionId,
-        isSessionsLoading, setIsSessionsLoading,
+        setIsSessionsLoading,
         activeEndpoint, setActiveEndpoint,
         activeModel, setActiveModel,
         setContextUsage,
@@ -83,7 +94,6 @@ export function useChatLogic() {
         isProcessingRef.current = isProcessing;
     }, [isProcessing]);
 
-    const [askUserRequest, setAskUserRequest] = useState<AskUserContent | null>(null);
     const [securityMode, setSecurityMode] = useState<SecurityMode>('bypassPermissions');
     const [slashCommands, setSlashCommands] = useState<{ command: string; description: string }[]>([]);
 
@@ -151,8 +161,6 @@ export function useChatLogic() {
     // Note: This only sets currentSessionId on INITIAL load or if current session was deleted
     // It does NOT change session during normal operations to avoid conflicts with user actions
     const loadSessions = useCallback(async () => {
-        const startSessionId = currentSessionIdRef.current;
-        // console.log('[loadSessions] Called, startSessionId:', startSessionId);
         try {
             setIsSessionsLoading(true);
             const sessionList = await sessionsApi.list();
@@ -201,7 +209,7 @@ export function useChatLogic() {
         } finally {
             setIsSessionsLoading(false);
         }
-    }, [setSessions, setCurrentSessionId, setMessages, setIsSessionsLoading, setSessionStatus, setContextUsage]);
+    }, [setSessions, setCurrentSessionId, setMessages, setIsSessionsLoading, setSessionStatus, setContextUsage, currentSessionIdRef]);
 
     // Load messages for a specific session
     const loadSessionMessages = useCallback(async (sessionId: string) => {
@@ -213,27 +221,40 @@ export function useChatLogic() {
             // For running sessions, this shows historical messages.
             // Live streaming updates for running sessions require the /ws/multiplexed endpoint.
 
-            const msgs: Message[] = session.messages.map((m: any, mIndex: number) => {
+            const msgs: Message[] = session.messages.map((m, mIndex) => {
                 let blocks: MessageBlock[] | undefined = undefined;
                 if (m.blocks && Array.isArray(m.blocks)) {
-                    blocks = m.blocks.map((b: any, bIndex: number) => {
+                    blocks = m.blocks.map((b, bIndex) => {
                         // Special handling for TodoWrite - convert to plan block
-                        if (b.type === 'tool_use' && (b.metadata?.toolName === 'TodoWrite' || b.content?.name === 'TodoWrite')) {
-                            const input = b.content?.input || b.content || {};
-                            const todos = input.todos || [];
+                        const contentRecord = asRecord(b.content);
+                        if (b.type === 'tool_use' && (b.metadata?.toolName === 'TodoWrite' || contentRecord.name === 'TodoWrite')) {
+                            const input = contentRecord.input ?? contentRecord;
+                            const inputRecord = asRecord(input);
+                            const todosValue = inputRecord.todos;
+                            const todos = Array.isArray(todosValue) ? todosValue : [];
                             return {
                                 id: b.id || `plan-${mIndex}-${bIndex}`,
                                 type: 'plan' as const,
-                                content: input,
+                                content: inputRecord,
                                 status: b.status || 'success',
                                 metadata: {
                                     ...b.metadata,
                                     toolName: 'TodoWrite',
-                                    todos: todos.map((todo: any, index: number) => ({
-                                        id: `todo-${index}`,
-                                        content: todo.content || todo.task || String(todo),
-                                        status: (todo.status || 'pending') as 'pending' | 'in_progress' | 'completed',
-                                    })),
+                                    todos: todos.map((todo, index) => {
+                                        const todoRecord = asRecord(todo);
+                                        const content = asString(todoRecord.content)
+                                            || asString(todoRecord.task)
+                                            || String(todo);
+                                        const statusRaw = asString(todoRecord.status) || 'pending';
+                                        const status = statusRaw === 'completed' || statusRaw === 'in_progress' || statusRaw === 'pending'
+                                            ? statusRaw
+                                            : 'pending';
+                                        return {
+                                            id: `todo-${index}`,
+                                            content,
+                                            status,
+                                        };
+                                    }),
                                 },
                             };
                         }
@@ -264,9 +285,10 @@ export function useChatLogic() {
                 setActiveEndpoint(session.last_endpoint_name);
                 setActiveModel(session.last_model_name);
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
             console.error('Failed to load session messages:', error);
-            if (error?.message?.includes('not found')) {
+            if (message.includes('not found')) {
                 console.warn(`Session ${sessionId} not found, resetting...`);
                 currentSessionIdRef.current = null;
                 setCurrentSessionId(null);
@@ -278,7 +300,7 @@ export function useChatLogic() {
                 setContextUsage(null);
             }
         }
-    }, [loadSessions, setActiveEndpoint, setActiveModel, setCurrentSessionId, setMessages, setContextUsage]);
+    }, [loadSessions, setActiveEndpoint, setActiveModel, setCurrentSessionId, setMessages, setContextUsage, currentSessionIdRef]);
 
     // Track resumed session state for processing events after session switch
     // When user switches to a running session, we store the session ID here
@@ -533,7 +555,7 @@ export function useChatLogic() {
                 return [...prev, assistantMessage];
             });
         }
-    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, loadSessionMessages, refreshWorkspaceSessions, CONTENT_EVENT_TYPES, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId, autoOpenFileForSession, setContextUsage]);
+    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, loadSessionMessages, refreshWorkspaceSessions, CONTENT_EVENT_TYPES, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId, autoOpenFileForSession, setContextUsage, currentSessionIdRef]);
 
     // Stable wrapper that always calls the latest handler
     const handleGlobalEvent = useCallback((event: StreamEvent) => {
@@ -570,7 +592,7 @@ export function useChatLogic() {
             }
             return [...prev, assistantMessage];
         });
-    }, [setMessages]);
+    }, [setMessages, currentSessionIdRef]);
 
     // Append current turn events to existing messages (for running sessions)
     // This is called AFTER loadSessionMessages, so history is already loaded
@@ -607,7 +629,7 @@ export function useChatLogic() {
 
         // Mark as processing since we're in a running session
         setIsProcessing(true);
-    }, [setMessages, setIsProcessing]);
+    }, [setMessages, setIsProcessing, currentSessionIdRef]);
 
     // Recover all running sessions - subscribe to their events
     const recoverAllSessions = useCallback(async () => {
@@ -662,7 +684,7 @@ export function useChatLogic() {
         } catch (err) {
             console.error('[useChatLogic] Recovery failed:', err);
         }
-    }, [setSessionStatus, rebuildMessagesFromEvents]);
+    }, [setSessionStatus, rebuildMessagesFromEvents, currentSessionIdRef]);
 
     // Initialize connection, load sessions, and setup recovery
     useEffect(() => {
@@ -732,7 +754,7 @@ export function useChatLogic() {
         }
 
         prevWorkspaceIdRef.current = currentWorkspaceId;
-    }, [currentWorkspace?.id, setMessages, setSteps, setIsProcessing]);
+    }, [currentWorkspace?.id, setMessages, setSteps, setIsProcessing, currentSessionIdRef]);
 
     // Load session messages when currentSessionId changes
     // NOTE: For running sessions, handleSelectSession already handles loading with proper sequencing.
@@ -784,7 +806,7 @@ export function useChatLogic() {
         setIsProcessing(false);
         isProcessingRef.current = false;
         setTimeout(() => inputAreaRef.current?.focus(), 100);
-    }, [getSessionStatus, setSessionStatus, setCurrentSessionId, setMessages, setSteps, setIsProcessing, setContextUsage]);
+    }, [getSessionStatus, setSessionStatus, setCurrentSessionId, setMessages, setSteps, setIsProcessing, setContextUsage, currentSessionIdRef]);
 
     // Create a new session (draft only - actual session created on send)
     const handleNewSession = useCallback(async () => {
@@ -927,7 +949,7 @@ export function useChatLogic() {
             console.error('Failed to delete session:', error);
             toast.error('Error', { description: 'Failed to delete session' });
         }
-    }, [currentSessionId, sessions, setCurrentSessionId, setMessages, setSessions]);
+    }, [currentSessionId, sessions, setCurrentSessionId, setMessages, setSessions, currentSessionIdRef]);
 
     // ==================== Workspace Session Change Listener ====================
     // When a session is selected in the workspace sidebar, sync to chat state
@@ -967,7 +989,7 @@ export function useChatLogic() {
         });
 
         return unsubscribe;
-    }, [registerSessionChangeCallback, handleSelectSession, getSessionStatus, setCurrentSessionId, switchToDraftSession]);
+    }, [registerSessionChangeCallback, handleSelectSession, getSessionStatus, setSessionStatus, switchToDraftSession, currentSessionIdRef]);
 
     // Permission response handler
     const handlePermissionResponse = useCallback((blockId: string, approved: boolean) => {
@@ -1028,7 +1050,6 @@ export function useChatLogic() {
         );
 
         sessionClient.sendUserResponse(requestId, answers);
-        setAskUserRequest(null);
     }, [setMessages]);
 
     const handleAskUserSkip = useCallback((requestId: string) => {
@@ -1056,7 +1077,6 @@ export function useChatLogic() {
         );
 
         sessionClient.sendUserResponse(requestId, {});
-        setAskUserRequest(null);
     }, [setMessages]);
 
     // Interrupt a running session
@@ -1097,7 +1117,7 @@ export function useChatLogic() {
             console.error('Failed to interrupt session:', error);
             toast.error('Failed to interrupt session');
         }
-    }, [getSessionStatus, setSessionStatus, setIsProcessing, setMessages, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId]);
+    }, [getSessionStatus, setSessionStatus, setIsProcessing, setMessages, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId, currentSessionIdRef]);
 
     // Main send handler - UNIFIED streaming path
     // After getting session_id, all events go through handleGlobalEvent → appendCurrentTurnFromEvents
@@ -1266,7 +1286,7 @@ export function useChatLogic() {
                 // Log steps for debugging
                 const step: AgentStep = {
                     id: crypto.randomUUID(),
-                    type: event.type as any,
+                    type: event.type as AgentStep["type"],
                     content: event.content,
                     metadata: event.metadata,
                     timestamp: Date.now(),
@@ -1278,7 +1298,7 @@ export function useChatLogic() {
                     handleGlobalEventRef.current(event);
                 }
             });
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Failed to send message:', error);
             setIsProcessing(false);
             isProcessingRef.current = false;
@@ -1291,7 +1311,8 @@ export function useChatLogic() {
                 resumeSessionStateRef.current = null;
             }
             subscribedSessionsRef.current.delete(currentSessionIdRef.current || '');
-            toast.error('Error', { description: error.message || 'Failed to send message' });
+            const message = error instanceof Error ? error.message : 'Failed to send message';
+            toast.error('Error', { description: message });
         }
     };
 

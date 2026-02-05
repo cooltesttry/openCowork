@@ -31,36 +31,69 @@ export function EditorPanel({ params }: EditorPanelProps) {
     const [value, setValue] = useState('// Type your code here\nconsole.log("Hello World");');
     const [language, setLanguage] = useState('typescript');
     const { resolvedTheme } = useTheme();
+    const paramContent = params?.content;
+    const paramLanguage = params?.language;
+    const paramFilename = params?.filename;
+    const onContentChange = params?.onContentChange;
 
     // Check if file is previewable (HTML or Markdown)
-    const isPreviewable = params?.filename && /\.(html|htm|md|markdown)$/i.test(params.filename);
-    const fileName = params?.filename?.split('/').pop() || 'Untitled';
+    const isPreviewable = paramFilename && /\.(html|htm|md|markdown)$/i.test(paramFilename);
+    const fileName = paramFilename?.split('/').pop() || 'Untitled';
 
     useEffect(() => {
-        if (params?.content !== undefined) {
-            setValue(params.content);
-            params?.onContentChange?.(params.content);
+        if (paramContent !== undefined) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setValue(paramContent);
+            onContentChange?.(paramContent);
         }
-        if (params?.language) {
-            setLanguage(params.language);
-        } else if (params?.filename) {
+        let nextLanguage: string | null = null;
+        if (paramLanguage) {
+            nextLanguage = paramLanguage;
+        } else if (paramFilename) {
             // Simple extension detection
-            const ext = params.filename.split('.').pop()?.toLowerCase();
+            const ext = paramFilename.split('.').pop()?.toLowerCase();
             switch (ext) {
-                case 'ts': case 'tsx': setLanguage('typescript'); break;
-                case 'js': case 'jsx': setLanguage('javascript'); break;
-                case 'py': setLanguage('python'); break;
-                case 'json': setLanguage('json'); break;
-                case 'html': setLanguage('html'); break;
-                case 'css': setLanguage('css'); break;
-                case 'md': setLanguage('markdown'); break;
-                case 'sql': setLanguage('sql'); break;
-                case 'sh': setLanguage('shell'); break;
-                case 'yml': case 'yaml': setLanguage('yaml'); break;
-                default: setLanguage('plaintext');
+                case 'ts':
+                case 'tsx':
+                    nextLanguage = 'typescript';
+                    break;
+                case 'js':
+                case 'jsx':
+                    nextLanguage = 'javascript';
+                    break;
+                case 'py':
+                    nextLanguage = 'python';
+                    break;
+                case 'json':
+                    nextLanguage = 'json';
+                    break;
+                case 'html':
+                    nextLanguage = 'html';
+                    break;
+                case 'css':
+                    nextLanguage = 'css';
+                    break;
+                case 'md':
+                    nextLanguage = 'markdown';
+                    break;
+                case 'sql':
+                    nextLanguage = 'sql';
+                    break;
+                case 'sh':
+                    nextLanguage = 'shell';
+                    break;
+                case 'yml':
+                case 'yaml':
+                    nextLanguage = 'yaml';
+                    break;
+                default:
+                    nextLanguage = 'plaintext';
             }
         }
-    }, [params?.content, params?.language, params?.filename, params?.onContentChange]);
+        if (nextLanguage) {
+            setLanguage(nextLanguage);
+        }
+    }, [paramContent, paramLanguage, paramFilename, onContentChange]);
 
     const handleSave = useCallback(async () => {
         if (params?.onSaveRequest) {
@@ -79,7 +112,7 @@ export function EditorPanel({ params }: EditorPanelProps) {
             console.error('Failed to save:', error);
             toast.error('Failed to save file');
         }
-    }, [params.filename, params?.onSave, value]);
+    }, [params, value]);
 
     const handlePreview = useCallback(() => {
         if (params?.filename && params?.onPreviewFile) {

@@ -60,8 +60,9 @@ export function FilePreviewPopup({ entry, position, anchor = 'right', onClose }:
                 }
                 const data = await res.json();
                 setContent(data.content);
-            } catch (err: any) {
-                setError(err.message === "PREVIEW_NOT_AVAILABLE" ? "Preview not available for this file type" : err.message);
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                setError(message === "PREVIEW_NOT_AVAILABLE" ? "Preview not available for this file type" : message);
             } finally {
                 setIsLoading(false);
             }
@@ -186,6 +187,7 @@ export function FilePreviewPopup({ entry, position, anchor = 'right', onClose }:
             <div className="flex-1 overflow-auto bg-zinc-50 dark:bg-zinc-900 relative">
                 {isImage ? (
                     <div className="flex items-center justify-center p-4 min-h-[150px]">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                             src={rawUrl}
                             alt={entry.name}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
     Dialog,
     DialogContent,
@@ -27,7 +27,12 @@ interface AskUserDialogProps {
     onCancel: (requestId: string) => void;
 }
 
-export function AskUserDialog({
+export function AskUserDialog(props: AskUserDialogProps) {
+    const resetKey = props.open ? props.requestId : "closed";
+    return <AskUserDialogInner key={resetKey} {...props} />;
+}
+
+function AskUserDialogInner({
     open,
     requestId,
     questions,
@@ -43,16 +48,6 @@ export function AskUserDialog({
     const [useOther, setUseOther] = useState<Record<string, boolean>>({});
     // Countdown timer
     const [timeRemaining, setTimeRemaining] = useState(timeout);
-
-    // Reset state when dialog opens
-    useEffect(() => {
-        if (open) {
-            setAnswers({});
-            setOtherInputs({});
-            setUseOther({});
-            setTimeRemaining(timeout);
-        }
-    }, [open, timeout]);
 
     // Countdown timer
     useEffect(() => {

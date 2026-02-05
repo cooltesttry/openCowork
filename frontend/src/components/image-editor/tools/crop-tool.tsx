@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import type { Canvas as FabricCanvas, Rect } from 'fabric';
+import type { Canvas as FabricCanvas, Rect, IEvent } from 'fabric';
 import type { CropRatio } from '../types';
 
 interface UseCropToolOptions {
@@ -67,7 +67,7 @@ export function useCropTool({
   useEffect(() => {
     if (!canvas || !isActive) return;
 
-    const handleMouseDown = async (opt: { e: MouseEvent; pointer: { x: number; y: number } }) => {
+    const handleMouseDown = async (opt: IEvent<MouseEvent>) => {
       if (cropRectRef.current) return; // Already cropping
 
       const pointer = opt.pointer;
@@ -82,7 +82,7 @@ export function useCropTool({
       }
     };
 
-    const handleMouseMove = (opt: { e: MouseEvent; pointer: { x: number; y: number } }) => {
+    const handleMouseMove = (opt: IEvent<MouseEvent>) => {
       if (!isDrawingRef.current || !cropRectRef.current || !startPointRef.current) return;
 
       const pointer = opt.pointer;
@@ -126,13 +126,13 @@ export function useCropTool({
       }
     };
 
-    canvas.on('mouse:down', handleMouseDown as any);
-    canvas.on('mouse:move', handleMouseMove as any);
+    canvas.on('mouse:down', handleMouseDown);
+    canvas.on('mouse:move', handleMouseMove);
     canvas.on('mouse:up', handleMouseUp);
 
     return () => {
-      canvas.off('mouse:down', handleMouseDown as any);
-      canvas.off('mouse:move', handleMouseMove as any);
+      canvas.off('mouse:down', handleMouseDown);
+      canvas.off('mouse:move', handleMouseMove);
       canvas.off('mouse:up', handleMouseUp);
     };
   }, [canvas, isActive, ratio, createCropRect, onCropStart]);

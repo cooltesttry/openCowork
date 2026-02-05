@@ -4,7 +4,7 @@ export interface Message {
     role: "user" | "assistant";
     content: string;
     timestamp: number;
-    events?: any[]; // Store raw events for detailed view
+    events?: unknown[]; // Store raw events for detailed view
     isStreaming?: boolean; // Whether message is still receiving content
     usage?: TokenUsage; // Token usage for this message
     blocks?: MessageBlock[]; // Content blocks for structured rendering
@@ -33,7 +33,7 @@ export type BlockType = 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'plan
 export interface MessageBlock {
     id: string;
     type: BlockType;
-    content: any;
+    content: unknown;
     status: BlockStatus;
     metadata?: {
         toolName?: string;
@@ -62,8 +62,8 @@ export interface TodoItem {
 export interface AgentStep {
     id: string;
     type: "thinking" | "tool_use" | "tool_result" | "text" | "error" | "tool_input_start" | "tool_input_delta";
-    content: any;
-    metadata?: any;
+    content: unknown;
+    metadata?: Record<string, unknown>;
     timestamp: number;
 }
 

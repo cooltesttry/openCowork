@@ -1,4 +1,3 @@
-import type { Canvas as FabricCanvas } from 'fabric';
 import type { ReactNode } from 'react';
 
 export type EditorTool = 'select' | 'crop' | 'brush' | 'text' | 'filter' | 'ai';

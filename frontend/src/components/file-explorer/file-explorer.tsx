@@ -8,7 +8,7 @@ import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
 import { Loader2, RefreshCw, File, Folder, AtSign, Pencil, Trash2, FolderPlus, FilePlus, Copy, ExternalLink, Search, X, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { FilePreviewPopup } from "./file-preview-popup";
-import { fileWatcherClient, FileWatchEvent } from "@/lib/file-watcher";
+import { fileWatcherClient } from "@/lib/file-watcher";
 import { useWorkspace } from "@/lib/workspace-store";
 import { enqueueAudio } from "@/lib/audio-player";
 import { FileIcon } from "./file-icons";
@@ -193,7 +193,7 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
 
     // File watcher integration - auto-refresh on file system changes
     useEffect(() => {
-        const handleFileChange = (event: FileWatchEvent) => {
+        const handleFileChange = () => {
             fetchFiles();
         };
 
@@ -206,7 +206,7 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
 
     const sortMode = SORT_CYCLE[sortIndex];
 
-    const compareEntries = (a: FileEntry, b: FileEntry) => {
+    const compareEntries = useCallback((a: FileEntry, b: FileEntry) => {
         if (a.is_directory !== b.is_directory) {
             return a.is_directory ? -1 : 1;
         }
@@ -224,10 +224,10 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
         if (cmp === 0) cmp = nameCompare;
         if (sortMode.direction === "desc") cmp *= -1;
         return cmp;
-    };
+    }, [sortMode]);
 
     // Helper to build tree from flat paths
-    const buildTree = (flatFiles: FileEntry[]): FileEntry[] => {
+    const buildTree = useCallback((flatFiles: FileEntry[]): FileEntry[] => {
         const root: FileEntry[] = [];
         const map: Record<string, FileEntry> = {};
 
@@ -282,9 +282,9 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
         root.forEach((entry) => computeDirectoryModified(entry));
         sortRecursive(root);
         return root;
-    };
+    }, [compareEntries]);
 
-    const treeFiles = useMemo(() => buildTree(flatFiles), [flatFiles, sortMode]);
+    const treeFiles = useMemo(() => buildTree(flatFiles), [buildTree, flatFiles]);
 
     const categoryFiles = useMemo(() => {
         if (viewFilter === "all") return [];
@@ -549,6 +549,7 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
         searchTokens,
         currentWorkspace?.path,
         getEntriesForFilter,
+        normalizeResultPath,
     ]);
 
     const handleToggleExpand = (path: string) => {
@@ -1311,6 +1312,7 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
                                             onDoubleClick={() => handleOpenFromExplorer(entry)}
                                         >
                                             <div className="aspect-square overflow-hidden bg-zinc-100 dark:bg-zinc-800">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img
                                                     src={imageSrc}
                                                     alt={entry.name}

@@ -27,7 +27,6 @@ import {
     getSuperAgentSession,
     cancelSuperAgentSession,
     WorkerConfig,
-    SuperAgentSession,
 } from "@/lib/api";
 import { SessionEventsLog, EventDetails } from "./session-events-log";
 
@@ -52,7 +51,6 @@ export function SuperAgentPanel() {
 
     // Session State
     const [sessionId, setSessionId] = useState<string | null>(null);
-    const [session, setSession] = useState<SuperAgentSession | null>(null);
     const [status, setStatus] = useState<SessionStatus>("idle");
     const [error, setError] = useState<string | null>(null);
 
@@ -93,8 +91,6 @@ export function SuperAgentPanel() {
         const interval = setInterval(async () => {
             try {
                 const sessionData = await getSuperAgentSession(sessionId);
-                setSession(sessionData);
-
                 if (["completed", "failed", "cancelled"].includes(sessionData.status)) {
                     setStatus(sessionData.status as SessionStatus);
                     if (sessionData.status === "completed") {
@@ -127,7 +123,6 @@ export function SuperAgentPanel() {
 
         setError(null);
         setStatus("running");
-        setSession(null);
 
         try {
             const result = await startSuperAgentRun({
@@ -161,7 +156,6 @@ export function SuperAgentPanel() {
 
     const handleReset = useCallback(() => {
         setSessionId(null);
-        setSession(null);
         setStatus("idle");
         setError(null);
         setTaskObjective("");

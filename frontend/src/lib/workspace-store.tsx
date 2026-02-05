@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
+import type { SessionDetail } from './types';
 
 // ==================== Types ====================
 
@@ -94,7 +95,7 @@ async function deleteSessionAPI(workspaceId: string, sessionId: string): Promise
     if (!res.ok) throw new Error('Failed to delete session');
 }
 
-async function fetchSessionDetail(workspaceId: string, sessionId: string): Promise<any> {
+async function fetchSessionDetail(workspaceId: string, sessionId: string): Promise<SessionDetail> {
     const res = await fetch(`${API_BASE}/${workspaceId}/sessions/${sessionId}`);
     if (!res.ok) throw new Error('Failed to fetch session');
     return await res.json();
@@ -129,7 +130,7 @@ interface WorkspaceContextType {
     refreshSessions: () => Promise<void>;
 
     // Current session detail (messages, etc.)
-    currentSessionDetail: any | null;
+    currentSessionDetail: SessionDetail | null;
     loadSessionDetail: (sessionId: string) => Promise<void>;
 
     // Callback registration for external components (e.g., chat panel)
@@ -153,7 +154,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
     const [isSessionsLoading, setIsSessionsLoading] = useState(false);
 
-    const [currentSessionDetail, setCurrentSessionDetail] = useState<any | null>(null);
+    const [currentSessionDetail, setCurrentSessionDetail] = useState<SessionDetail | null>(null);
 
     // Session change callbacks for external components (e.g., chat panel)
     const sessionChangeCallbacksRef = useRef<Set<SessionChangeCallback>>(new Set());
@@ -280,7 +281,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
         };
         loadSessions();
-    }, [currentWorkspace?.id]);
+    }, [currentWorkspace]);
 
     // Load session detail when current session changes
     // Only load if session exists in the current sessions list (avoids race condition)
@@ -307,7 +308,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
         };
         loadDetail();
-    }, [currentWorkspace?.id, currentSessionId, sessions]);
+    }, [currentWorkspace, currentSessionId, sessions]);
 
     const refreshWorkspaces = useCallback(async () => {
         try {
@@ -342,7 +343,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             setCurrentWorkspace(null);
         }
         await refreshWorkspaces();
-    }, [currentWorkspace?.id, refreshWorkspaces]);
+    }, [currentWorkspace, refreshWorkspaces]);
 
     const refreshSessions = useCallback(async () => {
         if (!currentWorkspace) return;
@@ -352,7 +353,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         } catch (error) {
             console.error('Failed to refresh sessions:', error);
         }
-    }, [currentWorkspace?.id]);
+    }, [currentWorkspace]);
 
     const createSession = useCallback(async (title?: string): Promise<WorkspaceSession | null> => {
         if (!currentWorkspace) return null;
@@ -375,7 +376,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             console.error('Failed to create session:', error);
             return null;
         }
-    }, [currentWorkspace?.id, refreshSessions]);
+    }, [currentWorkspace, refreshSessions]);
 
     const startNewSessionDraft = useCallback(() => {
         const workspaceId = currentWorkspaceRef.current?.id;
@@ -441,7 +442,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         } catch (error) {
             console.error('Failed to delete session:', error);
         }
-    }, [currentWorkspace?.id, currentSessionId, refreshSessions]);
+    }, [currentWorkspace, currentSessionId, refreshSessions]);
 
     const loadSessionDetail = useCallback(async (sessionId: string) => {
         if (!currentWorkspace) return;
@@ -451,7 +452,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         } catch (error) {
             console.error('Failed to load session detail:', error);
         }
-    }, [currentWorkspace?.id]);
+    }, [currentWorkspace]);
 
     return (
         <WorkspaceContext.Provider value={{

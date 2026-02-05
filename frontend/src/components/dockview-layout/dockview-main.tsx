@@ -53,7 +53,6 @@ const useDockviewTitle = (api: DockviewPanelApi) => {
         const disposable = api.onDidTitleChange((event) => {
             setTitle(event.title);
         });
-        setTitle((current) => (current !== api.title ? api.title : current));
         return () => {
             disposable.dispose();
         };
@@ -81,17 +80,20 @@ const splitTitleForTab = (title: string) => {
 
 const MiddleEllipsisTab = ({
     api,
-    containerApi: _containerApi,
-    params: _params,
+    containerApi,
+    params,
     hideClose,
     closeActionOverride,
     onPointerDown,
     onPointerUp,
     onPointerLeave,
-    tabLocation: _tabLocation,
+    tabLocation,
     className,
     ...rest
 }: DockviewTabProps) => {
+    void containerApi;
+    void params;
+    void tabLocation;
     const title = useDockviewTitle(api);
     const { head, tail } = splitTitleForTab(title);
     const isMiddleMouseButton = useRef(false);
@@ -165,7 +167,6 @@ export function DockviewMain() {
         setPreviewHTMLCallback,
         setOpenFilePanelCallback,
         terminalInputCallback,
-        rightPanelView,
         setRightPanelView,
         setCanvasGroupId,
     } = useChat();
@@ -211,7 +212,7 @@ export function DockviewMain() {
 
     const ensureCanvasAnchor = useCallback(() => {
         if (!apiRef.current) return null;
-        let editorPanel = apiRef.current.getPanel('editor-panel');
+        const editorPanel = apiRef.current.getPanel('editor-panel');
         if (editorPanel) {
             updateCanvasGroupId(editorPanel.group?.id ?? null);
             return editorPanel;

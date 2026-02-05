@@ -26,7 +26,12 @@ interface SessionEventsLogProps {
     selectedEventIndex?: number | null;
 }
 
-export function SessionEventsLog({
+export function SessionEventsLog(props: SessionEventsLogProps) {
+    const resetKey = props.sessionId ?? "inactive";
+    return <SessionEventsLogInner key={resetKey} {...props} />;
+}
+
+function SessionEventsLogInner({
     sessionId,
     isActive,
     onEventSelect,
@@ -43,7 +48,6 @@ export function SessionEventsLog({
                 wsRef.current.close();
                 wsRef.current = null;
             }
-            setConnected(false);
             return;
         }
 
@@ -91,15 +95,10 @@ export function SessionEventsLog({
         onEventSelectRef.current = onEventSelect;
     }, [onEventSelect]);
 
-    // Reset events only when sessionId changes (not onEventSelect)
-    const prevSessionIdRef = useRef(sessionId);
+    // Reset selection when the component remounts for a new session
     useEffect(() => {
-        if (prevSessionIdRef.current !== sessionId) {
-            setEvents([]);
-            onEventSelectRef.current?.(null, null);
-            prevSessionIdRef.current = sessionId;
-        }
-    }, [sessionId]);
+        onEventSelectRef.current?.(null, null);
+    }, []);
 
     const getEventIcon = (type: string) => {
         switch (type) {

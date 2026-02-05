@@ -1,5 +1,7 @@
 'use client';
 
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
 import { Eye, Pencil, Image as ImageIcon, Save, Paintbrush2 } from 'lucide-react';
@@ -70,6 +72,7 @@ export function FilePanel({ params, api }: FilePanelProps) {
     const filePath = params?.path;
     const inlineImageDataUrl = params?.imageDataUrl;
     const inlineTextContent = params?.content;
+    const onModeChange = params?.onModeChange;
     const fileName = useMemo(() => {
         if (params?.name) return params.name;
         if (filePath) return filePath.split('/').pop() || 'Untitled';
@@ -100,7 +103,7 @@ export function FilePanel({ params, api }: FilePanelProps) {
         if (isImage) return 'preview';
         if (isEditable) return 'editor';
         return 'preview';
-    }, [params?.initialMode, allowedModes, isImage, isEditable]);
+    }, [params, allowedModes, isImage, isEditable]);
 
     const [mode, setMode] = useState<FilePanelMode>(defaultMode);
     const [editorContent, setEditorContent] = useState('');
@@ -120,9 +123,9 @@ export function FilePanel({ params, api }: FilePanelProps) {
     }, [api, mode, params]);
 
     useEffect(() => {
-        if (!params?.onModeChange) return;
-        params.onModeChange(api.id, mode);
-    }, [api.id, mode, params?.onModeChange]);
+        if (!onModeChange) return;
+        onModeChange(api.id, mode);
+    }, [api.id, mode, onModeChange]);
 
     useEffect(() => {
         if (skipDefaultModeResetRef.current) {
@@ -154,7 +157,7 @@ export function FilePanel({ params, api }: FilePanelProps) {
     }, [params?.content, draftContent, lastSavedContent]);
 
     useEffect(() => {
-        if (!filePath || !isEditable || params?.content !== undefined) return;
+        if (!filePath || !isEditable || inlineTextContent !== undefined) return;
 
         let isActive = true;
         setIsLoading(true);
@@ -183,7 +186,7 @@ export function FilePanel({ params, api }: FilePanelProps) {
         return () => {
             isActive = false;
         };
-    }, [filePath, isEditable]);
+    }, [filePath, isEditable, inlineTextContent]);
 
     const isDirty = isEditable && draftContent !== lastSavedContent;
 

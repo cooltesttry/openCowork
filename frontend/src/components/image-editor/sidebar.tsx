@@ -17,7 +17,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Check, X } from 'lucide-react';
-import type { SidebarProps, FilterType, CropRatio } from './types';
+import type { SidebarProps, CropRatio } from './types';
 import { PRESET_COLORS, FONT_OPTIONS, FILTER_PRESETS, CROP_RATIOS } from './types';
 
 function ColorPicker({

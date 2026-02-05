@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Canvas as FabricCanvas, FabricImage, FabricObject } from 'fabric';
+import type { Canvas as FabricCanvas, FabricObject, IText } from 'fabric';
 import type { EditorState, EditorActions, EditorTool, FilterType, CropRatio } from './types';
 import { calculateFitZoom, CANVAS_MIN_SIZE, CANVAS_MAX_SIZE } from './types';
 
@@ -205,7 +205,7 @@ export function useEditor(canvas: FabricCanvas | null) {
     if (canvas) {
       const active = canvas.getActiveObject();
       if (active && active.type === 'i-text') {
-        (active as any).set('fill', color);
+        (active as IText).set('fill', color);
         canvas.renderAll();
       }
     }
@@ -216,7 +216,7 @@ export function useEditor(canvas: FabricCanvas | null) {
     if (canvas) {
       const active = canvas.getActiveObject();
       if (active && active.type === 'i-text') {
-        (active as any).set('fontSize', size);
+        (active as IText).set('fontSize', size);
         canvas.renderAll();
       }
     }
@@ -227,7 +227,7 @@ export function useEditor(canvas: FabricCanvas | null) {
     if (canvas) {
       const active = canvas.getActiveObject();
       if (active && active.type === 'i-text') {
-        (active as any).set('fontFamily', font);
+        (active as IText).set('fontFamily', font);
         canvas.renderAll();
       }
     }
@@ -317,7 +317,7 @@ export function useEditor(canvas: FabricCanvas | null) {
 
     // Calculate new dimensions based on ratio
     // Use current width as base and adjust height
-    let calcWidth = oldWidth;
+    const calcWidth = oldWidth;
     let calcHeight = oldHeight;
 
     switch (ratio) {
@@ -803,7 +803,8 @@ export function useEditor(canvas: FabricCanvas | null) {
     const handleMouseDownBefore = () => {
       // Check if there's an active text object being edited BEFORE fabric processes the click
       const activeObject = canvas.getActiveObject();
-      wasEditing = !!(activeObject && 'isEditing' in activeObject && (activeObject as any).isEditing);
+      const activeText = activeObject as (FabricObject & { isEditing?: boolean }) | null;
+      wasEditing = !!(activeText && activeText.isEditing);
     };
 
     const handleMouseDown = (opt: { e: MouseEvent | TouchEvent; target?: FabricObject | null }) => {

@@ -43,8 +43,8 @@ export interface AskUserContent {
 
 export interface StreamEvent {
     type: EventType;
-    content: any;
-    metadata: Record<string, any>;
+    content: unknown;
+    metadata: Record<string, unknown>;
     id?: string;         // Block ID for streaming events
     usage?: {            // Token usage (on "done" event)
         input_tokens: number;
@@ -101,7 +101,7 @@ export class AgentClient {
         });
     }
 
-    private doConnect(resolve: () => void, reject: (err: any) => void) {
+    private doConnect(resolve: () => void, reject: (err: unknown) => void) {
         this.ws = new WebSocket(this.url);
 
         const timeout = setTimeout(() => {
@@ -242,7 +242,7 @@ export class MultiplexedClient {
         });
     }
 
-    private doConnect(resolve: () => void, reject: (err: any) => void) {
+    private doConnect(resolve: () => void, reject: (err: unknown) => void) {
         const isReconnect = this.reconnectAttempts > 0;
         this.ws = new WebSocket(this.url);
 

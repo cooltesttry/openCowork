@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useCallback } from 'react';
-import type { Canvas as FabricCanvas, IText } from 'fabric';
+import type { Canvas as FabricCanvas, IText, IEvent } from 'fabric';
 
 interface UseTextToolOptions {
   canvas: FabricCanvas | null;
@@ -38,12 +38,12 @@ export function useTextTool({ canvas, isActive, color, fontSize, fontFamily }: U
   useEffect(() => {
     if (!canvas || !isActive) return;
 
-    const handleMouseDown = async (opt: { e: MouseEvent; target: any; pointer: { x: number; y: number } }) => {
+    const handleMouseDown = async (opt: IEvent<MouseEvent>) => {
       // Only add text if clicking on empty space
       if (opt.target) return;
 
       const { IText } = await import('fabric');
-      const pointer = opt.pointer;
+      const pointer = opt.pointer || { x: 0, y: 0 };
 
       const text = new IText('Click to edit', {
         left: pointer.x,
@@ -62,10 +62,10 @@ export function useTextTool({ canvas, isActive, color, fontSize, fontFamily }: U
       text.selectAll();
     };
 
-    canvas.on('mouse:down', handleMouseDown as any);
+    canvas.on('mouse:down', handleMouseDown);
 
     return () => {
-      canvas.off('mouse:down', handleMouseDown as any);
+      canvas.off('mouse:down', handleMouseDown);
     };
   }, [canvas, isActive, color, fontSize, fontFamily]);
 

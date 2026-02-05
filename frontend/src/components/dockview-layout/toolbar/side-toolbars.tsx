@@ -14,8 +14,6 @@ export function DocksideToolbars({ toolsPanelWidth }: { toolsPanelWidth: number 
         isProcessing,
         isSidebarOpen,
         setIsSidebarOpen,
-        isSessionSidebarOpen,
-        setIsSessionSidebarOpen,
         rightPanelView,
         setRightPanelView,
     } = useChat();

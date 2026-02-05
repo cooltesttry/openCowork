@@ -61,10 +61,12 @@ export default function TerminalComponent() {
     const fitAddonRef = useRef<FitAddon | null>(null);
     const pendingInputRef = useRef<string[]>([]);
     const { resolvedTheme } = useTheme();
+    const themeRef = useRef(resolvedTheme);
     const { setTerminalInputCallback } = useChat();
 
     // Effect to update options when theme changes
     useEffect(() => {
+        themeRef.current = resolvedTheme;
         if (termRef.current) {
             termRef.current.options.theme = resolvedTheme === 'dark' ? DARK_THEME : LIGHT_THEME;
         }
@@ -75,7 +77,7 @@ export default function TerminalComponent() {
 
         // Initialize Terminal with current theme
         const term = new Terminal({
-            theme: resolvedTheme === 'dark' ? DARK_THEME : LIGHT_THEME,
+            theme: themeRef.current === 'dark' ? DARK_THEME : LIGHT_THEME,
             fontFamily: 'JetBrains Mono, Menlo, Monaco, "Courier New", monospace',
             fontSize: 14,
             lineHeight: 1.2,

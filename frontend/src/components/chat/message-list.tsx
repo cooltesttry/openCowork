@@ -35,7 +35,7 @@ export function MessageList({ messages, showProcessingPlaceholder, onPermissionR
                 scrollContainer.scrollTop = scrollContainer.scrollHeight;
             }
         }
-    }, [messages]);
+    }, [messages, showProcessingPlaceholder]);
 
     return (
         <ScrollArea ref={scrollRef} className="flex-1 h-full">

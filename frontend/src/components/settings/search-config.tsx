@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { fetchConfig, updateConfig } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,34 +11,42 @@ import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
 export function SearchConfig() {
-    const [config, setConfig] = useState<any>(null);
+    type SearchProvider = "none" | "serper" | "tavily" | "brave";
+    interface SearchConfigState {
+        provider: SearchProvider;
+        api_key?: string | null;
+        max_results: number;
+        enabled: boolean;
+    }
+
+    const [config, setConfig] = useState<SearchConfigState | null>(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        loadConfig();
-    }, []);
-
-    const loadConfig = async () => {
+    const loadConfig = useCallback(async () => {
         try {
-            const data = await fetchConfig("/search");
+            const data = await fetchConfig<SearchConfigState>("/search");
             setConfig(data);
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to load search config" });
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        loadConfig();
+    }, [loadConfig]);
 
     const handleSave = async () => {
         try {
             await updateConfig("/search", config);
             toast.success("Success", { description: "Search configuration saved" });
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to save config" });
         }
     };
 
-    if (loading) return <div>Loading...</div>;
+    if (loading || !config) return <div>Loading...</div>;
 
     return (
         <Card>

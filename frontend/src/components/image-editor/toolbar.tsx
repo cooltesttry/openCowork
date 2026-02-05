@@ -19,7 +19,6 @@ import {
   Sparkles,
   Loader2,
   ImagePlus,
-  FolderOpen,
   Clipboard,
   Upload,
   X,
@@ -47,7 +46,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import type { ToolbarProps, EditorTool, FilterType, CropRatio } from './types';
+import type { ToolbarProps, EditorTool, FilterType } from './types';
 import { PRESET_COLORS, FONT_OPTIONS, FILTER_PRESETS, CROP_RATIOS, CANVAS_MIN_SIZE, CANVAS_MAX_SIZE, getClosestAspectRatio } from './types';
 
 function RatioIcon({ width, height }: { width: number; height: number }) {
@@ -184,61 +183,6 @@ function SliderControl({
   );
 }
 
-function ReferenceImagesPanel({
-  images,
-  onRemove,
-  onSelectFromWorkspace,
-  onAddFromClipboard,
-  onAddFromFile,
-}: {
-  images: string[];
-  onRemove: (index: number) => void;
-  onSelectFromWorkspace: () => void;
-  onAddFromClipboard: () => void;
-  onAddFromFile: () => void;
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="text-xs font-medium">Extra References ({images.length})</div>
-
-      {/* Thumbnail grid */}
-      {images.length > 0 && (
-        <div className="grid grid-cols-3 gap-2">
-          {images.map((img, idx) => (
-            <div key={idx} className="relative group">
-              <img src={img} className="w-full aspect-square object-cover rounded border border-zinc-200 dark:border-zinc-600" alt={`Reference ${idx + 1}`} />
-              <button
-                onClick={() => onRemove(idx)}
-                className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full
-                           opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center
-                           hover:bg-red-600 transition-opacity"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Add options */}
-      <div className="flex flex-col gap-1">
-        <Button size="sm" variant="outline" onClick={onSelectFromWorkspace} className="justify-start">
-          <FolderOpen className="h-3 w-3 mr-2" />
-          From Workspace
-        </Button>
-        <Button size="sm" variant="outline" onClick={onAddFromClipboard} className="justify-start">
-          <Clipboard className="h-3 w-3 mr-2" />
-          From Clipboard
-        </Button>
-        <Button size="sm" variant="outline" onClick={onAddFromFile} className="justify-start">
-          <Upload className="h-3 w-3 mr-2" />
-          Choose File...
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function ReferenceBar({
   images,
   onRemove,
@@ -265,6 +209,7 @@ function ReferenceBar({
       <div className="flex items-center gap-2 flex-1 overflow-x-auto">
         {images.map((img, idx) => (
           <div key={idx} className="relative group shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={img} className="h-10 w-10 object-cover rounded border" alt={`Reference ${idx + 1}`} />
             <button
               onClick={() => onRemove(idx)}
@@ -301,10 +246,12 @@ function CropToolOptions({ state, actions }: { state: ToolbarProps['state']; act
 
   // Sync local input state with global state
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setWidthInput(String(state.canvasWidth));
   }, [state.canvasWidth]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHeightInput(String(state.canvasHeight));
   }, [state.canvasHeight]);
 

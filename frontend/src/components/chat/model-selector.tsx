@@ -35,6 +35,7 @@ export function ModelSelector() {
 
     // Load endpoints from config on mount
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         loadConfig();
     }, [loadConfig]);
 

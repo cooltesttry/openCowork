@@ -44,7 +44,7 @@ export function SkillsConfig() {
         try {
             const res = await fetchSkillsCatalog();
             setPayload({ catalog: res.catalog, path: res.path, skills_dir: res.skills_dir });
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to load skills catalog" });
         } finally {
             setLoading(false);
@@ -63,7 +63,7 @@ export function SkillsConfig() {
                 prev ? { ...prev, catalog: res.catalog } : prev
             );
             toast.success("Skill removed", { description: skillId });
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to remove skill" });
         } finally {
             setRemovingId(null);
@@ -79,7 +79,7 @@ export function SkillsConfig() {
                 limit: 20,
             });
             setSearchResults(res.results || []);
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to search skills" });
         } finally {
             setSearching(false);
@@ -98,7 +98,7 @@ export function SkillsConfig() {
                 prev ? { ...prev, catalog: res.catalog } : prev
             );
             toast.success("Skill installed", { description: entry.name });
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to install skill" });
         } finally {
             setInstallingId(null);
@@ -122,7 +122,7 @@ export function SkillsConfig() {
             toast.success("Skill installed", { description: manualPackage.trim() });
             setManualPackage("");
             setManualSkill("");
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to install skill" });
         } finally {
             setManualInstalling(false);

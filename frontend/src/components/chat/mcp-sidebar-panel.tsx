@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
     fetchWorkspaceSkills,
     addWorkspaceSkill,
@@ -60,7 +60,7 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
     const [addingSkillId, setAddingSkillId] = useState<string | null>(null);
     const [removingSkillId, setRemovingSkillId] = useState<string | null>(null);
 
-    const loadWorkspaceMcp = async () => {
+    const loadWorkspaceMcp = useCallback(async () => {
         if (!currentWorkspace?.id) {
             setMcpServers([]);
             setMcpLoading(false);
@@ -75,9 +75,9 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
         } finally {
             setMcpLoading(false);
         }
-    };
+    }, [currentWorkspace?.id]);
 
-    const loadWorkspaceSkills = async () => {
+    const loadWorkspaceSkills = useCallback(async () => {
         if (!currentWorkspace?.id) {
             setSkills([]);
             setSkillsLoading(false);
@@ -92,9 +92,9 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
         } finally {
             setSkillsLoading(false);
         }
-    };
+    }, [currentWorkspace?.id]);
 
-    const loadLibrary = async () => {
+    const loadLibrary = useCallback(async () => {
         try {
             setLibraryLoading(true);
             const res = await fetchSkillsCatalog();
@@ -107,9 +107,9 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
         } finally {
             setLibraryLoading(false);
         }
-    };
+    }, []);
 
-    const loadGlobalMcp = async () => {
+    const loadGlobalMcp = useCallback(async () => {
         try {
             setGlobalMcpLoading(true);
             const res = await fetchGlobalMcpServers();
@@ -119,19 +119,19 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
         } finally {
             setGlobalMcpLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         loadWorkspaceMcp();
         loadWorkspaceSkills();
-    }, [currentWorkspace?.id]);
+    }, [loadWorkspaceMcp, loadWorkspaceSkills]);
 
     useEffect(() => {
         if (toolsMode === "add") {
             loadLibrary();
             loadGlobalMcp();
         }
-    }, [toolsMode]);
+    }, [toolsMode, loadLibrary, loadGlobalMcp]);
 
     const refreshTools = async () => {
         await Promise.all([loadWorkspaceMcp(), loadWorkspaceSkills()]);

@@ -37,6 +37,7 @@ export const CustomImageRenderer: DocRenderer = ({ mainState: { currentDocument 
 
     return (
         <div className="flex items-center justify-center h-full w-full bg-transparent overflow-auto p-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
                 src={src}
                 alt={currentDocument.fileName}

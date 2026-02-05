@@ -427,6 +427,7 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                                             className="relative group rounded-md overflow-hidden border border-border hover:border-foreground/20 transition-colors"
                                             title={file.path}
                                         >
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img
                                                 src={`http://localhost:8000/api/files/raw?path=${encodeURIComponent(file.path)}`}
                                                 alt={file.name}

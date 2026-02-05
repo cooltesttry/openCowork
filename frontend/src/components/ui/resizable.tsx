@@ -36,7 +36,7 @@ const ResizablePanel = React.forwardRef<
   ImperativePanelHandle,
   React.ComponentProps<typeof Panel> & React.RefAttributes<ImperativePanelHandle>
 >(({ ...props }, ref) => {
-  // @ts-ignore
+  // @ts-expect-error: ref typing from Panel doesn't align with forwardRef here
   return <Panel ref={ref} data-slot="resizable-panel" {...props} />
 })
 ResizablePanel.displayName = "ResizablePanel"

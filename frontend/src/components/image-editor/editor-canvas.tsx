@@ -28,6 +28,8 @@ interface ResizeState {
   startHeight: number;
 }
 
+type CanvasWithFabric = HTMLCanvasElement & { __canvas?: FabricCanvas };
+
 export function EditorCanvas({
   onCanvasReady,
   onDrop,
@@ -74,10 +76,10 @@ export function EditorCanvas({
       if (!container || !canvasRef.current) return;
 
       // Check if canvas element already has a fabric instance
-      const canvasEl = canvasRef.current;
-      if ((canvasEl as any).__canvas) {
+      const canvasEl = canvasRef.current as CanvasWithFabric;
+      if (canvasEl.__canvas) {
         // Canvas already initialized, just use existing
-        fabricRef.current = (canvasEl as any).__canvas;
+        fabricRef.current = canvasEl.__canvas;
         onCanvasReady(fabricRef.current!);
         setIsLoading(false);
         return;
@@ -99,19 +101,19 @@ export function EditorCanvas({
       canvas.freeDrawingBrush = brush;
 
       // Store reference on the element to detect re-initialization
-      (canvasEl as any).__canvas = canvas;
+      canvasEl.__canvas = canvas;
       fabricRef.current = canvas;
       onCanvasReady(canvas);
       setIsLoading(false);
     };
 
     initCanvas();
+    const canvasElement = canvasRef.current as CanvasWithFabric | null;
 
     return () => {
       if (fabricRef.current) {
-        const canvasEl = canvasRef.current;
-        if (canvasEl) {
-          delete (canvasEl as any).__canvas;
+        if (canvasElement) {
+          delete canvasElement.__canvas;
         }
         fabricRef.current.dispose();
         fabricRef.current = null;

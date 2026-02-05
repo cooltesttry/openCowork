@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 
 interface ToolCallProps {
     name: string;
-    input: any;
-    result?: any;
+    input: unknown;
+    result?: unknown;
     error?: string;
     isExpanded?: boolean;
 }

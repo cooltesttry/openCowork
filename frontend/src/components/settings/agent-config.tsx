@@ -31,7 +31,7 @@ export function AgentConfig() {
         try {
             const data = await fetchConfig<AgentConfig>("/agent");
             setConfig(data);
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to load agent config" });
         } finally {
             setLoading(false);
@@ -43,7 +43,7 @@ export function AgentConfig() {
         try {
             await updateConfig("/agent", config);
             toast.success("Success", { description: "Agent configuration saved" });
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to save config" });
         }
     };

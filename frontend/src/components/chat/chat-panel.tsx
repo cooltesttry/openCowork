@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useCallback, useRef, useState } from "react";
-import { Message, AgentStep, MessageBlock, Session } from "@/lib/types";
+import { Message, AgentStep, MessageBlock } from "@/lib/types";
 import { sessionClient, AskUserContent } from "@/lib/websocket";
 import { sessionsApi } from "@/lib/sessions-api";
 import { buildContextUsageCalibration } from "@/lib/context-usage";
@@ -9,7 +9,6 @@ import { MessageList } from "./message-list";
 import { InputArea, InputAreaRef, SecurityMode } from "./input-area";
 import { McpSidebarPanel } from "./mcp-sidebar-panel";
 import { SessionSidebar, SessionSidebarToggle } from "./session-sidebar-new";
-import { AskUserDialog } from "./ask-user-dialog";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -20,12 +19,13 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 import { PanelRightClose, PanelRightOpen, Settings } from "lucide-react";
 
-const normalizeUsage = (usage: any): { input_tokens: number; output_tokens: number; total_tokens: number } | null => {
+const normalizeUsage = (usage: unknown): { input_tokens: number; output_tokens: number; total_tokens: number } | null => {
     if (!usage || typeof usage !== "object") return null;
-    const inputTokens = Number(usage.input_tokens ?? 0);
-    const outputTokens = Number(usage.output_tokens ?? 0);
+    const usageRecord = usage as Record<string, unknown>;
+    const inputTokens = Number(usageRecord.input_tokens ?? 0);
+    const outputTokens = Number(usageRecord.output_tokens ?? 0);
     const totalTokens = Number(
-        typeof usage.total_tokens === "number" ? usage.total_tokens : inputTokens + outputTokens
+        typeof usageRecord.total_tokens === "number" ? usageRecord.total_tokens : inputTokens + outputTokens
     );
     if (!Number.isFinite(totalTokens)) return null;
     return {
@@ -35,10 +35,19 @@ const normalizeUsage = (usage: any): { input_tokens: number; output_tokens: numb
     };
 };
 
+const asRecord = (value: unknown): Record<string, unknown> => {
+    if (value && typeof value === "object") {
+        return value as Record<string, unknown>;
+    }
+    return {};
+};
+
+const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
+
 export function ChatPanel() {
     const {
         messages, setMessages,
-        steps, setSteps,
+        setSteps,
         isProcessing, setIsProcessing,
         isSidebarOpen, setIsSidebarOpen,
         sidebarWidth, setSidebarWidth,
@@ -61,9 +70,6 @@ export function ChatPanel() {
         currentSessionIdRef.current = currentSessionId;
     }, [currentSessionId]);
 
-    // Ask User Question state
-    const [askUserRequest, setAskUserRequest] = useState<AskUserContent | null>(null);
-
     // Security mode state (default to Bypass for compatibility)
     const [securityMode, setSecurityMode] = useState<SecurityMode>('bypassPermissions');
 
@@ -71,23 +77,23 @@ export function ChatPanel() {
     const [slashCommands, setSlashCommands] = useState<{ command: string, description: string }[]>([]);
     // Initialize connection and load sessions
     useEffect(() => {
-        sessionClient.connect().catch((err) => {
-            console.warn("Session WebSocket connection failed, will retry on message send");
+        sessionClient.connect().catch((error) => {
+            console.warn("Session WebSocket connection failed, will retry on message send", error);
         });
 
         // Load sessions on mount
         loadSessions();
-    }, []);
+    }, [loadSessions]);
 
     // Load session messages when currentSessionId changes
     useEffect(() => {
         if (currentSessionId) {
             loadSessionMessages(currentSessionId);
         }
-    }, [currentSessionId]);
+    }, [currentSessionId, loadSessionMessages]);
 
     // Load sessions from API
-    const loadSessions = async () => {
+    const loadSessions = useCallback(async () => {
         try {
             setIsSessionsLoading(true);
             const sessionList = await sessionsApi.list();
@@ -95,7 +101,7 @@ export function ChatPanel() {
 
             // Validate current session exists, otherwise reset
             if (currentSessionId) {
-                const sessionExists = sessionList.some((s: any) => s.id === currentSessionId);
+                const sessionExists = sessionList.some((s) => s.id === currentSessionId);
                 if (!sessionExists) {
                     console.warn(`Current session ${currentSessionId} no longer exists, resetting...`);
                     setCurrentSessionId(sessionList.length > 0 ? sessionList[0].id : null);
@@ -111,18 +117,18 @@ export function ChatPanel() {
         } finally {
             setIsSessionsLoading(false);
         }
-    };
+    }, [currentSessionId, setContextUsage, setCurrentSessionId, setIsSessionsLoading, setMessages, setSessions]);
 
     // Load messages for a specific session
-    const loadSessionMessages = async (sessionId: string) => {
+    const loadSessionMessages = useCallback(async (sessionId: string) => {
         try {
             const session = await sessionsApi.get(sessionId);
             // Convert session messages to Message format
-            const msgs: Message[] = session.messages.map((m: any, mIndex: number) => {
+            const msgs: Message[] = session.messages.map((m, mIndex) => {
                 // Convert blocks to proper MessageBlock format
                 let blocks: MessageBlock[] | undefined = undefined;
                 if (m.blocks && Array.isArray(m.blocks)) {
-                    blocks = m.blocks.map((b: any, bIndex: number) => ({
+                    blocks = m.blocks.map((b, bIndex) => ({
                         id: b.id || `block-${mIndex}-${bIndex}`,
                         type: b.type || 'text',
                         content: b.content,
@@ -150,10 +156,11 @@ export function ChatPanel() {
                 setActiveModel(session.last_model_name);
             }
             // If session has no model info (old session), ModelSelector will use defaults
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
             console.error("Failed to load session messages:", error);
             // If session not found, reset to no session
-            if (error?.message?.includes('not found')) {
+            if (message.includes('not found')) {
                 console.warn(`Session ${sessionId} not found, resetting...`);
                 setCurrentSessionId(null);
                 setMessages([]);
@@ -165,7 +172,7 @@ export function ChatPanel() {
                 setContextUsage(null);
             }
         }
-    };
+    }, [loadSessions, setActiveEndpoint, setActiveModel, setContextUsage, setCurrentSessionId, setMessages]);
 
     // Start a draft session (actual session created on send)
     const handleNewSession = async () => {
@@ -334,8 +341,6 @@ export function ChatPanel() {
         // Send response via WebSocket
         sessionClient.sendUserResponse(requestId, answers);
 
-        // Clear the dialog state
-        setAskUserRequest(null);
     }, [setMessages]);
 
     // Handle AskUser skip from inline block
@@ -366,7 +371,6 @@ export function ChatPanel() {
 
         // Cancel via sending empty response (same as dialog cancel)
         sessionClient.sendUserResponse(requestId, {});
-        setAskUserRequest(null);
     }, [setMessages]);
 
     const handleSend = async (content: string) => {
@@ -456,7 +460,7 @@ export function ChatPanel() {
 
                 const step: AgentStep = {
                     id: crypto.randomUUID(),
-                    type: event.type as any,
+                    type: event.type as AgentStep["type"],
                     content: event.content,
                     metadata: event.metadata,
                     timestamp: Date.now(),
@@ -549,13 +553,16 @@ export function ChatPanel() {
                             currentTextBlockId = null;
                         }
 
-                        const toolName = event.content?.name;
-                        const toolInput = event.content?.input;
+                        const toolContent = asRecord(event.content);
+                        const toolName = asString(toolContent.name);
+                        const toolInput = toolContent.input;
 
                         // Special handling for TodoWrite - create/update a plan block
                         if (toolName === 'TodoWrite') {
                             // Extract todos from the input
-                            const todos = toolInput?.todos || [];
+                            const inputRecord = asRecord(toolInput);
+                            const todosValue = inputRecord.todos;
+                            const todos = Array.isArray(todosValue) ? todosValue : [];
                             if (todos.length > 0) {
                                 // Look for existing plan block to update, or create new one
                                 const planBlockId = `plan-${assistantMessageId}`;
@@ -566,12 +573,22 @@ export function ChatPanel() {
                                     status: 'success',
                                     metadata: {
                                         toolName: 'TodoWrite',
-                                        toolCallId: event.content?.id,
-                                        todos: todos.map((todo: any, index: number) => ({
-                                            id: `todo-${index}`,
-                                            content: todo.content || todo.task || String(todo),
-                                            status: todo.status || 'pending',
-                                        })),
+                                        toolCallId: asString(toolContent.id),
+                                        todos: todos.map((todo, index) => {
+                                            const todoRecord = asRecord(todo);
+                                            const content = asString(todoRecord.content)
+                                                || asString(todoRecord.task)
+                                                || String(todo);
+                                            const statusRaw = asString(todoRecord.status) || 'pending';
+                                            const status = statusRaw === 'completed' || statusRaw === 'in_progress' || statusRaw === 'pending'
+                                                ? statusRaw
+                                                : 'pending';
+                                            return {
+                                                id: `todo-${index}`,
+                                                content,
+                                                status,
+                                            };
+                                        }),
                                     },
                                 };
 
@@ -637,11 +654,7 @@ export function ChatPanel() {
                         // Fallback: if no tool_use_id, find the first executing tool block
                         if (!blockId && toolBlocksInOrder.length > 0) {
                             // Find the first tool block that's still executing
-                            blockId = toolBlocksInOrder.find(id => {
-                                // We need to check current state - use a simpler approach
-                                // Just take the first one and remove it
-                                return true;
-                            }) || null;
+                            blockId = toolBlocksInOrder[0] ?? null;
 
                             if (blockId) {
                                 // Remove from order tracking
@@ -771,20 +784,33 @@ export function ChatPanel() {
 
                     case "todos": {
                         // Todos received from SystemMessage - create/update plan block
-                        const todos = event.content?.todos || [];
+                        const todoContent = asRecord(event.content);
+                        const todosValue = todoContent.todos;
+                        const todos = Array.isArray(todosValue) ? todosValue : [];
                         if (todos.length > 0) {
                             const planBlockId = `plan-${assistantMessageId}`;
                             const planBlock: MessageBlock = {
                                 id: planBlockId,
                                 type: 'plan',
-                                content: event.content,
+                                content: todoContent,
                                 status: 'success',
                                 metadata: {
-                                    todos: todos.map((todo: any, index: number) => ({
-                                        id: `todo-${index}`,
-                                        content: todo.content || todo.task || todo.text || String(todo),
-                                        status: todo.status || 'pending',
-                                    })),
+                                    todos: todos.map((todo, index) => {
+                                        const todoRecord = asRecord(todo);
+                                        const content = asString(todoRecord.content)
+                                            || asString(todoRecord.task)
+                                            || asString(todoRecord.text)
+                                            || String(todo);
+                                        const statusRaw = asString(todoRecord.status) || 'pending';
+                                        const status = statusRaw === 'completed' || statusRaw === 'in_progress' || statusRaw === 'pending'
+                                            ? statusRaw
+                                            : 'pending';
+                                        return {
+                                            id: `todo-${index}`,
+                                            content,
+                                            status,
+                                        };
+                                    }),
                                 },
                             };
 
@@ -809,7 +835,7 @@ export function ChatPanel() {
                     }
 
                     case "done": {
-                        const usage = normalizeUsage((event as any)?.usage ?? (event as any)?.content?.usage);
+                        const usage = normalizeUsage(event.usage ?? asRecord(event.content).usage);
                         setIsProcessing(false);
                         // Refresh session list to update title if it was auto-generated
                         loadSessions();
@@ -909,21 +935,23 @@ export function ChatPanel() {
 
                     case "permission_request": {
                         // Create a permission block in the message flow
-                        const permContent = event.content as { request_id: string; tool_name: string; input: any };
-                        const permBlockId = `permission-${permContent.request_id}`;
+                        const permContent = asRecord(event.content);
+                        const requestId = asString(permContent.request_id) || "";
+                        const toolName = asString(permContent.tool_name) || "Tool";
+                        const permBlockId = `permission-${requestId}`;
 
                         const permBlock: MessageBlock = {
                             id: permBlockId,
                             type: 'tool_use',
                             content: {
-                                name: permContent.tool_name,
+                                name: toolName,
                                 input: permContent.input,
-                                description: `Tool "${permContent.tool_name}" is requesting permission to execute`,
+                                description: `Tool "${toolName}" is requesting permission to execute`,
                             },
                             status: 'pending',
                             metadata: {
-                                requestId: permContent.request_id,
-                                toolName: permContent.tool_name,
+                                requestId,
+                                toolName,
                                 requiresPermission: true,
                             },
                         };

@@ -25,17 +25,35 @@ import { Trash2, Plus, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
+type McpServerType = "stdio" | "sse" | "http" | "sdk";
+
+interface McpServer {
+    id?: string;
+    name: string;
+    type: McpServerType;
+    command?: string;
+    args: string[];
+    url?: string;
+    env: Record<string, string>;
+    enabled?: boolean;
+}
+
+interface McpTool {
+    name: string;
+    description?: string;
+}
+
 export function McpConfig() {
-    const [servers, setServers] = useState<any[]>([]);
+    const [servers, setServers] = useState<McpServer[]>([]);
     const [loading, setLoading] = useState(true);
-    const [newServer, setNewServer] = useState<any>({
-        name: "", type: "stdio", command: "", args: [], url: "", env: {}
+    const [newServer, setNewServer] = useState<McpServer>({
+        name: "", type: "stdio", command: "", args: [], url: "", env: {},
     });
     const [isOpen, setIsOpen] = useState(false);
 
     // Tool Inspection State
     const [inspectingServer, setInspectingServer] = useState<string | null>(null);
-    const [tools, setTools] = useState<any[]>([]);
+    const [tools, setTools] = useState<McpTool[]>([]);
     const [toolsLoading, setToolsLoading] = useState(false);
     const [toolsOpen, setToolsOpen] = useState(false);
 
@@ -49,9 +67,9 @@ export function McpConfig() {
 
     const loadServers = async () => {
         try {
-            const data = await fetchConfig<any[]>("/mcp");
+            const data = await fetchConfig<McpServer[]>("/mcp");
             setServers(data);
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to load MCP servers" });
         } finally {
             setLoading(false);
@@ -60,7 +78,11 @@ export function McpConfig() {
 
     const handleAdd = async () => {
         try {
-            const payload = { ...newServer };
+            const payload: McpServer = {
+                ...newServer,
+                args: [...(newServer.args || [])],
+                env: { ...(newServer.env || {}) },
+            };
             if (payload.type === "stdio" && payload.command) {
                 const parts = payload.command.split(" ");
                 payload.command = parts[0];
@@ -71,7 +93,7 @@ export function McpConfig() {
             toast.success("Success", { description: "MCP server added" });
             setIsOpen(false);
             loadServers();
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to add server" });
         }
     };
@@ -82,7 +104,7 @@ export function McpConfig() {
             await deleteMcpServer(deleteServerName);
             toast.success("Success", { description: "MCP server deleted" });
             loadServers();
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to delete server" });
         } finally {
             setDeleteDialogOpen(false);
@@ -101,9 +123,9 @@ export function McpConfig() {
         setToolsOpen(true);
         setTools([]); // clear previous
         try {
-            const res = await fetchConfig<{ status: string, tools: any[] }>(`/mcp/${encodeURIComponent(name)}/tools`);
+            const res = await fetchConfig<{ status: string; tools: McpTool[] }>(`/mcp/${encodeURIComponent(name)}/tools`);
             setTools(res.tools);
-        } catch (err) {
+        } catch {
             toast.error("Error", { description: "Failed to inspect tools" });
         } finally {
             setToolsLoading(false);

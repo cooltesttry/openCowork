@@ -59,7 +59,7 @@ export function ToolBlock({ block, autoCollapseDelay = 300, defaultCollapsed = f
 
     // Get status background color
     // Format input/output for display
-    const formatContent = (data: any) => {
+    const formatContent = (data: unknown) => {
         if (typeof data === 'string') return data;
         return JSON.stringify(data, null, 2);
     };

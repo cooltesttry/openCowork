@@ -24,7 +24,6 @@ import type {
   FilePickerItem,
   CommonDirectory,
   FilePickerState,
-  FormatOption,
 } from "./types";
 
 export function FilePickerDialog({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, type ReactNode, type HTMLAttributes, type ImgHTMLAttributes } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -34,7 +34,7 @@ function CodeBlockWrapper({
     onOpenInPanel,
     onOpenTerminal
 }: {
-    children: React.ReactNode;
+    children: ReactNode;
     className?: string;
     language?: string;
     codeContent: string;
@@ -250,8 +250,6 @@ export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal,
     const previewCallback = previewHTMLCallback || onPreviewHTML;
     const openPanel = onOpenInPanel || openFilePanelCallback;
 
-
-
     if (!content) return null;
 
     if (isStatus) {
@@ -292,10 +290,10 @@ export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal,
                     rehypePlugins={[rehypeKatex, rehypeHighlight]}
                     components={{
                         // Use div instead of p to prevent hydration errors when code blocks are inside paragraphs
-                        p({ children }: any) {
+                        p({ children }: { children?: ReactNode }) {
                             return <div className="mb-4 last:mb-0">{children}</div>;
                         },
-                        pre({ children, className }: any) {
+                        pre({ children, className }: { children?: ReactNode; className?: string }) {
                             // Extract language from child code element
                             // children is a React element, need to access its props correctly
                             let language: string | undefined;
@@ -303,7 +301,7 @@ export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal,
 
                             // Check if children is a valid React element with props
                             if (children && typeof children === 'object' && 'props' in children) {
-                                const codeProps = children.props as { className?: string; children?: any };
+                                const codeProps = children.props as { className?: string; children?: ReactNode };
                                 const codeClassName = codeProps?.className || '';
                                 const languageMatch = codeClassName.match(/language-(\w+)/);
                                 language = languageMatch ? languageMatch[1] : undefined;
@@ -316,14 +314,15 @@ export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal,
                                     language={language}
                                     codeContent={codeContent}
                                     onPreviewHTML={previewCallback}
-                                    onOpenInPanel={onOpenInPanel}
+                                    onOpenInPanel={openPanel}
                                     onOpenTerminal={onOpenTerminal}
                                 >
                                     {children}
                                 </CodeBlockWrapper>
                             );
                         },
-                        code({ node, className, children, ...props }: any) {
+                        code({ node, className, children, ...props }: HTMLAttributes<HTMLElement> & { node?: unknown }) {
+                            void node;
                             // Check if this is inline code (no language, single-line, short)
                             const hasLanguage = /language-(\w+)/.test(className || '');
                             const codeContent = String(children).replace(/\n$/, '');
@@ -347,7 +346,7 @@ export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal,
                                 </code>
                             );
                         },
-                        table({ children }: any) {
+                        table({ children }: { children?: ReactNode }) {
                             return (
                                 <div className="overflow-x-auto w-full my-6">
                                     <table className="w-full text-sm">
@@ -357,11 +356,12 @@ export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal,
                             );
                         },
                         // Custom img handler to prevent empty src warnings
-                        img({ src, alt, ...props }: any) {
+                        img({ src, alt, ...props }: ImgHTMLAttributes<HTMLImageElement>) {
                             // Don't render if src is empty or undefined
                             if (!src) {
                                 return null;
                             }
+                            // eslint-disable-next-line @next/next/no-img-element
                             return <img src={src} alt={alt || ''} {...props} />;
                         }
                     }}
