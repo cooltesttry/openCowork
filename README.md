@@ -139,6 +139,12 @@ Navigate to **Settings** → **Model Configuration** to:
 - Choose the model (claude-sonnet-4-20250514, claude-opus-4, etc.)
 - Configure custom API endpoints (for proxies or local models)
 
+### CLIProxyAPI Sidecar
+
+OpenCowork can manage [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) as a sidecar
+to unify multiple providers behind a single endpoint. See `docs/cliproxyapi_integration.md`
+for details.
+
 ### MCP Tools
 
 OpenCowork supports Model Context Protocol (MCP) for extensible tool integration:

@@ -3,9 +3,12 @@
 import type { ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ModelConfig } from "@/components/settings/model-config";
+import { CliproxyConfig } from "@/components/settings/cliproxy-config";
 import { McpConfig } from "@/components/settings/mcp-config";
 import { SearchConfig } from "@/components/settings/search-config";
 import { AgentConfig } from "@/components/settings/agent-config";
+import { PromptConfigPanel } from "@/components/settings/prompt-config";
+import { WorkspacePromptConfigPanel } from "@/components/settings/workspace-prompt-config";
 import { SkillsConfig } from "@/components/settings/skills-config";
 import { Bot, Cpu, Library, Plug, Search, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -29,6 +32,18 @@ const SECTIONS = [
         icon: Bot,
     },
     {
+        value: "prompts",
+        title: "Prompts",
+        description: "Global prompt templates",
+        icon: Bot,
+    },
+    {
+        value: "workspace",
+        title: "Workspace",
+        description: "Project prompts and CLAUDE.md",
+        icon: Bot,
+    },
+    {
         value: "mcp",
         title: "MCP Servers",
         description: "Tools and server connections",
@@ -45,6 +60,12 @@ const SECTIONS = [
         title: "Skills",
         description: "Library, manage, import",
         icon: Library,
+    },
+    {
+        value: "cliproxy",
+        title: "CLIProxyAPI",
+        description: "Sidecar proxy and OAuth",
+        icon: Cpu,
     },
 ] as const;
 
@@ -106,6 +127,12 @@ export function SettingsShell({ header, className }: SettingsShellProps) {
                     <TabsContent value="agent" className="mt-0 space-y-6">
                         <AgentConfig />
                     </TabsContent>
+                    <TabsContent value="prompts" className="mt-0 space-y-6">
+                        <PromptConfigPanel />
+                    </TabsContent>
+                    <TabsContent value="workspace" className="mt-0 space-y-6">
+                        <WorkspacePromptConfigPanel />
+                    </TabsContent>
                     <TabsContent value="mcp" className="mt-0 space-y-6">
                         <McpConfig />
                     </TabsContent>
@@ -114,6 +141,9 @@ export function SettingsShell({ header, className }: SettingsShellProps) {
                     </TabsContent>
                     <TabsContent value="skills" className="mt-0 space-y-6">
                         <SkillsConfig />
+                    </TabsContent>
+                    <TabsContent value="cliproxy" className="mt-0 space-y-6">
+                        <CliproxyConfig />
                     </TabsContent>
                 </div>
             </main>

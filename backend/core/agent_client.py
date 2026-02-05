@@ -160,6 +160,7 @@ def build_agent_options(
     streaming: bool = True,
     can_use_tool: Optional[Callable] = None,
     security_mode: Optional[str] = None,
+    system_prompt_override: Optional[object] = None,
 ) -> ClaudeAgentOptions:
     """Build ClaudeAgentOptions from app settings."""
     # Determine permission_mode based on security_mode setting
@@ -184,7 +185,9 @@ def build_agent_options(
             permission_mode=permission_mode,
             can_use_tool=can_use_tool,
             setting_sources=["project"],  # Enable Skill discovery from cwd/.claude/skills/
-            system_prompt="You are a helpful AI assistant. Always format your responses in clean, structured Markdown. Use bold headings, bullet points, and tables where appropriate to present information clearly. When utilizing tools, briefly explain your actions to the user."
+            system_prompt=system_prompt_override
+            if system_prompt_override is not None
+            else "You are a helpful AI assistant. Always format your responses in clean, structured Markdown. Use bold headings, bullet points, and tables where appropriate to present information clearly. When utilizing tools, briefly explain your actions to the user."
         )
     else:
         # For other modes, use allowed_tools as configured
@@ -196,7 +199,9 @@ def build_agent_options(
             permission_mode=permission_mode,
             can_use_tool=can_use_tool,
             setting_sources=["project"],  # Enable Skill discovery from cwd/.claude/skills/
-            system_prompt="You are a helpful AI assistant. Always format your responses in clean, structured Markdown. Use bold headings, bullet points, and tables where appropriate to present information clearly. When utilizing tools, briefly explain your actions to the user."
+            system_prompt=system_prompt_override
+            if system_prompt_override is not None
+            else "You are a helpful AI assistant. Always format your responses in clean, structured Markdown. Use bold headings, bullet points, and tables where appropriate to present information clearly. When utilizing tools, briefly explain your actions to the user."
         )
     
     logger.info(f"[AgentOptions] permission_mode={permission_mode}, can_use_tool={'SET' if can_use_tool else 'NONE'}")
@@ -237,6 +242,9 @@ def build_agent_options(
     elif provider == "local":
         # Default local endpoint if not explicitly set
         env_vars["ANTHROPIC_BASE_URL"] = "http://localhost:1234/v1"
+    elif provider == "cliproxyapi":
+        # Default CLIProxyAPI endpoint if not explicitly set
+        env_vars["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:8317"
         
     # Handle API Key (for non-OpenRouter providers)
     if provider != "openrouter":
@@ -470,6 +478,7 @@ async def stream_agent_response(
     streaming: bool = True,
     resume_session_id: Optional[str] = None,
     websocket: Optional[WebSocket] = None,
+    system_prompt_override: Optional[object] = None,
 ) -> AsyncGenerator[StreamEvent, None]:
     """
     Stream agent responses as events.
@@ -515,7 +524,12 @@ async def stream_agent_response(
     #     can_use_tool_callback = can_use_tool
     
     try:
-        options = build_agent_options(settings, streaming=streaming, can_use_tool=can_use_tool_callback)
+        options = build_agent_options(
+            settings,
+            streaming=streaming,
+            can_use_tool=can_use_tool_callback,
+            system_prompt_override=system_prompt_override,
+        )
         if cwd:
             options.cwd = cwd
         

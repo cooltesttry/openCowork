@@ -30,6 +30,7 @@ from super_agent.events import (
 )
 
 from routers.agents import load_agents
+from core.prompt_compiler import compile_system_prompt
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -139,7 +140,7 @@ def get_worker_config(worker_id: str, request=None) -> SAWorkerConfig:
                     tools_block.append(tool)
             
             # Convert to super_agent WorkerConfig
-            return SAWorkerConfig(
+            config = SAWorkerConfig(
                 id=worker.get("id", "unknown"),
                 name=worker.get("name", worker.get("id", "unknown")),
                 model=worker.get("model", "claude-3-5-sonnet-20241022"),
@@ -160,6 +161,34 @@ def get_worker_config(worker_id: str, request=None) -> SAWorkerConfig:
                 include_partial_messages=worker.get("include_partial_messages", False),
                 output_format=worker.get("output_format"),
             )
+            
+            # Apply global + project prompt templates for Super Agent if enabled
+            if request and hasattr(request, 'app') and hasattr(request.app, 'state'):
+                settings = getattr(request.app.state, 'settings', None)
+                manager = getattr(request.app.state, 'workspace_manager', None)
+                if settings and getattr(settings, 'prompt_apply_to_super_agent', False):
+                    workspace_meta = manager.get_current_workspace() if manager else None
+                    workspace_storage = None
+                    workspace_config = None
+                    if manager and workspace_meta and workspace_meta.path:
+                        workspace_storage = manager.get_storage(workspace_meta.path)
+                        workspace_config = workspace_storage.get_config() if workspace_storage else None
+
+                    worker_policy = ""
+                    raw_system = (config.prompt or {}).get("system")
+                    if isinstance(raw_system, str):
+                        worker_policy = raw_system
+                    compiled = compile_system_prompt(
+                        settings=settings,
+                        workspace=workspace_meta,
+                        workspace_config=workspace_config,
+                        cwd=config.cwd or (workspace_meta.path if workspace_meta else None),
+                        extra_append=[worker_policy] if worker_policy else None,
+                    )
+                    config.prompt = dict(config.prompt or {})
+                    config.prompt["system"] = compiled.system_prompt
+
+            return config
     
     raise HTTPException(status_code=404, detail=f"Worker '{worker_id}' not found")
 
@@ -409,4 +438,3 @@ async def websocket_session_events(websocket: WebSocket, session_id: str):
                 break
     finally:
         await event_manager.disconnect(websocket)
-

@@ -75,10 +75,20 @@ class Workspace:
 class WorkspaceConfig:
     """Workspace-level configuration stored in .opencowork/config.json."""
     enabled_mcp_ids: List[str] = field(default_factory=list)
+    project_system_prompt: str = ""
+    project_system_prompt_enabled: bool = True
+    claude_md_path_mode: str = "dot_claude"
+    claude_md_enabled: bool = True
+    claude_md_last_hash: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
             "enabled_mcp_ids": self.enabled_mcp_ids,
+            "project_system_prompt": self.project_system_prompt,
+            "project_system_prompt_enabled": self.project_system_prompt_enabled,
+            "claude_md_path_mode": self.claude_md_path_mode,
+            "claude_md_enabled": self.claude_md_enabled,
+            "claude_md_last_hash": self.claude_md_last_hash,
         }
 
     @classmethod
@@ -87,4 +97,13 @@ class WorkspaceConfig:
         if not isinstance(enabled, list):
             enabled = []
         enabled = [str(v) for v in enabled if v]
-        return cls(enabled_mcp_ids=enabled)
+        return cls(
+            enabled_mcp_ids=enabled,
+            project_system_prompt=str(data.get("project_system_prompt") or ""),
+            project_system_prompt_enabled=bool(
+                data.get("project_system_prompt_enabled", True)
+            ),
+            claude_md_path_mode=str(data.get("claude_md_path_mode") or "dot_claude"),
+            claude_md_enabled=bool(data.get("claude_md_enabled", True)),
+            claude_md_last_hash=data.get("claude_md_last_hash"),
+        )

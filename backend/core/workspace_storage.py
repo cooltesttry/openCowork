@@ -158,6 +158,10 @@ class WorkspaceStorage:
             with open(self.config_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 self._config = WorkspaceConfig.from_dict(data)
+                # Auto-backfill new fields if missing
+                expected_keys = set(WorkspaceConfig().to_dict().keys())
+                if any(key not in data for key in expected_keys):
+                    self._save_config(self._config)
                 return self._config
         except Exception as e:
             logger.error(f"Failed to load workspace config: {e}")

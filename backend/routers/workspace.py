@@ -6,6 +6,7 @@ import os
 import shutil
 from pathlib import Path
 from typing import Optional, List, Dict
+import hashlib
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -14,6 +15,7 @@ from core.workspace_storage import WorkspaceManager
 from core.skills_catalog import SKILLS_DIR, load_catalog, rebuild_catalog
 from core.mcp_registry import resolve_enabled_mcp_servers, migrate_workspace_mcp_config, seed_workspace_mcp_defaults
 from routers.config import save_workdir, save_settings
+from core.prompt_compiler import compile_system_prompt
 
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,11 @@ class WorkspaceMcpAddRequest(BaseModel):
 class UpdateWorkspaceConfigRequest(BaseModel):
     """Request to update workspace configuration."""
     enabled_mcp_ids: Optional[List[str]] = None
+    project_system_prompt: Optional[str] = None
+    project_system_prompt_enabled: Optional[bool] = None
+    claude_md_path_mode: Optional[str] = None
+    claude_md_enabled: Optional[bool] = None
+    claude_md_last_hash: Optional[str] = None
 
 
 class WorkspaceSkillInfo(BaseModel):
@@ -119,6 +126,14 @@ def _parse_frontmatter_text(text: str) -> Dict[str, str]:
                 value = value[1:-1]
             data[key] = value
     return data
+
+
+def _resolve_claude_md_path(storage, config) -> Path:
+    # Currently only supports .claude/CLAUDE.md
+    mode = getattr(config, "claude_md_path_mode", "dot_claude")
+    if mode == "dot_claude":
+        return storage.claude_dir / "CLAUDE.md"
+    return storage.workspace_path / "CLAUDE.md"
 
 
 def _list_workspace_skills(skills_dir: Path) -> List[WorkspaceSkillInfo]:
@@ -397,10 +412,107 @@ async def update_workspace_config(request: Request, workspace_id: str, body: Upd
 
     if body.enabled_mcp_ids is not None:
         config.enabled_mcp_ids = [str(v) for v in body.enabled_mcp_ids if v]
+    if body.project_system_prompt is not None:
+        config.project_system_prompt = body.project_system_prompt
+    if body.project_system_prompt_enabled is not None:
+        config.project_system_prompt_enabled = body.project_system_prompt_enabled
+    if body.claude_md_path_mode is not None:
+        config.claude_md_path_mode = body.claude_md_path_mode
+    if body.claude_md_enabled is not None:
+        config.claude_md_enabled = body.claude_md_enabled
+    if body.claude_md_last_hash is not None:
+        config.claude_md_last_hash = body.claude_md_last_hash
 
     storage.update_config(config)
 
     return {"config": config.to_dict()}
+
+
+# ==================== Workspace Prompts ====================
+
+class ClaudeMdUpdateRequest(BaseModel):
+    content: str
+
+
+@router.get("/{workspace_id}/claude-md")
+async def get_workspace_claude_md(request: Request, workspace_id: str):
+    """
+    Get CLAUDE.md content and metadata for a workspace.
+    """
+    manager = get_workspace_manager(request)
+    storage = manager.get_storage_by_id(workspace_id)
+    if not storage:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    config = storage.get_config()
+    claude_path = _resolve_claude_md_path(storage, config)
+    exists = claude_path.exists()
+    content = ""
+    file_hash = None
+    if exists:
+        content = claude_path.read_text(encoding="utf-8")
+        file_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    return {
+        "path": str(claude_path),
+        "exists": exists,
+        "content": content,
+        "file_hash": file_hash,
+        "tracked_hash": config.claude_md_last_hash,
+        "enabled": config.claude_md_enabled,
+    }
+
+
+@router.put("/{workspace_id}/claude-md")
+async def update_workspace_claude_md(request: Request, workspace_id: str, body: ClaudeMdUpdateRequest):
+    """
+    Update CLAUDE.md content for a workspace.
+    """
+    manager = get_workspace_manager(request)
+    storage = manager.get_storage_by_id(workspace_id)
+    if not storage:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    config = storage.get_config()
+    claude_path = _resolve_claude_md_path(storage, config)
+    claude_path.parent.mkdir(parents=True, exist_ok=True)
+    claude_path.write_text(body.content or "", encoding="utf-8")
+
+    file_hash = hashlib.sha256((body.content or "").encode("utf-8")).hexdigest()
+    config.claude_md_last_hash = file_hash
+    storage.update_config(config)
+
+    return {
+        "path": str(claude_path),
+        "exists": True,
+        "file_hash": file_hash,
+    }
+
+
+@router.get("/{workspace_id}/prompt-preview")
+async def get_workspace_prompt_preview(request: Request, workspace_id: str):
+    """
+    Preview compiled system prompt append text for a workspace.
+    """
+    manager = get_workspace_manager(request)
+    storage = manager.get_storage_by_id(workspace_id)
+    if not storage:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    settings = request.app.state.settings
+    workspace_meta = storage.get_workspace()
+    config = storage.get_config()
+    compiled = compile_system_prompt(
+        settings=settings,
+        workspace=workspace_meta,
+        workspace_config=config,
+        cwd=str(storage.workspace_path),
+    )
+
+    return {
+        "base_preset": settings.prompt_base_preset or "claude_code",
+        "append_text": compiled.append_text,
+    }
 
 
 # ==================== Workspace Skills ====================

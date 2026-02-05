@@ -32,12 +32,14 @@ DEFAULT_ENDPOINTS = {
     "openai": "https://api.openai.com/v1",
     "openrouter": "https://openrouter.ai/api/v1",
     "local": "http://localhost:1234/v1",
+    "cliproxyapi": "http://127.0.0.1:8317",
 }
 
 STATIC_FALLBACKS = {
     "claude": STATIC_CLAUDE_MODELS,
     "openai": STATIC_OPENAI_MODELS,
     "openrouter": STATIC_OPENROUTER_MODELS,
+    "cliproxyapi": STATIC_OPENAI_MODELS,
 }
 
 
@@ -81,4 +83,3 @@ async def fetch_available_models(provider: str, api_key: str | None, endpoint: s
     except Exception as e:
         print(f"Failed to fetch models from {url}: {e}")
         return STATIC_FALLBACKS.get(provider, [])
-

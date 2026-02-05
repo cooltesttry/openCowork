@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from core.agent_client import stream_agent_response, AgentSession, StreamEvent
 from core.session_manager import session_manager
+from core.prompt_compiler import compile_system_prompt
 from core.task_runner import task_runner
 from core.user_input_handler import user_input_handler
 from core import session_storage
@@ -222,6 +223,10 @@ async def websocket_chat(websocket: WebSocket):
                 content=message.content,
             )
             session.add_message(user_msg)
+            # Persist model/endpoint early so UI can restore during in-flight runs
+            # (even if the stream fails or hasn't completed yet).
+            session.last_model_name = settings.model.model_name
+            session.last_endpoint_name = settings.model.selected_endpoint or "(legacy)"
             session_storage.save_session(session)
             
             # Stream agent response
@@ -505,6 +510,9 @@ async def websocket_session(websocket: WebSocket):
             effective_endpoint = message.endpoint_name or settings.model.selected_endpoint
             effective_model = message.model_name or settings.model.model_name
             
+            # Determine effective cwd for placeholder rendering
+            effective_cwd = message.cwd or settings.default_workdir
+            
             # Validate endpoint exists
             if effective_endpoint:
                 endpoint_exists = any(ep.name == effective_endpoint for ep in settings.model.endpoints)
@@ -514,6 +522,17 @@ async def websocket_session(websocket: WebSocket):
             
             logger.info(f"[Session] Starting query (storage: {storage_session.id}, resume: {resume_sdk_session_id}, endpoint: {effective_endpoint}, model: {effective_model}, security: {message.security_mode})")
             
+            # Build system prompt override if enabled
+            system_prompt_override = None
+            if settings.prompt_apply_to_chat:
+                compiled = compile_system_prompt(
+                    settings=settings,
+                    workspace=None,
+                    workspace_config=None,
+                    cwd=effective_cwd,
+                )
+                system_prompt_override = compiled.system_prompt
+
             # Get or create managed session via SessionManager
             managed_session = await session_manager.get_or_create(
                 session_id=storage_session.id,
@@ -524,6 +543,7 @@ async def websocket_session(websocket: WebSocket):
                 resume_sdk_session_id=resume_sdk_session_id,
                 cwd=message.cwd,
                 security_mode=message.security_mode,
+                system_prompt_override=system_prompt_override,
             )
             
             # Stream response using SessionManager (ClaudeSDKClient-based)
@@ -863,15 +883,18 @@ async def websocket_multiplexed(websocket: WebSocket):
             else:
                 session_storage.save_session(session)
 
-        # Save user message
-        user_msg = SessionMessage.create(role="user", content=message.content)
-        storage_session.add_message(user_msg)
-        save_session_func(storage_session)
-
         # Determine effective settings
         effective_endpoint = message.endpoint_name or settings.model.selected_endpoint
         effective_model = message.model_name or settings.model.model_name
         resume_sdk_session_id = storage_session.sdk_session_id
+
+        # Save user message and persist model/endpoint early so UI can restore
+        # during in-flight runs (even if the stream fails or hasn't completed yet).
+        user_msg = SessionMessage.create(role="user", content=message.content)
+        storage_session.add_message(user_msg)
+        storage_session.last_model_name = effective_model
+        storage_session.last_endpoint_name = effective_endpoint or "(legacy)"
+        save_session_func(storage_session)
 
         # Determine effective cwd: prefer workspace path, then message.cwd, then settings
         effective_cwd = message.cwd
@@ -880,414 +903,433 @@ async def websocket_multiplexed(websocket: WebSocket):
             effective_cwd = str(workspace_storage_obj.workspace_path)
             logger.info(f"[Multiplexed] Using workspace path as cwd: {effective_cwd}")
 
-        # Create the task coroutine
-        async def task_coroutine():
-            """Generator that yields events from session_manager.stream_message."""
-            # Get or create managed session
-            session_settings = settings
-            if workspace_storage_obj:
-                session_settings = settings.model_copy(deep=True)
-                ws_config = workspace_storage_obj.get_config()
-                session_settings.mcp_servers = resolve_enabled_mcp_servers(
-                    settings,
-                    ws_config.enabled_mcp_ids,
+            # Create the task coroutine
+            async def task_coroutine():
+                """Generator that yields events from session_manager.stream_message."""
+                # Get or create managed session
+                session_settings = settings
+                system_prompt_override = None
+                if workspace_storage_obj:
+                    session_settings = settings.model_copy(deep=True)
+                    ws_config = workspace_storage_obj.get_config()
+                    session_settings.mcp_servers = resolve_enabled_mcp_servers(
+                        settings,
+                        ws_config.enabled_mcp_ids,
+                    )
+                    if settings.prompt_apply_to_chat:
+                        workspace_meta = workspace_storage_obj.get_workspace()
+                        compiled = compile_system_prompt(
+                            settings=settings,
+                            workspace=workspace_meta,
+                            workspace_config=ws_config,
+                            cwd=effective_cwd,
+                        )
+                        system_prompt_override = compiled.system_prompt
+                elif settings.prompt_apply_to_chat:
+                    compiled = compile_system_prompt(
+                        settings=settings,
+                        workspace=None,
+                        workspace_config=None,
+                        cwd=effective_cwd,
+                    )
+                    system_prompt_override = compiled.system_prompt
+
+                managed_session = await session_manager.get_or_create(
+                    session_id=storage_session.id,
+                    settings=session_settings,
+                    endpoint_name=effective_endpoint,
+                    model_name=effective_model,
+                    websocket=websocket,  # For can_use_tool callbacks
+                    resume_sdk_session_id=resume_sdk_session_id,
+                    cwd=effective_cwd,
+                    security_mode=message.security_mode,
+                    system_prompt_override=system_prompt_override,
                 )
 
-            managed_session = await session_manager.get_or_create(
-                session_id=storage_session.id,
-                settings=session_settings,
-                endpoint_name=effective_endpoint,
-                model_name=effective_model,
-                websocket=websocket,  # For can_use_tool callbacks
-                resume_sdk_session_id=resume_sdk_session_id,
-                cwd=effective_cwd,
-                security_mode=message.security_mode,
-            )
-
-            class StreamAccumulator:
-                def __init__(self):
-                    self.assistant_content = ""
-                    self.all_blocks: list[dict] = []
-                    self.tool_block_indices: dict[str, int] = {}
-                    self.thinking_content = ""
-                    self.thinking_block_index = -1
-                    self.text_block_index = -1
-                    self.text_block_content = ""
-                    self.text_streaming_active = False
-                    self.last_text_streaming = None
-                    self.tool_blocks_in_order: list[int] = []
-                    self.event_count = 0
-                    self.final_usage: Optional[dict] = None
-                    self.done_event: Optional[dict] = None
-
-                def capture_done(self, event_dict: dict) -> None:
-                    usage = event_dict.get("usage")
-                    if not usage and isinstance(event_dict.get("content"), dict):
-                        usage = event_dict["content"].get("usage")
-                    self.final_usage = _normalize_usage(usage)
-                    self.done_event = event_dict
-
-                def finalize_blocks(self) -> None:
-                    for block in self.all_blocks:
-                        if block.get("status") in ("streaming", "executing"):
-                            block["status"] = "success"
-
-                def handle_event(self, event_type: str, event_dict: dict) -> None:
-                    # Streaming text events
-                    if event_type == "text_start":
-                        self.text_block_content = ""
-                        self.text_block_index = len(self.all_blocks)
-                        self.text_streaming_active = True
-                        self.all_blocks.append({
-                            "id": event_dict.get("id") or f"text-{self.event_count}",
-                            "type": "text",
-                            "content": "",
-                            "status": "streaming",
-                            "metadata": {},
-                        })
-                    elif event_type == "text_delta":
-                        delta = str(event_dict.get("content", ""))
-                        if delta:
-                            self.assistant_content += delta
-                            self.text_block_content += delta
-                            self.text_streaming_active = True
-                            if self.text_block_index >= 0 and self.text_block_index < len(self.all_blocks):
-                                self.all_blocks[self.text_block_index]["content"] = self.text_block_content
-                            else:
-                                self.text_block_index = len(self.all_blocks)
-                                self.all_blocks.append({
-                                    "id": event_dict.get("id") or f"text-{self.event_count}",
-                                    "type": "text",
-                                    "content": self.text_block_content,
-                                    "status": "streaming",
-                                    "metadata": {},
-                                })
-                    elif event_type == "text_end":
-                        if self.text_block_index >= 0 and self.text_block_index < len(self.all_blocks):
-                            self.all_blocks[self.text_block_index]["status"] = "success"
-                        self.last_text_streaming = self.text_streaming_active
-                        self.text_streaming_active = False
+                class StreamAccumulator:
+                    def __init__(self):
+                        self.assistant_content = ""
+                        self.all_blocks: list[dict] = []
+                        self.tool_block_indices: dict[str, int] = {}
+                        self.thinking_content = ""
+                        self.thinking_block_index = -1
                         self.text_block_index = -1
                         self.text_block_content = ""
-                    elif event_type == "text":
-                        text_content = str(event_dict.get("content", ""))
-                        if not self.last_text_streaming:
-                            self.assistant_content += text_content
-                        last_text_idx = -1
-                        for i in range(len(self.all_blocks) - 1, -1, -1):
-                            if self.all_blocks[i].get("type") == "text":
-                                last_text_idx = i
-                                break
-                        if last_text_idx >= 0:
-                            self.all_blocks[last_text_idx]["content"] = text_content
-                            self.all_blocks[last_text_idx]["status"] = "success"
-                        else:
+                        self.text_streaming_active = False
+                        self.last_text_streaming = None
+                        self.tool_blocks_in_order: list[int] = []
+                        self.event_count = 0
+                        self.final_usage: Optional[dict] = None
+                        self.done_event: Optional[dict] = None
+
+                    def capture_done(self, event_dict: dict) -> None:
+                        usage = event_dict.get("usage")
+                        if not usage and isinstance(event_dict.get("content"), dict):
+                            usage = event_dict["content"].get("usage")
+                        self.final_usage = _normalize_usage(usage)
+                        self.done_event = event_dict
+
+                    def finalize_blocks(self) -> None:
+                        for block in self.all_blocks:
+                            if block.get("status") in ("streaming", "executing"):
+                                block["status"] = "success"
+
+                    def handle_event(self, event_type: str, event_dict: dict) -> None:
+                        # Streaming text events
+                        if event_type == "text_start":
+                            self.text_block_content = ""
+                            self.text_block_index = len(self.all_blocks)
+                            self.text_streaming_active = True
                             self.all_blocks.append({
                                 "id": event_dict.get("id") or f"text-{self.event_count}",
                                 "type": "text",
-                                "content": text_content,
-                                "status": "success",
+                                "content": "",
+                                "status": "streaming",
                                 "metadata": {},
                             })
-                        self.last_text_streaming = None
+                        elif event_type == "text_delta":
+                            delta = str(event_dict.get("content", ""))
+                            if delta:
+                                self.assistant_content += delta
+                                self.text_block_content += delta
+                                self.text_streaming_active = True
+                                if self.text_block_index >= 0 and self.text_block_index < len(self.all_blocks):
+                                    self.all_blocks[self.text_block_index]["content"] = self.text_block_content
+                                else:
+                                    self.text_block_index = len(self.all_blocks)
+                                    self.all_blocks.append({
+                                        "id": event_dict.get("id") or f"text-{self.event_count}",
+                                        "type": "text",
+                                        "content": self.text_block_content,
+                                        "status": "streaming",
+                                        "metadata": {},
+                                    })
+                        elif event_type == "text_end":
+                            if self.text_block_index >= 0 and self.text_block_index < len(self.all_blocks):
+                                self.all_blocks[self.text_block_index]["status"] = "success"
+                            self.last_text_streaming = self.text_streaming_active
+                            self.text_streaming_active = False
+                            self.text_block_index = -1
+                            self.text_block_content = ""
+                        elif event_type == "text":
+                            text_content = str(event_dict.get("content", ""))
+                            if not self.last_text_streaming:
+                                self.assistant_content += text_content
+                            last_text_idx = -1
+                            for i in range(len(self.all_blocks) - 1, -1, -1):
+                                if self.all_blocks[i].get("type") == "text":
+                                    last_text_idx = i
+                                    break
+                            if last_text_idx >= 0:
+                                self.all_blocks[last_text_idx]["content"] = text_content
+                                self.all_blocks[last_text_idx]["status"] = "success"
+                            else:
+                                self.all_blocks.append({
+                                    "id": event_dict.get("id") or f"text-{self.event_count}",
+                                    "type": "text",
+                                    "content": text_content,
+                                    "status": "success",
+                                    "metadata": {},
+                                })
+                            self.last_text_streaming = None
 
-                    # Handle tool_use
-                    elif event_type == "tool_input_start":
-                        block_content = event_dict.get("content", {})
-                        tool_name = block_content.get("name", "")
-                        if tool_name != "AskUserQuestion":
-                            tool_use_id = event_dict.get("id", f"tool-{self.event_count}")
-                            tool_block = {
-                                "id": f"tool-streaming-{tool_use_id}",
-                                "type": "tool_use",
-                                "content": {
-                                    "name": tool_name,
-                                    "input": {},
-                                    "inputBuffer": "",
-                                },
-                                "status": "streaming",
-                                "metadata": {
-                                    "toolName": tool_name,
-                                    "toolCallId": tool_use_id,
-                                    "isStreaming": True,
-                                },
-                            }
-                            self.tool_block_indices[tool_use_id] = len(self.all_blocks)
-                            self.tool_blocks_in_order.append(len(self.all_blocks))
-                            self.all_blocks.append(tool_block)
-                    elif event_type == "tool_input_delta":
-                        tool_use_id = event_dict.get("id")
-                        if tool_use_id and tool_use_id in self.tool_block_indices:
-                            idx = self.tool_block_indices[tool_use_id]
-                            input_buffer = self.all_blocks[idx]["content"].get("inputBuffer", "")
-                            self.all_blocks[idx]["content"]["inputBuffer"] = input_buffer + str(event_dict.get("content", ""))
-                    elif event_type == "tool_input_end":
-                        tool_use_id = event_dict.get("id")
-                        if tool_use_id and tool_use_id in self.tool_block_indices:
-                            idx = self.tool_block_indices[tool_use_id]
-                            self.all_blocks[idx]["status"] = "executing"
-                            self.all_blocks[idx]["metadata"] = {
-                                **(self.all_blocks[idx].get("metadata") or {}),
-                                "isStreaming": False,
-                            }
-                    elif event_type == "tool_use":
-                        block_content = event_dict.get("content", {})
-                        tool_use_id = block_content.get("id", f"tool-{self.event_count}")
-                        tool_name = block_content.get("name", "")
-                        if tool_name == "AskUserQuestion":
-                            pass
-                        elif tool_use_id in self.tool_block_indices:
-                            idx = self.tool_block_indices[tool_use_id]
-                            self.all_blocks[idx]["content"] = {
-                                "name": tool_name,
-                                "input": block_content.get("input", {}),
-                            }
-                            self.all_blocks[idx]["status"] = "executing"
-                            self.all_blocks[idx]["metadata"] = {
-                                **(self.all_blocks[idx].get("metadata") or {}),
-                                "toolName": tool_name,
-                                "toolCallId": tool_use_id,
-                                "isStreaming": False,
-                            }
-                        else:
-                            tool_block = {
-                                "id": tool_use_id,
-                                "type": "tool_use",
-                                "content": {
+                        # Handle tool_use
+                        elif event_type == "tool_input_start":
+                            block_content = event_dict.get("content", {})
+                            tool_name = block_content.get("name", "")
+                            if tool_name != "AskUserQuestion":
+                                tool_use_id = event_dict.get("id", f"tool-{self.event_count}")
+                                tool_block = {
+                                    "id": f"tool-streaming-{tool_use_id}",
+                                    "type": "tool_use",
+                                    "content": {
+                                        "name": tool_name,
+                                        "input": {},
+                                        "inputBuffer": "",
+                                    },
+                                    "status": "streaming",
+                                    "metadata": {
+                                        "toolName": tool_name,
+                                        "toolCallId": tool_use_id,
+                                        "isStreaming": True,
+                                    },
+                                }
+                                self.tool_block_indices[tool_use_id] = len(self.all_blocks)
+                                self.tool_blocks_in_order.append(len(self.all_blocks))
+                                self.all_blocks.append(tool_block)
+                        elif event_type == "tool_input_delta":
+                            tool_use_id = event_dict.get("id")
+                            if tool_use_id and tool_use_id in self.tool_block_indices:
+                                idx = self.tool_block_indices[tool_use_id]
+                                input_buffer = self.all_blocks[idx]["content"].get("inputBuffer", "")
+                                self.all_blocks[idx]["content"]["inputBuffer"] = input_buffer + str(event_dict.get("content", ""))
+                        elif event_type == "tool_input_end":
+                            tool_use_id = event_dict.get("id")
+                            if tool_use_id and tool_use_id in self.tool_block_indices:
+                                idx = self.tool_block_indices[tool_use_id]
+                                self.all_blocks[idx]["status"] = "executing"
+                                self.all_blocks[idx]["metadata"] = {
+                                    **(self.all_blocks[idx].get("metadata") or {}),
+                                    "isStreaming": False,
+                                }
+                        elif event_type == "tool_use":
+                            block_content = event_dict.get("content", {})
+                            tool_use_id = block_content.get("id", f"tool-{self.event_count}")
+                            tool_name = block_content.get("name", "")
+                            if tool_name == "AskUserQuestion":
+                                pass
+                            elif tool_use_id in self.tool_block_indices:
+                                idx = self.tool_block_indices[tool_use_id]
+                                self.all_blocks[idx]["content"] = {
                                     "name": tool_name,
                                     "input": block_content.get("input", {}),
-                                },
-                                "status": "executing",
-                                "metadata": {"toolName": tool_name, "toolCallId": tool_use_id},
-                            }
-                            self.tool_block_indices[tool_use_id] = len(self.all_blocks)
-                            self.tool_blocks_in_order.append(len(self.all_blocks))
-                            self.all_blocks.append(tool_block)
+                                }
+                                self.all_blocks[idx]["status"] = "executing"
+                                self.all_blocks[idx]["metadata"] = {
+                                    **(self.all_blocks[idx].get("metadata") or {}),
+                                    "toolName": tool_name,
+                                    "toolCallId": tool_use_id,
+                                    "isStreaming": False,
+                                }
+                            else:
+                                tool_block = {
+                                    "id": tool_use_id,
+                                    "type": "tool_use",
+                                    "content": {
+                                        "name": tool_name,
+                                        "input": block_content.get("input", {}),
+                                    },
+                                    "status": "executing",
+                                    "metadata": {"toolName": tool_name, "toolCallId": tool_use_id},
+                                }
+                                self.tool_block_indices[tool_use_id] = len(self.all_blocks)
+                                self.tool_blocks_in_order.append(len(self.all_blocks))
+                                self.all_blocks.append(tool_block)
 
-                    # Handle tool_result
-                    elif event_type == "tool_result":
-                        block_content = event_dict.get("content", {})
-                        tool_use_id = block_content.get("tool_use_id", "")
-                        result_value = block_content.get("result", block_content.get("content", ""))
-                        if tool_use_id in self.tool_block_indices:
-                            idx = self.tool_block_indices[tool_use_id]
-                            self.all_blocks[idx]["content"]["result"] = result_value
-                            self.all_blocks[idx]["content"]["is_error"] = block_content.get("is_error", False)
-                            self.all_blocks[idx]["status"] = "error" if block_content.get("is_error") else "success"
+                        # Handle tool_result
+                        elif event_type == "tool_result":
+                            block_content = event_dict.get("content", {})
+                            tool_use_id = block_content.get("tool_use_id", "")
+                            result_value = block_content.get("result", block_content.get("content", ""))
+                            if tool_use_id in self.tool_block_indices:
+                                idx = self.tool_block_indices[tool_use_id]
+                                self.all_blocks[idx]["content"]["result"] = result_value
+                                self.all_blocks[idx]["content"]["is_error"] = block_content.get("is_error", False)
+                                self.all_blocks[idx]["status"] = "error" if block_content.get("is_error") else "success"
 
-                    # Handle thinking (non-streaming)
-                    elif event_type == "thinking":
-                        if self.thinking_block_index < 0:
-                            self.thinking_content = event_dict.get("content", "")
+                        # Handle thinking (non-streaming)
+                        elif event_type == "thinking":
+                            if self.thinking_block_index < 0:
+                                self.thinking_content = event_dict.get("content", "")
+                                self.thinking_block_index = len(self.all_blocks)
+                                self.all_blocks.append({
+                                    "id": f"thinking-{self.event_count}",
+                                    "type": "thinking",
+                                    "content": self.thinking_content,
+                                    "status": "success",
+                                    "metadata": {},
+                                })
+
+                        # Handle streaming thinking events
+                        elif event_type == "thinking_start":
+                            self.thinking_content = ""
                             self.thinking_block_index = len(self.all_blocks)
                             self.all_blocks.append({
                                 "id": f"thinking-{self.event_count}",
                                 "type": "thinking",
-                                "content": self.thinking_content,
+                                "content": "",
+                                "status": "streaming",
+                                "metadata": {},
+                            })
+                        elif event_type == "thinking_delta":
+                            delta = event_dict.get("content", "")
+                            if delta:
+                                self.thinking_content += delta
+                                if self.thinking_block_index >= 0 and self.thinking_block_index < len(self.all_blocks):
+                                    self.all_blocks[self.thinking_block_index]["content"] = self.thinking_content
+                        elif event_type == "thinking_end":
+                            if self.thinking_block_index >= 0 and self.thinking_block_index < len(self.all_blocks):
+                                self.all_blocks[self.thinking_block_index]["status"] = "success"
+
+                        # Handle todos/plan
+                        elif event_type == "todos":
+                            self.all_blocks.append({
+                                "id": f"todos-{self.event_count}",
+                                "type": "plan",
+                                "content": event_dict.get("content", {}),
                                 "status": "success",
                                 "metadata": {},
                             })
 
-                    # Handle streaming thinking events
-                    elif event_type == "thinking_start":
-                        self.thinking_content = ""
-                        self.thinking_block_index = len(self.all_blocks)
-                        self.all_blocks.append({
-                            "id": f"thinking-{self.event_count}",
-                            "type": "thinking",
-                            "content": "",
-                            "status": "streaming",
-                            "metadata": {},
-                        })
-                    elif event_type == "thinking_delta":
-                        delta = event_dict.get("content", "")
-                        if delta:
-                            self.thinking_content += delta
-                            if self.thinking_block_index >= 0 and self.thinking_block_index < len(self.all_blocks):
-                                self.all_blocks[self.thinking_block_index]["content"] = self.thinking_content
-                    elif event_type == "thinking_end":
-                        if self.thinking_block_index >= 0 and self.thinking_block_index < len(self.all_blocks):
-                            self.all_blocks[self.thinking_block_index]["status"] = "success"
-
-                    # Handle todos/plan
-                    elif event_type == "todos":
-                        self.all_blocks.append({
-                            "id": f"todos-{self.event_count}",
-                            "type": "plan",
-                            "content": event_dict.get("content", {}),
-                            "status": "success",
-                            "metadata": {},
-                        })
-
-                    # Handle ask_user
-                    elif event_type == "ask_user":
-                        content = event_dict.get("content", {})
-                        self.all_blocks.append({
-                            "id": f"ask-user-{content.get('request_id', self.event_count)}",
-                            "type": "ask_user",
-                            "content": {"input": content},
-                            "status": "success",
-                            "metadata": {"requestId": content.get("request_id", "")},
-                        })
+                        # Handle ask_user
+                        elif event_type == "ask_user":
+                            content = event_dict.get("content", {})
+                            self.all_blocks.append({
+                                "id": f"ask-user-{content.get('request_id', self.event_count)}",
+                                "type": "ask_user",
+                                "content": {"input": content},
+                                "status": "success",
+                                "metadata": {"requestId": content.get("request_id", "")},
+                            })
             
-            main_state = StreamAccumulator()
-            # Streaming persistence state
-            assistant_msg: Optional[SessionMessage] = None
-            last_persist = time.monotonic()
-            last_persist_event = 0
-            persist_interval = 0.5
-            persist_event_interval = 50
+                main_state = StreamAccumulator()
+                # Streaming persistence state
+                assistant_msg: Optional[SessionMessage] = None
+                last_persist = time.monotonic()
+                last_persist_event = 0
+                persist_interval = 0.5
+                persist_event_interval = 50
 
-            def persist_partial(force: bool = False, usage: Optional[dict] = None) -> None:
-                nonlocal assistant_msg, last_persist, last_persist_event
-                if assistant_msg is None and not (main_state.assistant_content or main_state.all_blocks):
-                    return
-                now = time.monotonic()
-                if not force and (now - last_persist) < persist_interval and (main_state.event_count - last_persist_event) < persist_event_interval:
-                    return
-                if assistant_msg is None:
-                    assistant_msg = SessionMessage.create(
-                        role="assistant",
-                        content=main_state.assistant_content,
-                        blocks=main_state.all_blocks if main_state.all_blocks else None,
-                        usage=usage,
-                    )
-                    storage_session.add_message(assistant_msg)
-                else:
-                    assistant_msg.content = main_state.assistant_content
-                    assistant_msg.blocks = main_state.all_blocks if main_state.all_blocks else None
-                    if usage:
-                        assistant_msg.usage = TokenUsage.from_dict(usage)
-                if force and assistant_msg:
-                    _maybe_calibrate_context_usage(storage_session, main_state.assistant_content, assistant_msg.id)
-                storage_session.updated_at = time.time()
-                save_session_func(storage_session)
-                last_persist = now
-                last_persist_event = main_state.event_count
+                def persist_partial(force: bool = False, usage: Optional[dict] = None) -> None:
+                    nonlocal assistant_msg, last_persist, last_persist_event
+                    if assistant_msg is None and not (main_state.assistant_content or main_state.all_blocks):
+                        return
+                    now = time.monotonic()
+                    if not force and (now - last_persist) < persist_interval and (main_state.event_count - last_persist_event) < persist_event_interval:
+                        return
+                    if assistant_msg is None:
+                        assistant_msg = SessionMessage.create(
+                            role="assistant",
+                            content=main_state.assistant_content,
+                            blocks=main_state.all_blocks if main_state.all_blocks else None,
+                            usage=usage,
+                        )
+                        storage_session.add_message(assistant_msg)
+                    else:
+                        assistant_msg.content = main_state.assistant_content
+                        assistant_msg.blocks = main_state.all_blocks if main_state.all_blocks else None
+                        if usage:
+                            assistant_msg.usage = TokenUsage.from_dict(usage)
+                    if force and assistant_msg:
+                        _maybe_calibrate_context_usage(storage_session, main_state.assistant_content, assistant_msg.id)
+                    storage_session.updated_at = time.time()
+                    save_session_func(storage_session)
+                    last_persist = now
+                    last_persist_event = main_state.event_count
 
-            async def stream_with_state(prompt: str, state: StreamAccumulator, on_event: Optional[Callable[[], None]] = None):
-                async for event in session_manager.stream_message(
-                    managed_session, prompt, security_mode=message.security_mode
-                ):
-                    state.event_count += 1
-                    event_dict = event.to_dict()
-                    event_type = event_dict.get("type", "unknown")
+                async def stream_with_state(prompt: str, state: StreamAccumulator, on_event: Optional[Callable[[], None]] = None):
+                    async for event in session_manager.stream_message(
+                        managed_session, prompt, security_mode=message.security_mode
+                    ):
+                        state.event_count += 1
+                        event_dict = event.to_dict()
+                        event_type = event_dict.get("type", "unknown")
 
-                    # Handle system events (SDK session ID)
-                    if event_type == "system":
-                        content = event_dict.get("content", {})
-                        if isinstance(content, dict) and "sdk_session_id" in content:
-                            storage_session.sdk_session_id = content["sdk_session_id"]
-                            save_session_func(storage_session)
+                        # Handle system events (SDK session ID)
+                        if event_type == "system":
+                            content = event_dict.get("content", {})
+                            if isinstance(content, dict) and "sdk_session_id" in content:
+                                storage_session.sdk_session_id = content["sdk_session_id"]
+                                save_session_func(storage_session)
 
-                    if event_type == "done":
-                        state.capture_done(event_dict)
-                        continue
+                        if event_type == "done":
+                            state.capture_done(event_dict)
+                            continue
 
-                    state.handle_event(event_type, event_dict)
-                    yield event_dict
-                    if on_event:
-                        on_event()
+                        state.handle_event(event_type, event_dict)
+                        yield event_dict
+                        if on_event:
+                            on_event()
 
-                state.finalize_blocks()
+                    state.finalize_blocks()
             
-            def should_auto_compact() -> bool:
-                threshold = int(getattr(session_settings, "auto_compact_threshold_percent", 0) or 0)
-                threshold = max(0, min(100, threshold))
-                if threshold <= 0:
-                    return False
-                if main_state.done_event is None:
-                    return False
-                normalized = (message.content or "").strip().lower()
-                if normalized in ("/compact", "/context", "/campact"):
-                    return False
-                if managed_session.slash_commands:
-                    cmds = set(managed_session.slash_commands)
-                    if "compact" not in cmds or "context" not in cmds:
+                def should_auto_compact() -> bool:
+                    threshold = int(getattr(session_settings, "auto_compact_threshold_percent", 0) or 0)
+                    threshold = max(0, min(100, threshold))
+                    if threshold <= 0:
                         return False
-                percent = _calculate_context_percent(storage_session, session_settings)
-                if percent is None:
-                    return False
-                return percent >= threshold
+                    if main_state.done_event is None:
+                        return False
+                    normalized = (message.content or "").strip().lower()
+                    if normalized in ("/compact", "/context", "/campact"):
+                        return False
+                    if managed_session.slash_commands:
+                        cmds = set(managed_session.slash_commands)
+                        if "compact" not in cmds or "context" not in cmds:
+                            return False
+                    percent = _calculate_context_percent(storage_session, session_settings)
+                    if percent is None:
+                        return False
+                    return percent >= threshold
 
-            def auto_status_event(phase: str, status: str, message_text: str) -> dict:
-                return {
-                    "type": "auto_compact_status",
-                    "content": {
-                        "phase": phase,
-                        "status": status,
-                        "message": message_text,
-                    },
-                    "metadata": {},
-                }
+                def auto_status_event(phase: str, status: str, message_text: str) -> dict:
+                    return {
+                        "type": "auto_compact_status",
+                        "content": {
+                            "phase": phase,
+                            "status": status,
+                            "message": message_text,
+                        },
+                        "metadata": {},
+                    }
 
-            try:
-                async for event_dict in stream_with_state(message.content, main_state, persist_partial):
-                    yield event_dict
+                try:
+                    async for event_dict in stream_with_state(message.content, main_state, persist_partial):
+                        yield event_dict
 
-                # Save assistant response after completion
-                storage_session.last_model_name = effective_model
-                storage_session.last_endpoint_name = effective_endpoint or "(legacy)"
-                persist_partial(force=True, usage=main_state.final_usage)
+                    # Save assistant response after completion
+                    storage_session.last_model_name = effective_model
+                    storage_session.last_endpoint_name = effective_endpoint or "(legacy)"
+                    persist_partial(force=True, usage=main_state.final_usage)
 
-                auto_compacted = False
-                if should_auto_compact():
-                    auto_compacted = True
-                    logger.info(f"[Multiplexed] Auto-compact triggered for session {session_id}")
-                    try:
-                        # Phase: compact
-                        task_runner.set_auto_compact_phase(storage_session.id, "compact")
-                        yield auto_status_event("compact", "start", "Auto compacting context...")
-                        compact_state = StreamAccumulator()
-                        async for event_dict in stream_with_state("/compact", compact_state):
-                            yield event_dict
+                    auto_compacted = False
+                    if should_auto_compact():
+                        auto_compacted = True
+                        logger.info(f"[Multiplexed] Auto-compact triggered for session {session_id}")
+                        try:
+                            # Phase: compact
+                            task_runner.set_auto_compact_phase(storage_session.id, "compact")
+                            yield auto_status_event("compact", "start", "Auto compacting context...")
+                            compact_state = StreamAccumulator()
+                            async for event_dict in stream_with_state("/compact", compact_state):
+                                yield event_dict
 
-                        if compact_state.assistant_content or compact_state.all_blocks:
-                            compact_msg = SessionMessage.create(
-                                role="assistant",
-                                content=compact_state.assistant_content,
-                                blocks=compact_state.all_blocks if compact_state.all_blocks else None,
-                                usage=compact_state.final_usage,
-                            )
-                            storage_session.add_message(compact_msg)
-                            _maybe_calibrate_context_usage(storage_session, compact_state.assistant_content, compact_msg.id)
-                            save_session_func(storage_session)
+                            if compact_state.assistant_content or compact_state.all_blocks:
+                                compact_msg = SessionMessage.create(
+                                    role="assistant",
+                                    content=compact_state.assistant_content,
+                                    blocks=compact_state.all_blocks if compact_state.all_blocks else None,
+                                    usage=compact_state.final_usage,
+                                )
+                                storage_session.add_message(compact_msg)
+                                _maybe_calibrate_context_usage(storage_session, compact_state.assistant_content, compact_msg.id)
+                                save_session_func(storage_session)
 
-                        # Phase: context
-                        task_runner.set_auto_compact_phase(storage_session.id, "context")
-                        yield auto_status_event("context", "start", "Recalibrating context usage...")
-                        context_state = StreamAccumulator()
-                        async for event_dict in stream_with_state("/context", context_state):
-                            yield event_dict
+                            # Phase: context
+                            task_runner.set_auto_compact_phase(storage_session.id, "context")
+                            yield auto_status_event("context", "start", "Recalibrating context usage...")
+                            context_state = StreamAccumulator()
+                            async for event_dict in stream_with_state("/context", context_state):
+                                yield event_dict
 
-                        if context_state.assistant_content or context_state.all_blocks:
-                            context_msg = SessionMessage.create(
-                                role="assistant",
-                                content=context_state.assistant_content,
-                                blocks=context_state.all_blocks if context_state.all_blocks else None,
-                                usage=context_state.final_usage,
-                            )
-                            storage_session.add_message(context_msg)
-                            _maybe_calibrate_context_usage(storage_session, context_state.assistant_content, context_msg.id)
-                            save_session_func(storage_session)
+                            if context_state.assistant_content or context_state.all_blocks:
+                                context_msg = SessionMessage.create(
+                                    role="assistant",
+                                    content=context_state.assistant_content,
+                                    blocks=context_state.all_blocks if context_state.all_blocks else None,
+                                    usage=context_state.final_usage,
+                                )
+                                storage_session.add_message(context_msg)
+                                _maybe_calibrate_context_usage(storage_session, context_state.assistant_content, context_msg.id)
+                                save_session_func(storage_session)
 
-                        yield {
-                            "type": "auto_compact_refresh",
-                            "content": {"reason": "auto_compact"},
-                            "metadata": {},
-                        }
-                    finally:
-                        task_runner.set_auto_compact_phase(storage_session.id, None)
+                            yield {
+                                "type": "auto_compact_refresh",
+                                "content": {"reason": "auto_compact"},
+                                "metadata": {},
+                            }
+                        finally:
+                            task_runner.set_auto_compact_phase(storage_session.id, None)
 
-                if main_state.done_event:
-                    yield main_state.done_event
+                    if main_state.done_event:
+                        yield main_state.done_event
 
-                logger.info(f"[Multiplexed] Task completed for session {session_id} (auto_compact={auto_compacted})")
+                    logger.info(f"[Multiplexed] Task completed for session {session_id} (auto_compact={auto_compacted})")
                 
-            except Exception as e:
-                logger.error(f"[Multiplexed] Task error for session {session_id}: {e}", exc_info=True)
-                persist_partial(force=True)
-                yield {"type": "error", "content": str(e), "metadata": {"error_type": type(e).__name__}}
+                except Exception as e:
+                    logger.error(f"[Multiplexed] Task error for session {session_id}: {e}", exc_info=True)
+                    persist_partial(force=True)
+                    yield {"type": "error", "content": str(e), "metadata": {"error_type": type(e).__name__}}
         
         # Start the background task
         task_id = await task_runner.start_task(

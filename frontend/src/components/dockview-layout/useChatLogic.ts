@@ -309,6 +309,7 @@ export function useChatLogic() {
         sessionId: string;
         assistantMessageId: string;
         pendingReplaySkip: number; // Skip replayed cached events after a manual fetch
+        dropPartial?: boolean; // Remove persisted partial message before rebuilding current turn
     }
     const resumeSessionStateRef = useRef<ResumeSessionState | null>(null);
     const processorStateRef = useRef<Map<string, EventProcessorState>>(new Map());
@@ -340,6 +341,35 @@ export function useChatLogic() {
             ]),
         []
     );
+
+    const dropPartialAssistantMessages = useCallback((forceLast: boolean = false) => {
+        setMessages(prev => {
+            if (!prev.length) return prev;
+
+            if (forceLast) {
+                const last = prev[prev.length - 1];
+                if (last?.role === 'assistant') {
+                    return prev.slice(0, prev.length - 1);
+                }
+                return prev;
+            }
+
+            let removed = false;
+            const next = prev.filter(msg => {
+                if (msg.role !== 'assistant') return true;
+                const blocks = msg.blocks || [];
+                const hasStreaming = blocks.some(block =>
+                    block.status === 'streaming' || block.status === 'executing' || block.status === 'pending'
+                );
+                if (hasStreaming) {
+                    removed = true;
+                    return false;
+                }
+                return true;
+            });
+            return removed ? next : prev;
+        });
+    }, [setMessages]);
 
     // Global event handler for processing events from any session
     // Use a ref to avoid re-render loops when this is used as a dependency
@@ -532,6 +562,11 @@ export function useChatLogic() {
             }
 
             const assistantMessageId = resumeSessionStateRef.current.assistantMessageId;
+
+            if (resumeSessionStateRef.current.dropPartial) {
+                dropPartialAssistantMessages(true);
+                resumeSessionStateRef.current.dropPartial = false;
+            }
             let state = processorStateRef.current.get(sessionId) ?? createInitialState();
             state = processEvent(state, event, assistantMessageId);
             processorStateRef.current.set(sessionId, state);
@@ -555,7 +590,7 @@ export function useChatLogic() {
                 return [...prev, assistantMessage];
             });
         }
-    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, loadSessionMessages, refreshWorkspaceSessions, CONTENT_EVENT_TYPES, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId, autoOpenFileForSession, setContextUsage, currentSessionIdRef]);
+    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, loadSessionMessages, refreshWorkspaceSessions, CONTENT_EVENT_TYPES, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId, autoOpenFileForSession, setContextUsage, currentSessionIdRef, dropPartialAssistantMessages]);
 
     // Stable wrapper that always calls the latest handler
     const handleGlobalEvent = useCallback((event: StreamEvent) => {
@@ -580,6 +615,7 @@ export function useChatLogic() {
             sessionId,
             assistantMessageId,
             pendingReplaySkip: 0,
+            dropPartial: false,
         };
 
         setMessages(prev => {
@@ -903,10 +939,21 @@ export function useChatLogic() {
                         sessionId: id,
                         assistantMessageId: `current-turn-${id}`,  // Prefix used by appendCurrentTurnFromEvents
                         pendingReplaySkip: wasSubscribed ? 0 : (eventsData.events?.length || 0),
+                        dropPartial: true,
                     };
+
+                    const hasContentEvents = !!eventsData.events?.some(event =>
+                        CONTENT_EVENT_TYPES.has((event as StreamEvent).type as string)
+                    );
 
                     // Append current turn to messages (not replace) - this does the "fast-forward"
                     if (eventsData.events && eventsData.events.length > 0) {
+                        if (hasContentEvents) {
+                            dropPartialAssistantMessages(true);
+                        }
+                        if (resumeSessionStateRef.current) {
+                            resumeSessionStateRef.current.dropPartial = false;
+                        }
                         appendCurrentTurnFromEvents(eventsData.events, id);
                     }
 
@@ -925,7 +972,7 @@ export function useChatLogic() {
         } else {
             // console.log(`[handleSelectSession] Same session, skipping`);
         }
-    }, [setCurrentSessionId, setSteps, getSessionStatus, setSessionStatus, loadSessionMessages, appendCurrentTurnFromEvents, currentSessionIdRef]);
+    }, [setCurrentSessionId, setSteps, getSessionStatus, setSessionStatus, loadSessionMessages, appendCurrentTurnFromEvents, currentSessionIdRef, dropPartialAssistantMessages]);
 
     // Delete a session
     const handleDeleteSession = useCallback(async (id: string) => {
@@ -1172,6 +1219,7 @@ export function useChatLogic() {
                 sessionId: originalSessionId,
                 assistantMessageId: assistantMessageId,
                 pendingReplaySkip: 0,
+                dropPartial: false,
             };
             processorStateRef.current.set(originalSessionId, createInitialState());
         }
@@ -1261,6 +1309,7 @@ export function useChatLogic() {
                             sessionId: eventSessionId,
                             assistantMessageId: assistantMessageId,
                             pendingReplaySkip: 0,
+                            dropPartial: false,
                         };
                         processorStateRef.current.set(eventSessionId, state);
                         pendingEvents.length = 0;

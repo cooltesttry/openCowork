@@ -240,6 +240,14 @@ class AgentBehaviorConfig(BaseModel):
     auto_compact_threshold_percent: Optional[int] = None
 
 
+class PromptTemplateConfig(BaseModel):
+    """Global prompt template configuration."""
+    prompt_global_template: str = ""
+    prompt_apply_to_chat: bool = True
+    prompt_apply_to_super_agent: bool = False
+    prompt_base_preset: str = "claude_code"
+
+
 @router.get("/agent", response_model=AgentBehaviorConfig)
 async def get_agent_config(request: Request):
     """Get agent behavior configuration."""
@@ -261,6 +269,32 @@ async def update_agent_config(request: Request, config: AgentBehaviorConfig):
     settings.default_workdir = config.default_workdir
     if config.auto_compact_threshold_percent is not None:
         settings.auto_compact_threshold_percent = config.auto_compact_threshold_percent
+    save_settings(settings)
+    return {"status": "success"}
+
+
+# ============== Prompt Templates ==============
+
+@router.get("/prompt", response_model=PromptTemplateConfig)
+async def get_prompt_config(request: Request):
+    """Get global prompt template configuration."""
+    settings = request.app.state.settings
+    return PromptTemplateConfig(
+        prompt_global_template=settings.prompt_global_template,
+        prompt_apply_to_chat=settings.prompt_apply_to_chat,
+        prompt_apply_to_super_agent=settings.prompt_apply_to_super_agent,
+        prompt_base_preset=settings.prompt_base_preset,
+    )
+
+
+@router.put("/prompt")
+async def update_prompt_config(request: Request, config: PromptTemplateConfig):
+    """Update global prompt template configuration."""
+    settings = request.app.state.settings
+    settings.prompt_global_template = config.prompt_global_template
+    settings.prompt_apply_to_chat = config.prompt_apply_to_chat
+    settings.prompt_apply_to_super_agent = config.prompt_apply_to_super_agent
+    settings.prompt_base_preset = config.prompt_base_preset
     save_settings(settings)
     return {"status": "success"}
 

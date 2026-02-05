@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 class ModelEndpoint(BaseModel):
     """A single endpoint configuration."""
     name: str  # Display name for the endpoint (e.g., "OpenRouter", "Local LM Studio")
-    provider: Literal["claude", "openai", "openrouter", "bedrock", "vertex", "local"] = "claude"
+    provider: Literal["claude", "openai", "openrouter", "bedrock", "vertex", "local", "cliproxyapi"] = "claude"
     api_key: Optional[str] = None
     endpoint: Optional[str] = None  # API URL
 
@@ -20,7 +20,7 @@ class ModelAPIConfig(BaseModel):
     selected_endpoint: str = ""  # Name of selected endpoint
     
     # Legacy single-endpoint fields (for backward compatibility)
-    provider: Literal["claude", "openai", "openrouter", "bedrock", "vertex", "local"] = "claude"
+    provider: Literal["claude", "openai", "openrouter", "bedrock", "vertex", "local", "cliproxyapi"] = "claude"
     api_key: Optional[str] = None
     endpoint: Optional[str] = None
     
@@ -78,6 +78,12 @@ class AppSettings(BaseModel):
     max_turns: int = 50
     default_workdir: Optional[str] = None  # Default working directory for agent SDK
     auto_compact_threshold_percent: int = 85  # 0 = disabled
+
+    # Prompt templates (global)
+    prompt_global_template: str = ""
+    prompt_apply_to_chat: bool = True
+    prompt_apply_to_super_agent: bool = False
+    prompt_base_preset: str = "claude_code"
     
     class Config:
         json_file = "config.json"

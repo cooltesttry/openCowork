@@ -83,6 +83,25 @@ export async function fetchAgentConfig(): Promise<AgentConfig> {
     return res.json();
 }
 
+// ============== Prompt Config ==============
+
+export interface PromptConfig {
+    prompt_global_template: string;
+    prompt_apply_to_chat: boolean;
+    prompt_apply_to_super_agent: boolean;
+    prompt_base_preset: string;
+}
+
+export async function fetchPromptConfig(): Promise<PromptConfig> {
+    const res = await fetch(`${API_BASE}/prompt`);
+    if (!res.ok) throw new Error("Failed to fetch prompt config");
+    return res.json();
+}
+
+export async function updatePromptConfig(data: PromptConfig): Promise<{ status: string }> {
+    return updateConfig("/prompt", data);
+}
+
 // ============== File Listing ==============
 
 export interface FileListItem {
@@ -110,6 +129,43 @@ export async function fetchWorkingDirectoryFiles(subdir: string = ""): Promise<F
 
 export const API_ROOT = "http://localhost:8000/api";
 export const WORKSPACE_API_BASE = "http://localhost:8000/api/workspace";
+
+// ============== CLIProxyAPI Sidecar ==============
+
+export interface CliproxyStatus {
+    running: boolean;
+    healthy: boolean;
+    base_url: string;
+    config_path: string;
+    pid: string;
+    version: string;
+    latest_version: string;
+    upgrade_available: boolean;
+    management_ui: string;
+}
+
+export async function fetchCliproxyStatus(): Promise<CliproxyStatus> {
+    const res = await fetch(`${API_ROOT}/cliproxy/status`);
+    if (!res.ok) throw new Error("Failed to fetch CLIProxyAPI status");
+    return res.json();
+}
+
+export async function cliproxyAction(action: "start" | "stop" | "restart" | "upgrade"): Promise<void> {
+    const res = await fetch(`${API_ROOT}/cliproxy/${action}`, { method: "POST" });
+    if (!res.ok) throw new Error(`Failed to ${action} CLIProxyAPI`);
+}
+
+export async function cliproxyManagement<T = unknown>(
+    path: string,
+    init?: RequestInit
+): Promise<T> {
+    const res = await fetch(`${API_ROOT}/cliproxy/management/${path}`, init);
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Request failed" }));
+        throw new Error(err.detail || err.error || "Request failed");
+    }
+    return res.json();
+}
 
 export async function saveFile(path: string, content: string): Promise<unknown> {
     const res = await fetch(`${API_ROOT}/files/save`, {
@@ -384,6 +440,75 @@ export async function removeWorkspaceSkill(workspaceId: string, skillId: string)
         body: JSON.stringify({ skill_id: skillId }),
     });
     if (!res.ok) throw new Error("Failed to remove workspace skill");
+    return res.json();
+}
+
+export interface WorkspaceConfig {
+    enabled_mcp_ids: string[];
+    project_system_prompt?: string;
+    project_system_prompt_enabled?: boolean;
+    claude_md_path_mode?: string;
+    claude_md_enabled?: boolean;
+    claude_md_last_hash?: string | null;
+}
+
+export async function fetchWorkspaceConfig(workspaceId: string): Promise<WorkspaceConfig> {
+    const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/config`);
+    if (!res.ok) throw new Error("Failed to fetch workspace config");
+    const data = await res.json();
+    return data.config;
+}
+
+export async function updateWorkspaceConfig(
+    workspaceId: string,
+    patch: Partial<WorkspaceConfig>
+): Promise<WorkspaceConfig> {
+    const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error("Failed to update workspace config");
+    const data = await res.json();
+    return data.config;
+}
+
+export interface WorkspacePromptPreview {
+    base_preset: string;
+    append_text: string;
+}
+
+export async function fetchWorkspacePromptPreview(workspaceId: string): Promise<WorkspacePromptPreview> {
+    const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/prompt-preview`);
+    if (!res.ok) throw new Error("Failed to fetch prompt preview");
+    return res.json();
+}
+
+export interface WorkspaceClaudeMd {
+    path: string;
+    exists: boolean;
+    content: string;
+    file_hash: string | null;
+    tracked_hash: string | null;
+    enabled: boolean;
+}
+
+export async function fetchWorkspaceClaudeMd(workspaceId: string): Promise<WorkspaceClaudeMd> {
+    const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/claude-md`);
+    if (!res.ok) throw new Error("Failed to fetch CLAUDE.md");
+    return res.json();
+}
+
+export async function updateWorkspaceClaudeMd(
+    workspaceId: string,
+    content: string
+): Promise<{ path: string; exists: boolean; file_hash: string }> {
+    const res = await fetch(`${WORKSPACE_API_BASE}/${workspaceId}/claude-md`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+    });
+    if (!res.ok) throw new Error("Failed to update CLAUDE.md");
     return res.json();
 }
 

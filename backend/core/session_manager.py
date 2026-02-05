@@ -98,8 +98,8 @@ class SessionManager:
         logger.info("[SessionManager] Stopped")
     
     async def get_or_create(
-        self,
-        session_id: str,
+        self, 
+        session_id: str, 
         settings: AppSettings,
         endpoint_name: Optional[str] = None,
         model_name: Optional[str] = None,
@@ -107,6 +107,7 @@ class SessionManager:
         resume_sdk_session_id: Optional[str] = None,
         cwd: Optional[str] = None,
         security_mode: Optional[str] = None,
+        system_prompt_override: Optional[object] = None,
     ) -> ManagedSession:
         """
         Get existing session or create new one.
@@ -164,6 +165,7 @@ class SessionManager:
                 resume_sdk_session_id=resume_sdk_session_id,
                 cwd=cwd,
                 security_mode=security_mode,
+                system_prompt_override=system_prompt_override,
             )
             self._sessions[session_id] = session
             return session
@@ -178,6 +180,7 @@ class SessionManager:
         resume_sdk_session_id: Optional[str],
         cwd: Optional[str],
         security_mode: Optional[str] = None,
+        system_prompt_override: Optional[object] = None,
     ) -> ManagedSession:
         """Create a new ClaudeSDKClient session."""
         from core.agent_client import build_agent_options
@@ -190,7 +193,13 @@ class SessionManager:
         
         # Build options with can_use_tool if websocket provided
         can_use_tool = self._create_can_use_tool(websocket, session_id, security_mode) if websocket else None
-        options = build_agent_options(settings, streaming=True, can_use_tool=can_use_tool, security_mode=security_mode)
+        options = build_agent_options(
+            settings,
+            streaming=True,
+            can_use_tool=can_use_tool,
+            security_mode=security_mode,
+            system_prompt_override=system_prompt_override,
+        )
         
         if cwd:
             options.cwd = cwd
@@ -638,4 +647,3 @@ class SessionManager:
 
 # Global instance
 session_manager = SessionManager()
-

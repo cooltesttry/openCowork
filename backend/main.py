@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import agent, config, sessions, files, terminal, agents, super_agent, workspace, search, imagegen, skills
+from routers import agent, config, sessions, files, terminal, agents, super_agent, workspace, search, imagegen, skills, cliproxy
 from models.settings import AppSettings
 from core.session_manager import session_manager
 from core.task_runner import task_runner
@@ -77,7 +77,12 @@ def load_settings() -> AppSettings:
         try:
             with open(CONFIG_FILE, "r") as f:
                 data = json.load(f)
-                return AppSettings.model_validate(data)
+                settings = AppSettings.model_validate(data)
+                # Persist defaults if new fields were missing
+                expected_keys = set(AppSettings().model_dump().keys())
+                if any(key not in data for key in expected_keys):
+                    save_settings(settings)
+                return settings
         except Exception:
             pass
     return AppSettings()
@@ -188,6 +193,23 @@ async def lifespan(app: FastAPI):
     await search_index_service.start()
     if workdirs:
         await search_index_service.register_workspaces(workdirs)
+
+    # Start CLIProxyAPI sidecar unless disabled
+    disable_cliproxy = os.getenv("OPENCOWORK_DISABLE_CLIPROXY", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    if disable_cliproxy:
+        logging.info("[Lifespan] CLIProxyAPI sidecar disabled via OPENCOWORK_DISABLE_CLIPROXY")
+    else:
+        try:
+            from core import cliproxy_service
+            await cliproxy_service.ensure_started_async()
+            logging.info("[Lifespan] CLIProxyAPI sidecar started")
+        except Exception as exc:
+            logging.warning(f"[Lifespan] Failed to start CLIProxyAPI sidecar: {exc}")
     
     yield
 
@@ -200,6 +222,12 @@ async def lifespan(app: FastAPI):
     await search_index_service.stop()
     await task_runner.stop()
     await session_manager.stop()
+    try:
+        from core import cliproxy_service
+        await cliproxy_service.stop_async()
+        logging.info("[Lifespan] CLIProxyAPI sidecar stopped")
+    except Exception as exc:
+        logging.warning(f"[Lifespan] Failed to stop CLIProxyAPI sidecar: {exc}")
     # Note: Settings are NOT auto-saved on shutdown.
     # Only explicit user saves should persist to config.json.
 
@@ -226,6 +254,7 @@ app.include_router(workspace.router, prefix="/api/workspace", tags=["workspace"]
 app.include_router(search.router, prefix="/api", tags=["search"])
 app.include_router(imagegen.router, prefix="/api/imagegen", tags=["imagegen"])
 app.include_router(skills.router, prefix="/api", tags=["skills"])
+app.include_router(cliproxy.router, prefix="/api", tags=["cliproxy"])
 
 # Configure CORS - must be after include_router to work correctly
 app.add_middleware(

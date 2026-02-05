@@ -37,6 +37,7 @@ const PROVIDERS = [
     { value: "bedrock", label: "Bedrock" },
     { value: "vertex", label: "Vertex" },
     { value: "local", label: "Local" },
+    { value: "cliproxyapi", label: "CLIProxyAPI" },
 ];
 
 export function ModelConfig() {
@@ -149,11 +150,16 @@ export function ModelConfig() {
     const handleProviderChange = (provider: string) => {
         const providerLabel = PROVIDERS.find(p => p.value === provider)?.label || provider;
         const uniqueName = generateUniqueName(providerLabel);
+        const defaultEndpoint = provider === "cliproxyapi"
+            ? "http://127.0.0.1:8317"
+            : provider === "local"
+                ? (newEndpoint.endpoint || "http://localhost:1234/v1")
+                : "";
         setNewEndpoint({
             ...newEndpoint,
             provider,
             name: uniqueName,
-            endpoint: provider === "local" ? newEndpoint.endpoint : ""
+            endpoint: defaultEndpoint
         });
     };
 
@@ -241,14 +247,18 @@ export function ModelConfig() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        {newEndpoint.provider === "local" && (
+                        {(newEndpoint.provider === "local" || newEndpoint.provider === "cliproxyapi") && (
                             <div className="space-y-1 col-span-3">
                                 <Label className="text-xs">Endpoint URL</Label>
                                 <Input
                                     className="h-9"
                                     value={newEndpoint.endpoint || ""}
                                     onChange={(e) => setNewEndpoint({ ...newEndpoint, endpoint: e.target.value })}
-                                    placeholder="http://localhost:1234/v1"
+                                    placeholder={
+                                        newEndpoint.provider === "cliproxyapi"
+                                            ? "http://127.0.0.1:8317"
+                                            : "http://localhost:1234/v1"
+                                    }
                                 />
                             </div>
                         )}
@@ -299,8 +309,9 @@ export function ModelConfig() {
                                     <div className="flex items-center gap-3">
                                         <span className="text-lg">
                                             {ep.provider === "local" ? "🏠" :
-                                                ep.provider === "openrouter" ? "🌐" :
-                                                    ep.provider === "claude" ? "☁️" : "📦"}
+                                                ep.provider === "cliproxyapi" ? "🔌" :
+                                                    ep.provider === "openrouter" ? "🌐" :
+                                                        ep.provider === "claude" ? "☁️" : "📦"}
                                         </span>
                                         <div>
                                             <div className="font-medium text-sm">{ep.name}</div>
