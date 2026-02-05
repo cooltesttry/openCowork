@@ -237,6 +237,7 @@ class AgentBehaviorConfig(BaseModel):
     allowed_tools: list[str]
     max_turns: int
     default_workdir: Optional[str] = None
+    auto_compact_threshold_percent: Optional[int] = None
 
 
 @router.get("/agent", response_model=AgentBehaviorConfig)
@@ -247,6 +248,7 @@ async def get_agent_config(request: Request):
         allowed_tools=settings.allowed_tools,
         max_turns=settings.max_turns,
         default_workdir=settings.default_workdir,
+        auto_compact_threshold_percent=settings.auto_compact_threshold_percent,
     )
 
 
@@ -257,6 +259,8 @@ async def update_agent_config(request: Request, config: AgentBehaviorConfig):
     settings.allowed_tools = config.allowed_tools
     settings.max_turns = config.max_turns
     settings.default_workdir = config.default_workdir
+    if config.auto_compact_threshold_percent is not None:
+        settings.auto_compact_threshold_percent = config.auto_compact_threshold_percent
     save_settings(settings)
     return {"status": "success"}
 

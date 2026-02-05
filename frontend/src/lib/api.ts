@@ -74,6 +74,7 @@ export interface AgentConfig {
     allowed_tools: string[];
     max_turns: number;
     default_workdir: string | null;
+    auto_compact_threshold_percent: number;
 }
 
 export async function fetchAgentConfig(): Promise<AgentConfig> {

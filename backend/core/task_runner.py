@@ -53,6 +53,7 @@ class SessionTaskState:
     events: List[dict] = field(default_factory=list)
     subscribers: List[asyncio.Queue] = field(default_factory=list)
     events_file: Optional[Any] = None  # File handle for appending events
+    auto_compact_phase: Optional[str] = None  # "compact" | "context" when auto-compact is running
 
 
 class TaskRunner:
@@ -360,8 +361,14 @@ class TaskRunner:
         if state:
             return state.events.copy()
         return []
+
+    def set_auto_compact_phase(self, session_id: str, phase: Optional[str]) -> None:
+        """Track auto-compact phase for interrupt handling."""
+        state = self._sessions.get(session_id)
+        if state:
+            state.auto_compact_phase = phase
     
-    async def interrupt_session(self, session_id: str) -> bool:
+    async def interrupt_session(self, session_id: str) -> tuple[bool, str]:
         """
         Interrupt a running task for a session.
         
@@ -369,15 +376,26 @@ class TaskRunner:
         This preserves session state and allows proper cleanup.
         
         Returns:
-            True if a task was interrupted, False if no running task.
+            (success, message)
         """
         async with self._lock:
             state = self._sessions.get(session_id)
             if not state or not state.execution:
-                return False
+                return False, "No running task to interrupt"
             
             if state.execution.status != "running":
-                return False
+                return False, "No running task to interrupt"
+
+            if state.auto_compact_phase:
+                self._append_event(session_id, {
+                    "type": "auto_compact_status",
+                    "content": {
+                        "phase": state.auto_compact_phase,
+                        "status": "ignored_interrupt",
+                        "message": "Auto compact in progress. Interrupt ignored.",
+                    },
+                })
+                return False, "Auto compact in progress. Interrupt ignored."
             
             # Use SDK's official interrupt() method via session_manager
             from core.session_manager import session_manager
@@ -413,7 +431,7 @@ class TaskRunner:
             })
             
             logger.info(f"[TaskRunner] Session {session_id} interrupted by user")
-            return True
+            return True, "Session interrupted"
 
     
     def clear_session(self, session_id: str):

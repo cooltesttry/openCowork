@@ -45,6 +45,10 @@ export interface MessageBlock {
         isStreaming?: boolean;  // Used for tool input streaming
         answers?: Record<string, string>;  // Used for ask_user responses
         allowed?: boolean;  // Used for permission responses
+        isStatus?: boolean;  // Used for status/notice blocks
+        statusKind?: string;
+        statusPhase?: string;
+        statusState?: string;
     };
 }
 

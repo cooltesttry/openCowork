@@ -314,6 +314,7 @@ export function useChatLogic() {
                 'ask_user_result',
                 'permission_request',
                 'permission_response',
+                'auto_compact_status',
             ]),
         []
     );
@@ -330,6 +331,15 @@ export function useChatLogic() {
 
         const isCurrentSession = sessionId === currentSessionIdRef.current;
         const isResumedSession = resumeSessionStateRef.current?.sessionId === sessionId;
+
+        if ((event.type as string) === 'auto_compact_refresh') {
+            if (isCurrentSession) {
+                loadSessionMessages(sessionId).catch(err =>
+                    console.warn(`Failed to refresh session ${sessionId} after auto-compact:`, err)
+                );
+            }
+            return;
+        }
 
         if (isCurrentSession) {
             const now = performance.now();
@@ -523,7 +533,7 @@ export function useChatLogic() {
                 return [...prev, assistantMessage];
             });
         }
-    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, refreshWorkspaceSessions, CONTENT_EVENT_TYPES, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId, autoOpenFileForSession, setContextUsage]);
+    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, loadSessionMessages, refreshWorkspaceSessions, CONTENT_EVENT_TYPES, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId, autoOpenFileForSession, setContextUsage]);
 
     // Stable wrapper that always calls the latest handler
     const handleGlobalEvent = useCallback((event: StreamEvent) => {

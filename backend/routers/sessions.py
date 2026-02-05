@@ -168,11 +168,5 @@ async def interrupt_session(session_id: str):
     Cancels the current task and updates status.
     Returns success status.
     """
-    success = await task_runner.interrupt_session(session_id)
-    
-    if not success:
-        # Not an error - just no running task to interrupt
-        return {"success": False, "message": "No running task to interrupt"}
-    
-    return {"success": True, "message": "Session interrupted"}
-
+    success, message = await task_runner.interrupt_session(session_id)
+    return {"success": success, "message": message}

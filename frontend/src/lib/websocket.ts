@@ -18,7 +18,9 @@ export type EventType =
     | "tool_input_end"     // Tool input streaming ended
     | "todos"              // Todo list from SystemMessage
     | "ask_user"           // Claude is asking the user a question
-    | "permission_request";  // Tool permission request for user approval
+    | "permission_request"   // Tool permission request for user approval
+    | "auto_compact_status"  // Backend auto-compact status update
+    | "auto_compact_refresh"; // Backend auto-compact requests a refresh
 
 // AskUserQuestion types
 export interface AskUserOption {

@@ -243,6 +243,7 @@ export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal,
     // Filter out broken local file path images before rendering
     const content = filterLocalImages(rawContent);
     const isStreaming = block.status === 'streaming';
+    const isStatus = block.metadata?.isStatus === true;
 
     // Get preview callback from store (priority) or from props
     const { previewHTMLCallback, openFilePanelCallback } = useChat();
@@ -252,6 +253,22 @@ export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal,
 
 
     if (!content) return null;
+
+    if (isStatus) {
+        const isIgnored = block.metadata?.statusState === 'ignored_interrupt';
+        return (
+            <div
+                className={cn(
+                    "my-1 rounded-md border px-2 py-1 text-xs",
+                    isIgnored
+                        ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                        : "border-border/60 bg-muted/40 text-muted-foreground"
+                )}
+            >
+                {content}
+            </div>
+        );
+    }
 
     return (
         <div className={cn(

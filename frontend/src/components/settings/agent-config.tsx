@@ -15,6 +15,7 @@ interface AgentConfig {
     allowed_tools: string[];
     max_turns: number;
     default_workdir: string | null;
+    auto_compact_threshold_percent: number;
 }
 
 export function AgentConfig() {
@@ -103,6 +104,23 @@ export function AgentConfig() {
                     />
                     <p className="text-xs text-muted-foreground">
                         Maximum number of turns the agent can take in a single conversation.
+                    </p>
+                </div>
+
+                <div className="space-y-2">
+                    <Label>Auto Compact Threshold (%)</Label>
+                    <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={config.auto_compact_threshold_percent ?? 0}
+                        onChange={(e) => setConfig({
+                            ...config,
+                            auto_compact_threshold_percent: Math.max(0, Math.min(100, parseInt(e.target.value) || 0))
+                        })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        Automatically run /compact then /context when estimated usage exceeds this percentage. Set to 0 to disable.
                     </p>
                 </div>
 

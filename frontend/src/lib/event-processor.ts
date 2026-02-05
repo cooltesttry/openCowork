@@ -463,6 +463,35 @@ export function processEvent(
             break;
         }
 
+        // ==================== Auto-Compact Status ====================
+        case 'auto_compact_status': {
+            const statusContent = event.content as {
+                phase?: string;
+                status?: string;
+                message?: string;
+            };
+            const phase = statusContent?.phase || 'compact';
+            const status = statusContent?.status || 'start';
+            const message =
+                statusContent?.message ||
+                (phase === 'context'
+                    ? 'Recalibrating context usage...'
+                    : 'Auto compacting context...');
+            blocks.push({
+                id: `status-${assistantMessageId}-${blocks.length}`,
+                type: 'text',
+                content: message,
+                status: 'success',
+                metadata: {
+                    isStatus: true,
+                    statusKind: 'auto_compact',
+                    statusPhase: phase,
+                    statusState: status,
+                },
+            });
+            break;
+        }
+
         case 'ask_user_result': {
             const resultContent = event.content as {
                 request_id?: string;

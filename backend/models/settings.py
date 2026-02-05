@@ -77,6 +77,7 @@ class AppSettings(BaseModel):
     allowed_tools: list[str] = Field(default_factory=lambda: ["Read", "Write", "Edit", "Bash", "Glob"])
     max_turns: int = 50
     default_workdir: Optional[str] = None  # Default working directory for agent SDK
+    auto_compact_threshold_percent: int = 85  # 0 = disabled
     
     class Config:
         json_file = "config.json"

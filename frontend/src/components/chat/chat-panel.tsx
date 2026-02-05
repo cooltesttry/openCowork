@@ -463,6 +463,13 @@ export function ChatPanel() {
                 };
                 setSteps((prev) => [...prev, step]);
 
+                if ((event.type as string) === 'auto_compact_refresh') {
+                    if (streamingSessionId) {
+                        loadSessionMessages(streamingSessionId);
+                    }
+                    return;
+                }
+
                 // Handle system event (contains slash_commands from SDK init)
                 if ((event.type as string) === 'system' && event.metadata?.subtype === 'init') {
                     const cmds = event.content?.slash_commands;
@@ -879,6 +886,24 @@ export function ChatPanel() {
 
                         // NOTE: Not setting askUserRequest since we disabled the popup dialog
                         // and now use inline block for questions
+                        break;
+                    }
+
+                    case "auto_compact_status": {
+                        const statusContent = event.content as { phase?: string; status?: string; message?: string };
+                        const statusBlock: MessageBlock = {
+                            id: crypto.randomUUID(),
+                            type: 'text',
+                            content: statusContent?.message || 'Auto compacting context...',
+                            status: 'success',
+                            metadata: {
+                                isStatus: true,
+                                statusKind: 'auto_compact',
+                                statusPhase: statusContent?.phase,
+                                statusState: statusContent?.status,
+                            },
+                        };
+                        addBlock(assistantMessageId, statusBlock);
                         break;
                     }
 
