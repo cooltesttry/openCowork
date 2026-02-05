@@ -4,6 +4,7 @@ import { useEffect, useCallback, useRef, useState } from "react";
 import { Message, AgentStep, MessageBlock, Session } from "@/lib/types";
 import { sessionClient, AskUserContent } from "@/lib/websocket";
 import { sessionsApi } from "@/lib/sessions-api";
+import { buildContextUsageCalibration } from "@/lib/context-usage";
 import { MessageList } from "./message-list";
 import { InputArea, InputAreaRef, SecurityMode } from "./input-area";
 import { McpSidebarPanel } from "./mcp-sidebar-panel";
@@ -47,6 +48,7 @@ export function ChatPanel() {
         isSessionsLoading, setIsSessionsLoading,
         activeEndpoint, setActiveEndpoint,
         activeModel, setActiveModel,
+        setContextUsage,
     } = useChat();
 
     // Ref for focusing input
@@ -98,6 +100,7 @@ export function ChatPanel() {
                     console.warn(`Current session ${currentSessionId} no longer exists, resetting...`);
                     setCurrentSessionId(sessionList.length > 0 ? sessionList[0].id : null);
                     setMessages([]);
+                    setContextUsage(null);
                 }
             } else if (sessionList.length > 0 && !isDraftSessionRef.current) {
                 // If no current session but sessions exist, select the first one
@@ -138,6 +141,7 @@ export function ChatPanel() {
                 };
             });
             setMessages(msgs);
+            setContextUsage(session.context_usage ?? null);
 
             // Restore session's model and endpoint
             if (session.last_endpoint_name && session.last_model_name) {
@@ -153,10 +157,12 @@ export function ChatPanel() {
                 console.warn(`Session ${sessionId} not found, resetting...`);
                 setCurrentSessionId(null);
                 setMessages([]);
+                setContextUsage(null);
                 // Reload sessions to get fresh list
                 loadSessions();
             } else {
                 setMessages([]);
+                setContextUsage(null);
             }
         }
     };
@@ -167,6 +173,7 @@ export function ChatPanel() {
         isDraftSessionRef.current = true;
         setMessages([]);
         setSteps([]);
+        setContextUsage(null);
         setIsProcessing(false);
         setTimeout(() => inputAreaRef.current?.focus(), 100);
     };
@@ -196,6 +203,7 @@ export function ChatPanel() {
                 } else {
                     setCurrentSessionId(null);
                     setMessages([]);
+                    setContextUsage(null);
                 }
             }
             toast.success("Session deleted");
@@ -799,14 +807,16 @@ export function ChatPanel() {
                         // Refresh session list to update title if it was auto-generated
                         loadSessions();
                         // Mark any remaining streaming/executing blocks as success
-                        setMessages((prev) =>
-                            prev.map((msg) => {
+                        setMessages((prev) => {
+                            let candidateContent: string | null = null;
+                            const next = prev.map((msg) => {
                                 if (msg.id === assistantMessageId && msg.blocks) {
                                     const blocks = msg.blocks.map((block) =>
                                         block.status === 'executing' || block.status === 'streaming'
                                             ? { ...block, status: 'success' as const }
                                             : block
                                     );
+                                    candidateContent = msg.content || '';
                                     return {
                                         ...msg,
                                         blocks,
@@ -815,11 +825,23 @@ export function ChatPanel() {
                                     };
                                 }
                                 if (msg.id === assistantMessageId) {
+                                    candidateContent = msg.content || '';
                                     return { ...msg, ...(usage ? { usage } : {}), isStreaming: false };
                                 }
                                 return msg;
-                            })
-                        );
+                            });
+                            if (candidateContent) {
+                                const calibration = buildContextUsageCalibration(
+                                    next,
+                                    candidateContent,
+                                    assistantMessageId
+                                );
+                                if (calibration) {
+                                    setContextUsage(calibration);
+                                }
+                            }
+                            return next;
+                        });
                         // Auto-focus input after conversation ends
                         setTimeout(() => inputAreaRef.current?.focus(), 100);
                         break;

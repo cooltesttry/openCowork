@@ -22,6 +22,7 @@ import {
     normalizePath,
     type FileKind,
 } from '@/lib/file-links';
+import { buildContextUsageCalibration } from '@/lib/context-usage';
 const normalizeUsage = (usage: any): Message["usage"] | null => {
     if (!usage || typeof usage !== "object") return null;
     const inputTokens = Number(usage.input_tokens ?? 0);
@@ -57,6 +58,7 @@ export function useChatLogic() {
         isSessionsLoading, setIsSessionsLoading,
         activeEndpoint, setActiveEndpoint,
         activeModel, setActiveModel,
+        setContextUsage,
         setSessionStatus,
         getSessionStatus,
         currentSessionIdRef,  // Use shared ref from Context
@@ -171,6 +173,7 @@ export function useChatLogic() {
                     currentSessionIdRef.current = nextSessionId;
                     setCurrentSessionId(nextSessionId);
                     setMessages([]);
+                    setContextUsage(null);
                 }
                 // If session exists, do NOT modify currentSessionId - user may have switched
             } else if (sessionList.length > 0 && !currentActiveId && !isDraftSessionRef.current) {
@@ -198,7 +201,7 @@ export function useChatLogic() {
         } finally {
             setIsSessionsLoading(false);
         }
-    }, [setSessions, setCurrentSessionId, setMessages, setIsSessionsLoading, setSessionStatus]);
+    }, [setSessions, setCurrentSessionId, setMessages, setIsSessionsLoading, setSessionStatus, setContextUsage]);
 
     // Load messages for a specific session
     const loadSessionMessages = useCallback(async (sessionId: string) => {
@@ -255,6 +258,7 @@ export function useChatLogic() {
             });
             // console.log(`[loadSessionMessages] Loaded ${msgs.length} messages for: ${sessionId}`);
             setMessages(msgs);
+            setContextUsage(session.context_usage ?? null);
 
             if (session.last_endpoint_name && session.last_model_name) {
                 setActiveEndpoint(session.last_endpoint_name);
@@ -267,12 +271,14 @@ export function useChatLogic() {
                 currentSessionIdRef.current = null;
                 setCurrentSessionId(null);
                 setMessages([]);
+                setContextUsage(null);
                 loadSessions();
             } else {
                 setMessages([]);
+                setContextUsage(null);
             }
         }
-    }, [loadSessions, setActiveEndpoint, setActiveModel, setCurrentSessionId, setMessages]);
+    }, [loadSessions, setActiveEndpoint, setActiveModel, setCurrentSessionId, setMessages, setContextUsage]);
 
     // Track resumed session state for processing events after session switch
     // When user switches to a running session, we store the session ID here
@@ -356,31 +362,52 @@ export function useChatLogic() {
                 // Mark all streaming/executing blocks as complete (like old implementation)
                 // This preserves the incrementally-built content instead of replacing from API
                 const finalizedId = `turn-${sessionId}-${Date.now()}`;
-                setMessages(prev => prev.map(msg => {
-                    if (msg.id.startsWith(`current-turn-${sessionId}`)) {
-                        const blocks = (msg.blocks || []).map(block =>
-                            block.status === 'executing' || block.status === 'streaming'
-                                ? { ...block, status: 'success' as const }
-                                : block
+                setMessages(prev => {
+                    let candidateContent: string | null = null;
+                    let candidateId: string | null = null;
+                    const next = prev.map(msg => {
+                        if (msg.id.startsWith(`current-turn-${sessionId}`)) {
+                            const blocks = (msg.blocks || []).map(block =>
+                                block.status === 'executing' || block.status === 'streaming'
+                                    ? { ...block, status: 'success' as const }
+                                    : block
+                            );
+                            candidateContent = msg.content || '';
+                            candidateId = finalizedId;
+                            return {
+                                ...msg,
+                                id: finalizedId,
+                                blocks,
+                                isStreaming: false,
+                                ...(usage ? { usage } : {}),
+                            };
+                        }
+                        if (msg.isStreaming && msg.blocks) {
+                            const blocks = msg.blocks.map(block =>
+                                block.status === 'executing' || block.status === 'streaming'
+                                    ? { ...block, status: 'success' as const }
+                                    : block
+                            );
+                            if (!candidateContent && msg.role === 'assistant') {
+                                candidateContent = msg.content || '';
+                                candidateId = msg.id;
+                            }
+                            return { ...msg, blocks, isStreaming: false };
+                        }
+                        return msg;
+                    });
+                    if (candidateContent) {
+                        const calibration = buildContextUsageCalibration(
+                            next,
+                            candidateContent,
+                            candidateId ?? undefined
                         );
-                        return {
-                            ...msg,
-                            id: finalizedId,
-                            blocks,
-                            isStreaming: false,
-                            ...(usage ? { usage } : {}),
-                        };
+                        if (calibration) {
+                            setContextUsage(calibration);
+                        }
                     }
-                    if (msg.isStreaming && msg.blocks) {
-                        const blocks = msg.blocks.map(block =>
-                            block.status === 'executing' || block.status === 'streaming'
-                                ? { ...block, status: 'success' as const }
-                                : block
-                        );
-                        return { ...msg, blocks, isStreaming: false };
-                    }
-                    return msg;
-                }));
+                    return next;
+                });
 
                 autoOpenFileForSession(sessionId);
 
@@ -496,7 +523,7 @@ export function useChatLogic() {
                 return [...prev, assistantMessage];
             });
         }
-    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, refreshWorkspaceSessions, CONTENT_EVENT_TYPES, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId, autoOpenFileForSession]);
+    }, [setSessionStatus, setIsProcessing, setMessages, loadSessions, refreshWorkspaceSessions, CONTENT_EVENT_TYPES, setIsAwaitingFirstToken, setAwaitingFirstTokenSessionId, autoOpenFileForSession, setContextUsage]);
 
     // Stable wrapper that always calls the latest handler
     const handleGlobalEvent = useCallback((event: StreamEvent) => {
@@ -743,10 +770,11 @@ export function useChatLogic() {
         setCurrentSessionId(null);
         setMessages([]);
         setSteps([]);
+        setContextUsage(null);
         setIsProcessing(false);
         isProcessingRef.current = false;
         setTimeout(() => inputAreaRef.current?.focus(), 100);
-    }, [getSessionStatus, setSessionStatus, setCurrentSessionId, setMessages, setSteps, setIsProcessing]);
+    }, [getSessionStatus, setSessionStatus, setCurrentSessionId, setMessages, setSteps, setIsProcessing, setContextUsage]);
 
     // Create a new session (draft only - actual session created on send)
     const handleNewSession = useCallback(async () => {

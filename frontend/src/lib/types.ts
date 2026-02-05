@@ -16,6 +16,13 @@ export interface TokenUsage {
     total_tokens: number;
 }
 
+export interface ContextUsageCalibration {
+    offset_tokens: number;
+    window_tokens?: number | null;
+    updated_at?: number;
+    source_message_id?: string | null;
+}
+
 // Block status lifecycle
 export type BlockStatus = 'streaming' | 'pending' | 'executing' | 'success' | 'error';
 
@@ -65,6 +72,7 @@ export interface Session {
     message_count: number;
     last_model_name?: string;
     last_endpoint_name?: string;
+    context_usage?: ContextUsageCalibration | null;
 }
 
 export interface SessionDetail extends Session {

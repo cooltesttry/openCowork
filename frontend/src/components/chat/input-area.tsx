@@ -88,7 +88,7 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
         files: filesProp,
         onFileSelect,
     }, ref) {
-        const { messages } = useChat();
+        const { messages, contextUsage } = useChat();
         const [content, setContent] = useState("");
         const textareaRef = useRef<HTMLTextAreaElement>(null);
         const fileInputRef = useRef<HTMLInputElement>(null);
@@ -153,10 +153,15 @@ export const InputArea = forwardRef<InputAreaRef, InputAreaProps>(
         }, [messages]);
 
         const contextPercent = useMemo(() => {
-            if (contextWindow <= 0) return 0;
-            const percent = Math.round((sessionTotalTokens / contextWindow) * 100);
+            const offsetTokens = Number(contextUsage?.offset_tokens ?? 0);
+            const adjustedTokens = Number.isFinite(offsetTokens)
+                ? Math.max(0, sessionTotalTokens + offsetTokens)
+                : sessionTotalTokens;
+            const effectiveWindow = Number(contextUsage?.window_tokens ?? contextWindow);
+            if (!Number.isFinite(effectiveWindow) || effectiveWindow <= 0) return 0;
+            const percent = Math.round((adjustedTokens / effectiveWindow) * 100);
             return Math.min(100, Math.max(0, percent));
-        }, [sessionTotalTokens, contextWindow]);
+        }, [sessionTotalTokens, contextWindow, contextUsage]);
 
         // Expose focus and addFileReference methods to parent
         useImperativeHandle(ref, () => ({

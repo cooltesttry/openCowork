@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Message, AgentStep, Session } from './types';
+import { Message, AgentStep, Session, ContextUsageCalibration } from './types';
 import type { FilePanelOpenEntry } from '@/components/panels/file-panel';
 
 // Session execution status for task management
@@ -47,6 +47,10 @@ interface ChatContextType {
     setActiveEndpoint: React.Dispatch<React.SetStateAction<string>>;
     activeModel: string;
     setActiveModel: React.Dispatch<React.SetStateAction<string>>;
+
+    // Session-level context usage calibration (for input usage display)
+    contextUsage: ContextUsageCalibration | null;
+    setContextUsage: React.Dispatch<React.SetStateAction<ContextUsageCalibration | null>>;
 
     // Preview HTML callback (set by dockview, used by code blocks)
     previewHTMLCallback: ((htmlContent: string) => void) | null;
@@ -111,6 +115,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // Active model for current session (will be loaded from session or settings)
     const [activeEndpoint, setActiveEndpoint] = useState<string>("");
     const [activeModel, setActiveModel] = useState<string>("");
+    const [contextUsage, setContextUsage] = useState<ContextUsageCalibration | null>(null);
 
     // Preview HTML callback (registered by dockview-main)
     const [previewHTMLCallback, setPreviewHTMLCallback] = useState<((htmlContent: string) => void) | null>(null);
@@ -247,6 +252,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             isSessionsLoading, setIsSessionsLoading,
             activeEndpoint, setActiveEndpoint,
             activeModel, setActiveModel,
+            contextUsage, setContextUsage,
             previewHTMLCallback, setPreviewHTMLCallback,
             openFilePanelCallback, setOpenFilePanelCallback,
             terminalInputCallback, setTerminalInputCallback,

@@ -74,6 +74,45 @@ class TokenUsage:
 
 
 @dataclass
+class ContextUsageCalibration:
+    """Session-level calibration for context usage display."""
+    offset_tokens: int = 0
+    window_tokens: Optional[int] = None
+    updated_at: float = 0.0
+    source_message_id: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "offset_tokens": int(self.offset_tokens),
+            "window_tokens": int(self.window_tokens) if self.window_tokens is not None else None,
+            "updated_at": float(self.updated_at),
+            "source_message_id": self.source_message_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ContextUsageCalibration":
+        window_tokens = data.get("window_tokens")
+        try:
+            window_tokens = int(window_tokens) if window_tokens is not None else None
+        except Exception:
+            window_tokens = None
+        try:
+            offset_tokens = int(data.get("offset_tokens") or 0)
+        except Exception:
+            offset_tokens = 0
+        try:
+            updated_at = float(data.get("updated_at") or 0)
+        except Exception:
+            updated_at = 0.0
+        return cls(
+            offset_tokens=offset_tokens,
+            window_tokens=window_tokens,
+            updated_at=updated_at,
+            source_message_id=data.get("source_message_id"),
+        )
+
+
+@dataclass
 class Session:
     """A conversation session containing multiple messages."""
     id: str
@@ -85,6 +124,7 @@ class Session:
     last_model_name: Optional[str] = None  # Last used model name
     last_endpoint_name: Optional[str] = None  # Last used endpoint name
     last_security_mode: Optional[str] = None  # Last used security mode
+    context_usage: Optional[ContextUsageCalibration] = None  # Session-level context usage calibration
     
     def to_dict(self) -> dict:
         return {
@@ -97,6 +137,7 @@ class Session:
             "last_model_name": self.last_model_name,
             "last_endpoint_name": self.last_endpoint_name,
             "last_security_mode": self.last_security_mode,
+            "context_usage": self.context_usage.to_dict() if self.context_usage else None,
         }
     
     def to_summary(self) -> dict:
@@ -114,6 +155,12 @@ class Session:
     
     @classmethod
     def from_dict(cls, data: dict) -> "Session":
+        context_usage_data = data.get("context_usage")
+        context_usage = (
+            ContextUsageCalibration.from_dict(context_usage_data)
+            if isinstance(context_usage_data, dict)
+            else None
+        )
         return cls(
             id=data["id"],
             title=data["title"],
@@ -124,6 +171,7 @@ class Session:
             last_model_name=data.get("last_model_name"),
             last_endpoint_name=data.get("last_endpoint_name"),
             last_security_mode=data.get("last_security_mode"),
+            context_usage=context_usage,
         )
     
     @classmethod

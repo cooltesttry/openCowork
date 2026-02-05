@@ -4,6 +4,7 @@ Agent WebSocket router for real-time streaming.
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import Optional
 
@@ -18,7 +19,7 @@ from core import session_storage
 from core.workspace_storage import WorkspaceStorage
 from models.settings import AppSettings
 from core.mcp_registry import resolve_enabled_mcp_servers
-from models.session import SessionMessage, TokenUsage
+from models.session import SessionMessage, TokenUsage, ContextUsageCalibration
 
 
 # Set up logging (configured centrally in main.py)
@@ -62,6 +63,89 @@ def _normalize_usage(usage: Optional[dict]) -> Optional[dict]:
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
     }
+
+
+_CONTEXT_HEADER = "## Context Usage"
+_CONTEXT_SECTION = "### Estimated usage by category"
+_CONTEXT_TABLE_HEADER = "| Category | Tokens | Percentage |"
+
+
+def _parse_compact_number(value: str) -> Optional[int]:
+    if not value:
+        return None
+    raw = value.strip().lower().replace(",", "")
+    raw = raw.replace(" ", "")
+    match = re.match(r"^([0-9]+(?:\.[0-9]+)?)([km]?)$", raw)
+    if not match:
+        return None
+    number = float(match.group(1))
+    suffix = match.group(2)
+    if suffix == "k":
+        number *= 1000
+    elif suffix == "m":
+        number *= 1_000_000
+    return int(round(number))
+
+
+def _extract_context_usage_tokens(content: str) -> Optional[tuple[int, int]]:
+    if not content or not content.startswith(_CONTEXT_HEADER):
+        return None
+    if _CONTEXT_SECTION not in content or _CONTEXT_TABLE_HEADER not in content:
+        return None
+    tokens_line = None
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if "tokens:" in stripped.lower():
+            tokens_line = stripped
+            break
+    if not tokens_line:
+        return None
+    tokens_line = tokens_line.replace("**", "")
+    match = re.search(r"Tokens:\s*([^/]+)\s*/\s*([^\s(]+)", tokens_line, re.IGNORECASE)
+    if not match:
+        return None
+    used_tokens = _parse_compact_number(match.group(1).strip())
+    window_tokens = _parse_compact_number(match.group(2).strip())
+    if used_tokens is None or window_tokens is None:
+        return None
+    return used_tokens, window_tokens
+
+
+def _sum_assistant_usage(messages: list[SessionMessage]) -> int:
+    total = 0
+    for msg in messages:
+        if msg.role != "assistant":
+            continue
+        usage = msg.usage
+        if not usage:
+            continue
+        try:
+            total += int(usage.total_tokens or 0)
+        except Exception:
+            continue
+    return total
+
+
+def _maybe_calibrate_context_usage(
+    session,
+    assistant_content: str,
+    source_message_id: Optional[str] = None,
+) -> bool:
+    parsed = _extract_context_usage_tokens(assistant_content)
+    if not parsed:
+        return False
+    used_tokens, window_tokens = parsed
+    total_usage = _sum_assistant_usage(session.messages)
+    offset_tokens = used_tokens - total_usage
+    session.context_usage = ContextUsageCalibration(
+        offset_tokens=offset_tokens,
+        window_tokens=window_tokens,
+        updated_at=time.time(),
+        source_message_id=source_message_id,
+    )
+    return True
 
 
 @router.websocket("/ws/chat")
@@ -180,6 +264,7 @@ async def websocket_chat(websocket: WebSocket):
                         usage=final_usage,
                     )
                     session.add_message(assistant_msg)
+                    _maybe_calibrate_context_usage(session, assistant_content, assistant_msg.id)
                     session_storage.save_session(session)
                 
                 logger.info(f"Agent stream completed. Total events sent: {event_count}")
@@ -632,6 +717,7 @@ async def websocket_session(websocket: WebSocket):
                         usage=final_usage,
                     )
                     storage_session.add_message(assistant_msg)
+                    _maybe_calibrate_context_usage(storage_session, assistant_content, assistant_msg.id)
                     
                     # Track the model and endpoint used for this response
                     storage_session.last_model_name = effective_model
@@ -834,6 +920,8 @@ async def websocket_multiplexed(websocket: WebSocket):
                     assistant_msg.blocks = all_blocks if all_blocks else None
                     if usage:
                         assistant_msg.usage = TokenUsage.from_dict(usage)
+                if force and assistant_msg:
+                    _maybe_calibrate_context_usage(storage_session, assistant_content, assistant_msg.id)
                 storage_session.updated_at = time.time()
                 save_session_func(storage_session)
                 last_persist = now

@@ -3,7 +3,7 @@ import { Message } from "@/lib/types";
 import { User, FilePlus, FileEdit, FileText, Image as ImageIcon } from "lucide-react";
 import { BlockList } from "@/components/blocks/block-renderer";
 import { TextBlock } from "@/components/blocks/text-block";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { OpenImageOptions } from "@/components/image-editor/types";
 import type { FilePanelOpenEntry } from "@/components/panels/file-panel";
 import { useWorkspace } from "@/lib/workspace-store";
@@ -71,6 +71,8 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
     const hasBlocks = message.blocks && message.blocks.length > 0;
     const { currentWorkspace } = useWorkspace();
     const { openFilePanelCallback } = useChat();
+    const [isCompactExpanded, setIsCompactExpanded] = useState(false);
+    const [isContextExpanded, setIsContextExpanded] = useState(false);
 
     // Check if there are text blocks in the message
     const hasTextBlocks = message.blocks?.some(b => b.type === 'text') || false;
@@ -118,6 +120,45 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
     // 2. Either there are no blocks OR there are no text blocks (to avoid duplication)
     const hasTextContent = cleanContent && cleanContent.trim().length > 0;
     const showLegacyContent = hasTextContent && !hasTextBlocks;
+
+    const compactSummaryContent = useMemo(() => {
+        if (isUser) return null;
+        if (message.isStreaming) return null;
+        const blocks = message.blocks || [];
+        if (blocks.length !== 1) return null;
+        const block = blocks[0];
+        if (block.type !== 'text') return null;
+        if (typeof block.content !== 'string') return null;
+        if (block.content.trim().toLowerCase() !== 'compacted') return null;
+        const fullContent = typeof message.content === 'string' ? message.content : '';
+        if (!fullContent || fullContent.trim().length <= 20) return null;
+        return fullContent;
+    }, [isUser, message.blocks, message.content, message.isStreaming]);
+
+    const contextSummary = useMemo(() => {
+        if (isUser) return null;
+        if (message.isStreaming) return null;
+        const blocks = message.blocks || [];
+        if (blocks.length !== 1) return null;
+        const block = blocks[0];
+        if (block.type !== 'text') return null;
+        if (typeof block.content !== 'string') return null;
+        const fullContent = typeof message.content === 'string' ? message.content : '';
+        if (!fullContent) return null;
+        if (!fullContent.startsWith('## Context Usage')) return null;
+        if (!fullContent.includes('### Estimated usage by category')) return null;
+        if (!fullContent.includes('| Category | Tokens | Percentage |')) return null;
+        const tokenLine = fullContent
+            .split('\n')
+            .find(line => /^\s*\*\*Tokens:\*\*/.test(line) || /Tokens:\s/.test(line));
+        if (!tokenLine) return null;
+        return {
+            tokenLine,
+            fullContent,
+        };
+    }, [isUser, message.blocks, message.content, message.isStreaming]);
+
+    const isSpecialSummary = !!compactSummaryContent || !!contextSummary;
 
     const fileOperations = useMemo(() => (
         collectFileOperations({
@@ -191,7 +232,7 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                     )}
 
                     {/* Render blocks first (includes thinking, tool calls, etc.) */}
-                    {hasBlocks && (
+                    {hasBlocks && !isSpecialSummary && (
                         <BlockList
                             blocks={message.blocks!}
                             onPermissionResponse={onPermissionResponse}
@@ -202,6 +243,70 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
                             onOpenTerminal={onOpenTerminal}
                             onPreviewHTML={onPreviewHTML}
                         />
+                    )}
+
+                    {/* Compacted summary (load-only) */}
+                    {!isUser && compactSummaryContent && (
+                        <div className="mt-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsCompactExpanded((prev) => !prev)}
+                                className={cn(
+                                    "inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium",
+                                    "border border-border bg-muted/40 text-foreground",
+                                    "hover:bg-muted/60 transition-colors"
+                                )}
+                                title={isCompactExpanded ? "Hide compacted summary" : "Show compacted summary"}
+                            >
+                                {isCompactExpanded ? "Hide compacted summary" : "Show compacted summary"}
+                            </button>
+                            {isCompactExpanded && (
+                                <div className="mt-3">
+                                    <TextBlock
+                                        block={{
+                                            id: `compact-summary-${message.id}`,
+                                            type: 'text',
+                                            content: compactSummaryContent,
+                                            status: 'success',
+                                        }}
+                                        onPreviewHTML={onPreviewHTML}
+                                        onOpenInPanel={onOpenInPanel}
+                                        onOpenTerminal={onOpenTerminal}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Context summary (load-only) */}
+                    {!isUser && contextSummary && (
+                        <div className="mt-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsContextExpanded((prev) => !prev)}
+                                className={cn(
+                                    "inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium",
+                                    "border border-border bg-muted/40 text-foreground",
+                                    "hover:bg-muted/60 transition-colors"
+                                )}
+                                title={isContextExpanded ? "Hide context details" : "Show context details"}
+                            >
+                                {isContextExpanded ? "Hide context details" : "Show context details"}
+                            </button>
+                            <div className="mt-3">
+                                <TextBlock
+                                    block={{
+                                        id: isContextExpanded ? `context-full-${message.id}` : `context-tokens-${message.id}`,
+                                        type: 'text',
+                                        content: isContextExpanded ? contextSummary.fullContent : contextSummary.tokenLine,
+                                        status: 'success',
+                                    }}
+                                    onPreviewHTML={onPreviewHTML}
+                                    onOpenInPanel={onOpenInPanel}
+                                    onOpenTerminal={onOpenTerminal}
+                                />
+                            </div>
+                        </div>
                     )}
 
                     {/* Only render legacy text content if no text blocks exist (to avoid duplication) */}
