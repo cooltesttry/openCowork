@@ -28,10 +28,11 @@ interface ToolsPanelContentProps {
 export function ToolsPanelContent({ params }: ToolsPanelContentProps) {
     const { isProcessing, rightPanelView, setRightPanelView } = useChat();
     const isOpen = params?.isOpen ?? true;
+    const panelBackgroundClass = rightPanelView === "files" ? "bg-zinc-50 dark:bg-zinc-900" : "bg-card";
 
     if (!isOpen) {
         return (
-            <div className="h-full flex flex-col items-stretch gap-2 py-4">
+            <div className={`h-full flex flex-col items-stretch gap-2 py-4 ${panelBackgroundClass}`}>
                 <Button
                     variant="ghost"
                     size="icon"
@@ -78,8 +79,8 @@ export function ToolsPanelContent({ params }: ToolsPanelContentProps) {
     }
 
     return (
-        <div className="h-full flex flex-col">
-            <div className="h-10 px-3 border-b flex items-center justify-between bg-card/60 backdrop-blur shrink-0">
+        <div className={`h-full flex flex-col ${panelBackgroundClass}`}>
+            <div className={`h-10 px-3 border-b flex items-center justify-between shrink-0 ${panelBackgroundClass}`}>
                 <Button
                     variant="ghost"
                     size="icon"

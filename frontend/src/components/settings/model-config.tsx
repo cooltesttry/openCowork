@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { Plus, Trash2 } from "lucide-react";
@@ -23,6 +24,9 @@ interface ModelConfig {
     model_name: string;
     max_tokens: number;
     max_thinking_tokens: number;
+    small_fast_model?: string;
+    shell_path?: string;
+    disable_non_essential_model_calls?: boolean;
 }
 
 interface ImageGenConfig {
@@ -99,6 +103,15 @@ export function ModelConfig() {
             }
             if (!data.selected_endpoint) {
                 data.selected_endpoint = "";
+            }
+            if (data.small_fast_model === undefined) {
+                data.small_fast_model = "";
+            }
+            if (data.shell_path === undefined) {
+                data.shell_path = "";
+            }
+            if (data.disable_non_essential_model_calls === undefined) {
+                data.disable_non_essential_model_calls = false;
             }
             setConfig(data);
 
@@ -394,6 +407,49 @@ export function ModelConfig() {
                             onChange={(e) => setConfig({ ...config, max_thinking_tokens: parseInt(e.target.value) || 0 })}
                         />
                         <p className="text-xs text-muted-foreground">0 = default</p>
+                    </div>
+                </div>
+
+                {/* Bash reliability options */}
+                <div className="border rounded-lg p-4 space-y-4">
+                    <div className="space-y-0.5">
+                        <h3 className="font-medium text-sm">Bash Reliability</h3>
+                        <p className="text-xs text-muted-foreground">
+                            Improve Bash tool startup on custom endpoints.
+                        </p>
+                    </div>
+
+                    <div className="space-y-1">
+                        <Label className="text-xs">Small/Fast Model Override</Label>
+                        <Input
+                            value={config.small_fast_model || ""}
+                            onChange={(e) => setConfig({ ...config, small_fast_model: e.target.value })}
+                            placeholder="Optional: model used for Bash pre-flight checks"
+                        />
+                    </div>
+
+                    <div className="space-y-1">
+                        <Label className="text-xs">Shell Override</Label>
+                        <Input
+                            value={config.shell_path || ""}
+                            onChange={(e) => setConfig({ ...config, shell_path: e.target.value })}
+                            placeholder="Optional: /bin/bash or /bin/zsh"
+                        />
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-md border p-3">
+                        <div className="space-y-0.5">
+                            <Label className="text-xs">Disable Non-essential Model Calls</Label>
+                            <p className="text-xs text-muted-foreground">
+                                Reduces background model requests.
+                            </p>
+                        </div>
+                        <Switch
+                            checked={!!config.disable_non_essential_model_calls}
+                            onCheckedChange={(checked) =>
+                                setConfig({ ...config, disable_non_essential_model_calls: checked })
+                            }
+                        />
                     </div>
                 </div>
 

@@ -17,12 +17,13 @@ export function DocksideToolbars({ toolsPanelWidth }: { toolsPanelWidth: number 
         rightPanelView,
         setRightPanelView,
     } = useChat();
+    const panelBackgroundClass = rightPanelView === "files" ? "bg-zinc-50 dark:bg-zinc-900" : "bg-card";
 
     return (
         <>
             {/* Right toolbar / header */}
             <aside
-                className={`fixed right-0 top-0 z-40 overflow-hidden border-l bg-card/90 backdrop-blur transition-[width,height] duration-200 ease-out ${isSidebarOpen ? "border-b" : ""}`}
+                className={`fixed right-0 top-0 z-40 overflow-hidden border-l ${panelBackgroundClass} transition-[width,height] duration-200 ease-out ${isSidebarOpen ? "border-b" : ""}`}
                 style={{
                     width: isSidebarOpen ? toolsPanelWidth : DOCKSIDE_TOOLBAR_WIDTH,
                     height: isSidebarOpen ? 40 : "100%",

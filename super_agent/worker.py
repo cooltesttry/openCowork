@@ -310,6 +310,11 @@ def _build_env(config: WorkerConfig) -> dict:
     if config.max_thinking_tokens > 0:
         env["MAX_THINKING_TOKENS"] = str(config.max_thinking_tokens)
 
+    # Keep Bash pre-flight model aligned for custom providers/endpoints.
+    if config.model and (endpoint or config.provider in ("openrouter", "local", "openai")):
+        env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = config.model
+        env["ANTHROPIC_SMALL_FAST_MODEL"] = config.model
+
     if config.env:
         env.update(config.env)
     return env

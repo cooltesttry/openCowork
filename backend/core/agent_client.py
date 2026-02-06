@@ -259,6 +259,27 @@ def build_agent_options(
         env_vars["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(settings.model.max_tokens)
     if settings.model.max_thinking_tokens > 0:
         env_vars["MAX_THINKING_TOKENS"] = str(settings.model.max_thinking_tokens)
+
+    # Small/fast pre-flight model for Bash tool reliability.
+    # Claude Code now prefers ANTHROPIC_DEFAULT_HAIKU_MODEL; keep legacy var for compatibility.
+    small_fast_model = (settings.model.small_fast_model or "").strip()
+    if small_fast_model:
+        env_vars["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = small_fast_model
+        env_vars["ANTHROPIC_SMALL_FAST_MODEL"] = small_fast_model
+    elif settings.model.model_name and (
+        bool(endpoint_url) or provider in ("openrouter", "local", "cliproxyapi", "openai")
+    ):
+        # For non-default providers/endpoints, default the pre-flight model to the selected model
+        # to avoid inaccessible default Haiku routes causing long Bash pre-flight delays.
+        env_vars["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = settings.model.model_name
+        env_vars["ANTHROPIC_SMALL_FAST_MODEL"] = settings.model.model_name
+
+    shell_path = (settings.model.shell_path or "").strip()
+    if shell_path:
+        env_vars["CLAUDE_CODE_SHELL"] = shell_path
+
+    if settings.model.disable_non_essential_model_calls:
+        env_vars["DISABLE_NON_ESSENTIAL_MODEL_CALLS"] = "1"
         
     if env_vars:
         options.env = env_vars

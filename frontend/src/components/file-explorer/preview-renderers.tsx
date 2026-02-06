@@ -16,7 +16,7 @@ export const CustomVideoRenderer: DocRenderer = ({ mainState: { currentDocument 
         : `http://localhost:8000/api/files/raw?path=${encodeURIComponent(currentDocument.uri)}`;
 
     return (
-        <div className="flex items-center justify-center h-full w-full bg-black">
+        <div className="flex items-center justify-center h-full w-full bg-zinc-50 dark:bg-zinc-800">
             <video
                 controls
                 className="max-h-full max-w-full outline-none"

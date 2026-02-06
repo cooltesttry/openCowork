@@ -273,7 +273,7 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
                         )}
                     </div>
                 ) : isVideo ? (
-                    <div className="flex items-center justify-center bg-black h-full">
+                    <div className="flex items-center justify-center bg-zinc-50 dark:bg-zinc-800 h-full">
                         {currentDoc.uri ? (
                             <video
                                 src={currentDoc.uri}

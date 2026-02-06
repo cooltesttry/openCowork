@@ -251,7 +251,7 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
     }, [globalMcpServers, mcpQuery]);
 
     return (
-        <div className="h-full flex flex-col bg-card/50">
+        <div className="h-full flex flex-col bg-card">
             {rightPanelView === "files" ? (
                 <FileExplorer
                     className="h-full border-0 bg-transparent"
@@ -267,7 +267,7 @@ export function McpSidebarPanel({ onMentionFile, onOpenFile, onOpenInPanel, onSe
                 />
             ) : (
                 <div className="flex flex-col flex-1 overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/20 shrink-0">
+                    <div className="flex items-center justify-between px-4 py-2 border-b bg-card shrink-0">
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground">
                                 {toolsMode === "active" ? "Active Tools" : "Add Tools"}

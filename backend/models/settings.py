@@ -29,6 +29,9 @@ class ModelAPIConfig(BaseModel):
     max_tokens: int = 0  # 0 = use SDK default
     max_thinking_tokens: int = 0  # 0 = disabled
     context_window: int = 200000  # Default context window size for UI usage
+    small_fast_model: str = ""  # Optional override for small/fast pre-flight model
+    shell_path: str = ""  # Optional shell override for Bash tool execution
+    disable_non_essential_model_calls: bool = False  # Reduce background model calls
     
     def get_active_endpoint(self) -> "ModelEndpoint | None":
         """Get the currently active endpoint configuration."""

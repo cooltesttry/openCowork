@@ -216,7 +216,7 @@ export function WorkspaceSidebar({
 
     return (
         <aside
-            className="h-full bg-card border-r flex flex-col shrink-0"
+            className="h-full bg-card flex flex-col shrink-0"
             style={{
                 width: isOpen ? SIDEBAR_WIDTH : COLLAPSED_WIDTH,
                 minWidth: isOpen ? SIDEBAR_WIDTH : COLLAPSED_WIDTH,

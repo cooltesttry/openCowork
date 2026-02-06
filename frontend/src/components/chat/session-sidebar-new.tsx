@@ -78,7 +78,7 @@ export function SessionSidebar({
 
     return (
         <aside
-            className="h-full bg-card border-r flex flex-col shrink-0"
+            className="h-full bg-card flex flex-col shrink-0"
             style={{
                 width: isOpen ? SIDEBAR_WIDTH : 0,
                 minWidth: isOpen ? SIDEBAR_WIDTH : 0,
