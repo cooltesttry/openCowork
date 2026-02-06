@@ -89,6 +89,7 @@ export function FilePanel({ params, api }: FilePanelProps) {
 
     const isImage = Boolean(inlineImageDataUrl) || isImageFile(fileName);
     const isEditable = typeof inlineTextContent === 'string' || isEditableFile(fileName);
+    const isHtmlFile = /\.(html|htm)$/i.test(fileName);
 
     const allowedModes = useMemo<FilePanelMode[]>(() => {
         if (isImage) return ['preview', 'image'];
@@ -229,8 +230,10 @@ export function FilePanel({ params, api }: FilePanelProps) {
     const previewContentOverride = useMemo(() => {
         if (mode !== 'preview') return undefined;
         if (!isEditable) return undefined;
+        // For real HTML files, prefer backend webserver rendering so relative assets work.
+        if (isHtmlFile && filePath) return undefined;
         return draftContent;
-    }, [mode, isEditable, draftContent]);
+    }, [mode, isEditable, draftContent, isHtmlFile, filePath]);
 
     useEffect(() => {
         if (!isImage) return;
@@ -287,7 +290,7 @@ export function FilePanel({ params, api }: FilePanelProps) {
     );
 
     return (
-        <div className="h-full w-full flex flex-col">
+        <div className="h-full w-full flex flex-col bg-zinc-50 dark:bg-zinc-800">
             {!(isImage && mode === 'image') && (
                 <div className="flex items-center justify-between px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
                     <div className="flex items-center gap-2 min-w-0">
@@ -346,7 +349,7 @@ export function FilePanel({ params, api }: FilePanelProps) {
                 </div>
             )}
 
-            <div className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 bg-zinc-50 dark:bg-zinc-800">
                 {isEditable && (
                     <div className={mode === 'editor' ? 'h-full' : 'hidden'}>
                         <EditorPanel

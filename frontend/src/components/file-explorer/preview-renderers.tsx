@@ -92,7 +92,7 @@ export const CustomMarkdownRenderer: DocRenderer = ({ mainState: { currentDocume
     );
 
     return (
-        <div className="h-full w-full overflow-auto bg-zinc-50 dark:bg-zinc-900 p-8">
+        <div className="h-full w-full overflow-auto bg-zinc-50 dark:bg-zinc-800 p-8">
             <article className="
                 prose dark:prose-invert max-w-none 
                 prose-pre:bg-zinc-200 dark:prose-pre:bg-zinc-800 
@@ -157,9 +157,9 @@ export const CustomRTFRenderer: DocRenderer = ({ mainState: { currentDocument } 
     );
 
     return (
-        <div className="h-full w-full overflow-auto bg-white p-8">
+        <div className="h-full w-full overflow-auto bg-zinc-50 dark:bg-zinc-800 p-8">
             <div
-                className="prose prose-sm max-w-none text-zinc-800"
+                className="prose prose-sm max-w-none text-zinc-800 dark:text-zinc-200"
                 dangerouslySetInnerHTML={{ __html: content }}
             />
         </div>

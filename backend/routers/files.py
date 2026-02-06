@@ -126,7 +126,12 @@ async def resolve_path_to_absolute(request: Request, body: ResolvePathRequest):
 
 
 @router.get("/list")
-async def list_files(request: Request, path: str = "", recursive: bool = True):
+async def list_files(
+    request: Request,
+    path: str = "",
+    recursive: bool = True,
+    subdir: Optional[str] = None,
+):
     """
     List files in a directory relative to WORK_DIR.
     Default returns root files.
@@ -137,7 +142,9 @@ async def list_files(request: Request, path: str = "", recursive: bool = True):
     if not workdir:
         raise HTTPException(status_code=500, detail="Default working directory not configured.")
     
-    target_path = get_safe_path(workdir, path)
+    # Backward compatibility: older clients send `subdir` instead of `path`.
+    target_rel_path = path or (subdir or "")
+    target_path = get_safe_path(workdir, target_rel_path)
     
     if not target_path.exists():
          raise HTTPException(status_code=404, detail="Directory not found.")
@@ -148,18 +155,22 @@ async def list_files(request: Request, path: str = "", recursive: bool = True):
     results = []
     ignored = {'.git', '.DS_Store', '__pycache__', 'node_modules', '.venv', '.next'}
     
+    base_path = Path(workdir).resolve()
+
     try:
         if recursive:
             # Recursive scan - walk all subdirectories
-            base_path = Path(workdir).resolve()
             for root, dirs, files in os.walk(target_path):
                 # Filter ignored directories in-place to prevent walking into them
-                dirs[:] = [d for d in dirs if d not in ignored]
+                dirs[:] = sorted(d for d in dirs if d not in ignored)
                 
                 # Add directories
-                for dir_name in sorted(dirs):
+                for dir_name in dirs:
                     dir_path = Path(root) / dir_name
-                    rel_route = str(dir_path.relative_to(base_path))
+                    try:
+                        rel_route = str(dir_path.relative_to(base_path))
+                    except (ValueError, OSError):
+                        continue
                     results.append(FileItem(
                         name=dir_name,
                         path=rel_route,
@@ -171,9 +182,13 @@ async def list_files(request: Request, path: str = "", recursive: bool = True):
                 for file_name in sorted(files):
                     if file_name in ignored:
                         continue
-                    file_path = Path(root) / file_name
-                    rel_route = str(file_path.relative_to(base_path))
-                    stat = file_path.stat()
+                    try:
+                        file_path = Path(root) / file_name
+                        rel_route = str(file_path.relative_to(base_path))
+                        stat = file_path.stat()
+                    except (FileNotFoundError, PermissionError, ValueError, OSError):
+                        # File may disappear or become inaccessible during concurrent writes.
+                        continue
                     results.append(FileItem(
                         name=file_name,
                         path=rel_route,
@@ -189,21 +204,30 @@ async def list_files(request: Request, path: str = "", recursive: bool = True):
                 if item.name in ignored:
                     continue
                 
-                # rel to workdir for frontend usage
-                rel_route = str(item.relative_to(Path(workdir).resolve()))
-                stat = item.stat()
+                try:
+                    # rel to workdir for frontend usage
+                    rel_route = str(item.relative_to(base_path))
+                    is_directory = item.is_dir()
+                    stat = item.stat()
+                except (FileNotFoundError, PermissionError, ValueError, OSError):
+                    continue
                 
                 results.append(FileItem(
                     name=item.name,
                     path=rel_route,
-                    is_directory=item.is_dir(),
-                    size=stat.st_size if not item.is_dir() else None,
+                    is_directory=is_directory,
+                    size=stat.st_size if not is_directory else None,
                     modified_at=stat.st_mtime
                 ))
+    except HTTPException:
+        raise
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied.")
     except Exception as e:
+        logger.warning(f"Failed to list files for workdir={workdir}, path={target_rel_path}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-    return {"files": results, "current_path": path}
+    return {"files": results, "current_path": target_rel_path}
 
 
 import re

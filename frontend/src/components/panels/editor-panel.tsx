@@ -24,7 +24,14 @@ interface EditorPanelProps extends IDockviewPanelProps {
 
 const MonacoEditor = dynamic(
     () => import('@monaco-editor/react'),
-    { ssr: false, loading: () => <div>Loading Editor...</div> }
+    {
+        ssr: false,
+        loading: () => (
+            <div className="h-full w-full flex items-center justify-center bg-zinc-50 dark:bg-zinc-800 text-zinc-500">
+                Loading Editor...
+            </div>
+        ),
+    }
 );
 
 export function EditorPanel({ params }: EditorPanelProps) {
@@ -138,10 +145,21 @@ export function EditorPanel({ params }: EditorPanelProps) {
             inherit: true,
             rules: [],
             colors: {
-                'editor.background': '#f6f7f9',
-                'editorGutter.background': '#f6f7f9',
-                'editorLineHighlightBackground': '#eef1f4',
-                'editorLineHighlightBorder': '#eef1f4',
+                'editor.background': '#fafafa',
+                'editorGutter.background': '#fafafa',
+                'editorLineHighlightBackground': '#f4f4f5',
+                'editorLineHighlightBorder': '#f4f4f5',
+            },
+        });
+        monaco.editor.defineTheme('cowork-dark', {
+            base: 'vs-dark',
+            inherit: true,
+            rules: [],
+            colors: {
+                'editor.background': '#27272a',
+                'editorGutter.background': '#27272a',
+                'editorLineHighlightBackground': '#3f3f46',
+                'editorLineHighlightBorder': '#3f3f46',
             },
         });
     }, []);
@@ -151,7 +169,7 @@ export function EditorPanel({ params }: EditorPanelProps) {
     // but sometimes needs a trigger if container resizes.
 
     return (
-        <div className="h-full w-full flex flex-col relative">
+        <div className="h-full w-full flex flex-col relative bg-zinc-50 dark:bg-zinc-800">
             {!params?.hideHeader && (
                 <div className="flex items-center justify-between px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -181,12 +199,12 @@ export function EditorPanel({ params }: EditorPanelProps) {
                     </button>
                 </div>
             )}
-            <div className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 bg-zinc-50 dark:bg-zinc-800">
                 <MonacoEditor
                     height="100%"
                     width="100%"
                     language={language}
-                    theme={resolvedTheme === 'dark' ? 'vs-dark' : 'cowork-light'}
+                    theme={resolvedTheme === 'dark' ? 'cowork-dark' : 'cowork-light'}
                     beforeMount={handleBeforeMount}
                     value={value}
                     onChange={(val) => {

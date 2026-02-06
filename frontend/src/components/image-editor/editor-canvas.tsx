@@ -329,7 +329,7 @@ export function EditorCanvas({
   return (
     <div
       ref={containerRef}
-      className={`flex-1 relative overflow-auto flex items-center justify-center bg-zinc-200 dark:bg-zinc-900 ${
+      className={`flex-1 relative overflow-auto flex items-center justify-center bg-zinc-50 dark:bg-zinc-800 ${
         isDragging ? 'ring-2 ring-blue-500 ring-inset' : ''
       }`}
       onDragEnter={handleDragEnter}
@@ -346,7 +346,7 @@ export function EditorCanvas({
 
       {/* Loading state */}
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-zinc-100 dark:bg-zinc-900">
+        <div className="absolute inset-0 flex items-center justify-center bg-zinc-50 dark:bg-zinc-800">
           <div className="text-sm text-zinc-500">Loading editor...</div>
         </div>
       )}

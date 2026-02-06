@@ -202,7 +202,7 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
     // No document
     if (!currentDoc) {
         return (
-            <Container className="flex items-center justify-center bg-zinc-50 dark:bg-zinc-900 text-zinc-500">
+            <Container className="flex items-center justify-center bg-zinc-50 dark:bg-zinc-800 text-zinc-500">
                 <p>No file selected</p>
             </Container>
         );
@@ -215,7 +215,7 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
 
     // Render based on file type (same logic as popup)
     return (
-        <Container className="flex flex-col h-full">
+        <Container className="flex flex-col h-full bg-zinc-50 dark:bg-zinc-800">
             {/* Header - hide when displaying inline HTML content */}
             {!params?.hideHeader && !isInlineHtml && (
                 <div className="flex items-center justify-between px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
@@ -256,7 +256,7 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
             )}
 
             {/* Content */}
-            <div className="flex-1 overflow-auto bg-zinc-50 dark:bg-zinc-900 relative">
+            <div className="flex-1 overflow-auto bg-zinc-50 dark:bg-zinc-800 relative">
                 {isImage ? (
                     <div className="flex items-center justify-center p-4 h-full">
                         {currentDoc.uri ? (
@@ -293,8 +293,9 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
                                 <iframe
                                     srcDoc={inlineHtml}
                                     title={fileName}
-                                    className="w-full h-full border-0 bg-white"
-                                    sandbox="allow-scripts"
+                                    className="w-full h-full border-0 bg-zinc-50 dark:bg-zinc-800"
+                                    sandbox="allow-scripts allow-pointer-lock"
+                                    allow="pointer-lock; fullscreen"
                                 />
                             </div>
                         );
@@ -314,8 +315,9 @@ export function FilePreviewPanel({ params }: FilePreviewPanelProps) {
                             <iframe
                                 src={webserverUri}
                                 title={fileName}
-                                className="w-full h-full border-0 bg-white"
-                                sandbox="allow-scripts allow-same-origin"
+                                className="w-full h-full border-0 bg-zinc-50 dark:bg-zinc-800"
+                                sandbox="allow-scripts allow-same-origin allow-pointer-lock"
+                                allow="pointer-lock; fullscreen"
                             />
                         </div>
                     );

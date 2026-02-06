@@ -143,11 +143,25 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
     );
 
     const fetchFiles = useCallback(async () => {
+        // Workspace is not ready yet; avoid noisy backend errors and stale file trees.
+        if (!currentWorkspace?.id && workspaceId == null) {
+            setFlatFiles([]);
+            setIsLoading(false);
+            return;
+        }
+
         setIsLoading(true);
         try {
-            // Fetch flat list or recursive? The backend supports recursive by default
-            const res = await fetch("http://localhost:8000/api/files/list?subdir=&recursive=true");
-            if (!res.ok) throw new Error("Failed to fetch files");
+            const query = new URLSearchParams({
+                path: "",
+                recursive: "true",
+            });
+            const res = await fetch(`http://localhost:8000/api/files/list?${query.toString()}`);
+            if (!res.ok) {
+                const errorBody = await res.json().catch(() => ({}));
+                const detail = typeof errorBody?.detail === "string" ? errorBody.detail : res.statusText;
+                throw new Error(`Failed to fetch files (${res.status}): ${detail}`);
+            }
             const data = await res.json();
 
             // The backend returns a flat list of all files with paths? 
@@ -165,10 +179,11 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
             setFlatFiles(files);
         } catch (err) {
             console.error(err);
+            setFlatFiles([]);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [currentWorkspace?.id, workspaceId]);
 
     useEffect(() => {
         fetchFiles();
@@ -176,13 +191,14 @@ export function FileExplorer({ className, onMentionFile, onOpenFile, onOpenInPan
 
     // Refetch files when workspace changes
     useEffect(() => {
-        if (workspaceId !== undefined) {
-            // Clear expanded paths when workspace changes
-            setExpandedPaths(new Set());
-            // Refetch files for new workspace
-            fetchFiles();
+        // Clear expanded state whenever workspace context changes.
+        setExpandedPaths(new Set());
+        if (workspaceId == null && !currentWorkspace?.id) {
+            setFlatFiles([]);
+            return;
         }
-    }, [workspaceId, fetchFiles]);
+        fetchFiles();
+    }, [workspaceId, currentWorkspace?.id, fetchFiles]);
 
     // Sync internal viewFilter when external viewFilter changes
     useEffect(() => {

@@ -729,7 +729,7 @@ export function Toolbar({ state, actions, onSave, onGenerateAI, isGenerating, on
         </div>
 
         {/* Row 2: Tool options */}
-        <div className="flex items-center px-3 py-2 bg-zinc-100/50 dark:bg-zinc-800/50 min-h-[40px] overflow-x-auto">
+        <div className="flex items-center px-3 py-2 bg-zinc-50 dark:bg-zinc-800 min-h-[40px] overflow-x-auto">
           {renderToolOptions()}
         </div>
 

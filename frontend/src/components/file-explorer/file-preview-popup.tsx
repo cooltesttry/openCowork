@@ -216,7 +216,8 @@ export function FilePreviewPopup({ entry, position, anchor = 'right', onClose }:
                                 title={entry.name}
                                 className="w-full h-full border-0 bg-white"
                                 style={{ minHeight: '300px' }}
-                                sandbox="allow-scripts allow-same-origin"
+                                sandbox="allow-scripts allow-same-origin allow-pointer-lock"
+                                allow="pointer-lock; fullscreen"
                             />
                         </div>
                     );

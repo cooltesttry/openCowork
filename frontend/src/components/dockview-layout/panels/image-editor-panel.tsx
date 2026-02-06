@@ -9,7 +9,7 @@ const ImageEditor = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-full flex items-center justify-center bg-zinc-100 dark:bg-zinc-900">
+      <div className="h-full flex items-center justify-center bg-zinc-50 dark:bg-zinc-800">
         <div className="text-sm text-zinc-500">Loading Image Editor...</div>
       </div>
     ),

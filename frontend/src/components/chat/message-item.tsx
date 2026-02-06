@@ -174,7 +174,7 @@ export function MessageItem({ message, onPermissionResponse, onAskUserSubmit, on
         })
     ), [message.blocks, currentWorkspace?.path]);
 
-    const userBubbleClassName = "inline-block max-w-full rounded-lg bg-foreground/10 dark:bg-foreground/12 px-3 py-0";
+    const userBubbleClassName = "inline-block max-w-full rounded-lg bg-foreground/10 dark:bg-foreground/12 px-3 py-1";
 
     const assistantText = useMemo(() => {
         if (isUser) return '';
