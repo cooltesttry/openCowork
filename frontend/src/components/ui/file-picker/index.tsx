@@ -402,8 +402,12 @@ export function FilePickerDialog({
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
+                      e.preventDefault();
+                      e.stopPropagation();
                       handleCreateFolder();
                     } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      e.stopPropagation();
                       setCreatingFolder(false);
                       setNewFolderName("");
                     }
