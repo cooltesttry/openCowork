@@ -75,22 +75,6 @@ export function ChatPanel() {
 
     // Slash commands from SDK (captured from init event)
     const [slashCommands, setSlashCommands] = useState<{ command: string, description: string }[]>([]);
-    // Initialize connection and load sessions
-    useEffect(() => {
-        sessionClient.connect().catch((error) => {
-            console.warn("Session WebSocket connection failed, will retry on message send", error);
-        });
-
-        // Load sessions on mount
-        loadSessions();
-    }, [loadSessions]);
-
-    // Load session messages when currentSessionId changes
-    useEffect(() => {
-        if (currentSessionId) {
-            loadSessionMessages(currentSessionId);
-        }
-    }, [currentSessionId, loadSessionMessages]);
 
     // Load sessions from API
     const loadSessions = useCallback(async () => {
@@ -173,6 +157,23 @@ export function ChatPanel() {
             }
         }
     }, [loadSessions, setActiveEndpoint, setActiveModel, setContextUsage, setCurrentSessionId, setMessages]);
+
+    // Initialize connection and load sessions
+    useEffect(() => {
+        sessionClient.connect().catch((error) => {
+            console.warn("Session WebSocket connection failed, will retry on message send", error);
+        });
+
+        // Load sessions on mount
+        loadSessions();
+    }, [loadSessions]);
+
+    // Load session messages when currentSessionId changes
+    useEffect(() => {
+        if (currentSessionId) {
+            loadSessionMessages(currentSessionId);
+        }
+    }, [currentSessionId, loadSessionMessages]);
 
     // Start a draft session (actual session created on send)
     const handleNewSession = async () => {
@@ -435,13 +436,13 @@ export function ChatPanel() {
                 security_mode: securityMode,
             }, (event) => {
                 // Capture the streaming session ID (use event's session_id or the one we sent)
-                const streamingSessionId = event.metadata?.session_id || currentSessionId;
+                const streamingSessionId = (event.metadata?.session_id as string) || currentSessionId;
 
                 // Update currentSessionId if returned from server (for new sessions)
                 if (event.metadata?.session_id && !currentSessionId && isDraftSessionRef.current) {
-                    setCurrentSessionId(event.metadata.session_id);
+                    setCurrentSessionId(event.metadata.session_id as string);
                     // Also update the ref immediately so subsequent checks work
-                    currentSessionIdRef.current = event.metadata.session_id;
+                    currentSessionIdRef.current = event.metadata.session_id as string;
                     isDraftSessionRef.current = false;
                     // Reload sessions to include the new one
                     loadSessions();

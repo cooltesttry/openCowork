@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useCallback } from 'react';
-import type { Canvas as FabricCanvas, IText, IEvent } from 'fabric';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import type { Canvas as FabricCanvas, IText } from 'fabric';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type IEvent<T = any> = any;
 
 interface UseTextToolOptions {
   canvas: FabricCanvas | null;

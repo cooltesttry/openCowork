@@ -162,7 +162,7 @@ export function McpConfig() {
                                 <Label>Type</Label>
                                 <Select
                                     value={newServer.type}
-                                    onValueChange={(val) => setNewServer({ ...newServer, type: val })}
+                                    onValueChange={(val) => setNewServer({ ...newServer, type: val as McpServerType })}
                                 >
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>

@@ -248,7 +248,7 @@ export function TextBlock({ block, onPreviewHTML, onOpenInPanel, onOpenTerminal,
     // Get preview callback from store (priority) or from props
     const { previewHTMLCallback, openFilePanelCallback } = useChat();
     const previewCallback = previewHTMLCallback || onPreviewHTML;
-    const openPanel = onOpenInPanel || openFilePanelCallback;
+    const openPanel = onOpenInPanel || openFilePanelCallback || undefined;
 
     if (!content) return null;
 

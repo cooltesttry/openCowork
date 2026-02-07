@@ -353,17 +353,19 @@ export function FilePanel({ params, api }: FilePanelProps) {
                 {isEditable && (
                     <div className={mode === 'editor' ? 'h-full' : 'hidden'}>
                         <EditorPanel
-                            params={{
-                                content: editorContent,
-                                filename: filePath ?? fileName,
-                                language: params?.language,
-                                hideHeader: true,
-                                onContentChange: setDraftContent,
-                                onSaveRequest: () => {
-                                    handleSave();
+                            {...{
+                                params: {
+                                    content: editorContent,
+                                    filename: filePath ?? fileName,
+                                    language: params?.language,
+                                    hideHeader: true,
+                                    onContentChange: setDraftContent,
+                                    onSaveRequest: () => {
+                                        handleSave();
+                                    },
+                                    onSave: (content: string) => setLastSavedContent(content),
                                 },
-                                onSave: (content) => setLastSavedContent(content),
-                            }}
+                            } as any}
                         />
                     </div>
                 )}
@@ -395,19 +397,21 @@ export function FilePanel({ params, api }: FilePanelProps) {
 
                 {mode === 'preview' && (
                     <FilePreviewPanel
-                        params={{
-                            docs: [
-                                {
-                                    uri: previewUri,
-                                    fileName,
-                                    fileType: fileExt,
-                                    size: params?.size ?? undefined,
-                                    modified_at: params?.modified_at ?? undefined,
-                                },
-                            ],
-                            hideHeader: true,
-                            contentOverride: previewContentOverride,
-                        }}
+                        {...{
+                            params: {
+                                docs: [
+                                    {
+                                        uri: previewUri,
+                                        fileName,
+                                        fileType: fileExt,
+                                        size: params?.size ?? undefined,
+                                        modified_at: params?.modified_at ?? undefined,
+                                    },
+                                ],
+                                hideHeader: true,
+                                contentOverride: previewContentOverride,
+                            },
+                        } as any}
                     />
                 )}
             </div>

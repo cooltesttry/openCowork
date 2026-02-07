@@ -47,7 +47,7 @@ export function StepViewer({ steps }: StepViewerProps) {
                                         <span className="text-xs font-medium uppercase tracking-wider">Thinking</span>
                                     </div>
                                     <div className="text-sm text-muted-foreground whitespace-pre-wrap italic">
-                                        {step.content}
+                                        {String(step.content)}
                                     </div>
                                 </Card>
                             );
@@ -67,7 +67,7 @@ export function StepViewer({ steps }: StepViewerProps) {
                                     name={step.content.name}
                                     input={step.content.input}
                                     result={resultStep?.content.result}
-                                    error={resultStep?.content.is_error ? resultStep.content.result : undefined}
+                                    error={resultStep?.content.is_error ? String(resultStep.content.result) : undefined}
                                 />
                             );
                         }

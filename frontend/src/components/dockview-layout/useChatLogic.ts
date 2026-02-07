@@ -1217,7 +1217,7 @@ export function useChatLogic() {
         if (originalSessionId) {
             resumeSessionStateRef.current = {
                 sessionId: originalSessionId,
-                assistantMessageId: assistantMessageId,
+                assistantMessageId: assistantMessageId ?? '',
                 pendingReplaySkip: 0,
                 dropPartial: false,
             };

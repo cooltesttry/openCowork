@@ -58,7 +58,7 @@ export function SearchConfig() {
                     <Label>Provider</Label>
                     <Select
                         value={config.provider}
-                        onValueChange={(val) => setConfig({ ...config, provider: val })}
+                        onValueChange={(val) => setConfig({ ...config, provider: val as SearchProvider })}
                     >
                         <SelectTrigger>
                             <SelectValue placeholder="Select provider" />

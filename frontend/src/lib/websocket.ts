@@ -43,8 +43,10 @@ export interface AskUserContent {
 
 export interface StreamEvent {
     type: EventType;
-    content: unknown;
-    metadata: Record<string, unknown>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    content: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    metadata: Record<string, any>;
     id?: string;         // Block ID for streaming events
     usage?: {            // Token usage (on "done" event)
         input_tokens: number;

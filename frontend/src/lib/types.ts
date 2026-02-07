@@ -33,7 +33,8 @@ export type BlockType = 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'plan
 export interface MessageBlock {
     id: string;
     type: BlockType;
-    content: unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    content: any;
     status: BlockStatus;
     metadata?: {
         toolName?: string;
@@ -62,7 +63,8 @@ export interface TodoItem {
 export interface AgentStep {
     id: string;
     type: "thinking" | "tool_use" | "tool_result" | "text" | "error" | "tool_input_start" | "tool_input_delta";
-    content: unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    content: any;
     metadata?: Record<string, unknown>;
     timestamp: number;
 }

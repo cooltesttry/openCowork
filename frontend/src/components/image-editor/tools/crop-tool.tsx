@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import type { Canvas as FabricCanvas, Rect, IEvent } from 'fabric';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import type { Canvas as FabricCanvas, Rect } from 'fabric';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type IEvent<T = any> = any;
 import type { CropRatio } from '../types';
 
 interface UseCropToolOptions {

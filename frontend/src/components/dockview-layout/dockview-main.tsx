@@ -14,6 +14,7 @@ import { FilePreviewPanel } from '../panels/file-preview-panel';
 import { FilePanel } from '../panels/file-panel';
 import { AgentsPanel } from '../panels/agents-panel';
 import { SuperAgentPanel } from '../agent/super-agent-panel';
+import { TeamPanel } from '../agent/team-panel';
 import { ImageEditorPanel } from './panels/image-editor-panel';
 import { FloatingAudioPlayer } from '@/components/audio/floating-audio-player';
 
@@ -34,6 +35,7 @@ const components = {
     filepanel: FilePanel,
     agents: AgentsPanel,
     superagent: SuperAgentPanel,
+    team: TeamPanel,
     'image-editor': ImageEditorPanel,
 };
 
@@ -95,7 +97,7 @@ const MiddleEllipsisTab = ({
     void params;
     void tabLocation;
     const title = useDockviewTitle(api);
-    const { head, tail } = splitTitleForTab(title);
+    const { head, tail } = splitTitleForTab(title ?? '');
     const isMiddleMouseButton = useRef(false);
 
     const onClose = useCallback((event: MouseEvent<HTMLDivElement> | PointerEvent<HTMLDivElement>) => {
@@ -892,6 +894,12 @@ export function DockviewMain() {
                 id: 'super-agent-panel',
                 component: 'superagent',
                 title: 'Super Agent',
+                position: { referencePanel: editorPanel, direction: 'within' },
+            });
+            api.addPanel({
+                id: 'team-panel',
+                component: 'team',
+                title: 'Team',
                 position: { referencePanel: editorPanel, direction: 'within' },
             });
             api.addPanel({

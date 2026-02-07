@@ -860,3 +860,96 @@ export async function generateImage(request: GenerateImageRequest): Promise<Gene
     }
     return res.json();
 }
+
+// ============== Team Agent ==============
+
+export interface TaskResult {
+    summary: string;
+    content: string;
+    files: string[];
+    instruction: string;
+    output_dir: string;
+}
+
+export interface TaskStep {
+    task_id: string;
+    description: string;
+    worker_type_id: string;
+    context: Record<string, unknown>;
+    status: string;
+    worker_sdk_session_id: string | null;
+    messages: unknown[];
+    result: TaskResult | null;
+    result_text: string;
+    result_error: string | null;
+    submit_count: number;
+    started_at: string | null;
+    completed_at: string | null;
+}
+
+export interface Phase {
+    phase_id: string;
+    phase_index: number;
+    description: string;
+    tasks: TaskStep[];
+    status: string;
+    phase_review_decision: string | null;
+    phase_review_notes: string | null;
+    started_at: string | null;
+    completed_at: string | null;
+}
+
+export interface Plan {
+    plan_id: string;
+    objective: string;
+    phases: Phase[];
+    version: number;
+    change_log: string[];
+}
+
+export interface TeamSession {
+    session_id: string;
+    status: string;
+    objective: string;
+    plan: Plan | null;
+    current_phase_index: number;
+    final_output: string | null;
+    error: string | null;
+}
+
+export async function startTeamRun(request: {
+    objective: string;
+    lead_worker_id: string;
+    max_task_submits?: number;
+}): Promise<{ session_id: string }> {
+    const res = await fetch(`${API_ROOT}/team/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Failed to start team run" }));
+        throw new Error(err.detail || "Failed to start team run");
+    }
+    return res.json();
+}
+
+export async function getTeamSession(sessionId: string): Promise<TeamSession> {
+    const res = await fetch(`${API_ROOT}/team/session/${encodeURIComponent(sessionId)}`);
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Session not found" }));
+        throw new Error(err.detail || "Session not found");
+    }
+    return res.json();
+}
+
+export async function cancelTeamSession(sessionId: string): Promise<{ session_id: string; status: string }> {
+    const res = await fetch(`${API_ROOT}/team/session/${encodeURIComponent(sessionId)}/cancel`, {
+        method: "POST",
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Failed to cancel session" }));
+        throw new Error(err.detail || "Failed to cancel session");
+    }
+    return res.json();
+}
