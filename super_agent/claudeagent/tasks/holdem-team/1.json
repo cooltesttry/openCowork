@@ -1,0 +1,15 @@
+{
+  "id": "1",
+  "subject": "Implement core poker modules (cards, deck, hand evaluator)",
+  "description": "Create the foundational poker modules in /Users/huawang/pyproject/agentholdem/:\n\n1. **agentholdem/card.py** - Card and Suit classes/enums. Card has rank (2-14, where 11=J,12=Q,13=K,14=A) and suit. String representation like \"As\", \"Kh\", \"2c\", \"Td\". \n\n2. **agentholdem/deck.py** - Standard 52-card deck with shuffle and deal methods.\n\n3. **agentholdem/hand_eval.py** - Hand evaluator that determines the best 5-card hand from 7 cards (2 hole + 5 community). Must correctly rank: Royal Flush > Straight Flush > Four of a Kind > Full House > Flush > Straight > Three of a Kind > Two Pair > One Pair > High Card. Return a HandRank object that is comparable. Handle edge cases: A-2-3-4-5 straight (wheel), ace-high straight, kicker comparisons.\n\n4. **agentholdem/__init__.py** - Package init.\n\nUse Python 3.10+ with type hints. No external dependencies for core logic.",
+  "activeForm": "Implementing core poker modules",
+  "owner": "team-lead",
+  "status": "completed",
+  "blocks": [
+    "2",
+    "3",
+    "4",
+    "5"
+  ],
+  "blockedBy": []
+}

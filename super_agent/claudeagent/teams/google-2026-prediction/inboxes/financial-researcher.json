@@ -1,0 +1,15 @@
+[
+  {
+    "from": "financial-researcher",
+    "text": "{\"type\":\"task_assignment\",\"taskId\":\"1\",\"subject\":\"Research Google's current financial performance (2024-2025)\",\"description\":\"Research Alphabet/Google's recent financial data including: revenue breakdown by segment (Search, YouTube, Cloud, Other Bets), profit margins, growth rates, and key financial metrics from 2024-2025. Focus on quarterly earnings reports and annual filings.\",\"assignedBy\":\"financial-researcher\",\"timestamp\":\"2026-02-06T18:11:52.650Z\"}",
+    "timestamp": "2026-02-06T18:11:52.650Z",
+    "color": "blue",
+    "read": true
+  },
+  {
+    "from": "team-lead",
+    "text": "{\"type\":\"shutdown_request\",\"requestId\":\"shutdown-1770401664549@financial-researcher\",\"from\":\"team-lead\",\"reason\":\"Research complete. Thank you for your work. Please shut down.\",\"timestamp\":\"2026-02-06T18:14:24.549Z\"}",
+    "timestamp": "2026-02-06T18:14:24.549Z",
+    "read": true
+  }
+]

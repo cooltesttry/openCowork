@@ -1,0 +1,10 @@
+{
+  "status": "completed",
+  "summary": "Minimal Team E2E test executed successfully. Created test_note.md with 3 lines: TITLE, MODEL, STATUS.",
+  "files_created": ["test_note.md", "__result.json"],
+  "test_note_content": {
+    "TITLE": "Team E2E Test",
+    "MODEL": "gemini-claude-opus-4-6-thinking",
+    "STATUS": "OK"
+  }
+}

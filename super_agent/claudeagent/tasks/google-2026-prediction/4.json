@@ -1,0 +1,14 @@
+{
+  "id": "4",
+  "subject": "Analyze competitive landscape and market trends",
+  "description": "Analyze Google's competitive position: competition in cloud (vs AWS, Azure), advertising (vs Meta, TikTok, Amazon), AI (vs OpenAI, Microsoft, Anthropic), and regulatory challenges. Include market share trends and analyst forecasts.",
+  "activeForm": "Analyzing competitive landscape",
+  "status": "completed",
+  "blocks": [
+    "5"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "reason": "Completed comprehensive competitive landscape analysis covering cloud, advertising, AI, regulations, analyst forecasts, and industry trends"
+  }
+}

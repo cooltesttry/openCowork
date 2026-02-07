@@ -1,0 +1,14 @@
+{
+  "id": "3",
+  "subject": "Research AI/LLM impact on Google's business",
+  "description": "Research how AI and LLM developments are affecting Google's core business. Include: Gemini adoption, AI integration in Search, competition from OpenAI/Microsoft, AI infrastructure investments, and potential disruption to advertising revenue model.",
+  "activeForm": "Researching AI impact on Google",
+  "status": "completed",
+  "blocks": [
+    "5"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "reason": "Completed comprehensive research on AI/LLM impact on Google's business"
+  }
+}

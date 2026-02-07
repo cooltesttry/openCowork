@@ -1,0 +1,19 @@
+{
+  "name": "google-2026-prediction",
+  "description": "Research and predict Google's business and financial data for calendar year 2026",
+  "createdAt": 1770401424955,
+  "leadAgentId": "team-lead@google-2026-prediction",
+  "leadSessionId": "213d28ea-0bf2-4ea1-bb01-dad70b8cb2ff",
+  "members": [
+    {
+      "agentId": "team-lead@google-2026-prediction",
+      "name": "team-lead",
+      "agentType": "research-lead",
+      "model": "gemini-claude-opus-4-5-thinking",
+      "joinedAt": 1770401424955,
+      "tmuxPaneId": "",
+      "cwd": "/Users/huawang/Documents/aadagent",
+      "subscriptions": []
+    }
+  ]
+}

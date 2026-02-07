@@ -9,6 +9,7 @@ Manages active ClaudeSDKClient instances, handling:
 """
 import asyncio
 import logging
+import os
 import time
 import uuid
 from typing import Optional, Dict, Any, AsyncGenerator
@@ -57,7 +58,7 @@ class ManagedSession:
 
 
 # Import StreamEvent from agent_client for consistency
-from core.agent_client import StreamEvent, StreamEventType, _process_stream_event
+from core.agent_client import StreamEvent, StreamEventType, _process_stream_event, _graceful_close_sdk_client
 
 
 class SessionManager:
@@ -569,7 +570,8 @@ class SessionManager:
         if session and session.client:
             try:
                 if session.is_started:
-                    await session.client.__aexit__(None, None, None)
+                    timeout = float(os.environ.get('CLAUDE_SDK_GRACEFUL_CLOSE_TIMEOUT', '5'))
+                    await _graceful_close_sdk_client(session.client, timeout)
                 logger.info(f"[SessionManager] Closed session: {session_id}")
             except RuntimeError as e:
                 if "cancel scope" in str(e):

@@ -280,6 +280,9 @@ def build_agent_options(
 
     if settings.model.disable_non_essential_model_calls:
         env_vars["DISABLE_NON_ESSENTIAL_MODEL_CALLS"] = "1"
+
+    # Enable experimental Agent Teams capability for Claude Code sessions.
+    env_vars["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"] = "1"
         
     if env_vars:
         options.env = env_vars
@@ -720,6 +723,42 @@ async def invoke_agent(
     )
 
 
+async def _graceful_close_sdk_client(client, timeout_seconds: float = 5.0) -> None:
+    """Gracefully close ClaudeSDKClient, allowing session data to persist for resume.
+
+    Sends EOF via end_input(), waits for process to exit naturally,
+    then calls disconnect() for final cleanup.
+    """
+    if not client:
+        return
+
+    try:
+        q = getattr(client, '_query', None)
+        transport = getattr(q, 'transport', None) if q else None
+
+        if transport and hasattr(transport, 'end_input'):
+            # Step 1: Send EOF to stdin — process can finish naturally
+            await transport.end_input()
+            logger.debug("[AgentClient] Sent EOF to SDK process")
+
+            # Step 2: Wait for process to exit naturally (with timeout)
+            process = getattr(transport, '_process', None)
+            if process and process.returncode is None:
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=timeout_seconds)
+                    logger.debug(f"[AgentClient] SDK process exited naturally (code={process.returncode})")
+                except asyncio.TimeoutError:
+                    logger.warning(f"[AgentClient] SDK process did not exit within {timeout_seconds}s, will terminate")
+    except Exception as e:
+        logger.warning(f"[AgentClient] Error during graceful close: {e}")
+
+    # Step 3: Standard disconnect for final cleanup
+    try:
+        await client.disconnect()
+    except Exception as e:
+        logger.warning(f"[AgentClient] Error during final disconnect: {e}")
+
+
 class AgentSession:
     """
     Manages an interactive agent session using ClaudeSDKClient.
@@ -753,9 +792,10 @@ class AgentSession:
         await self.client.__aenter__()
     
     async def stop(self) -> None:
-        """Stop the agent session."""
+        """Stop the agent session gracefully for resume capability."""
         if self.client:
-            await self.client.__aexit__(None, None, None)
+            timeout = float(os.environ.get('CLAUDE_SDK_GRACEFUL_CLOSE_TIMEOUT', '5'))
+            await _graceful_close_sdk_client(self.client, timeout)
             self.client = None
     
     async def send_message(self, message: str) -> AsyncGenerator[StreamEvent, None]:

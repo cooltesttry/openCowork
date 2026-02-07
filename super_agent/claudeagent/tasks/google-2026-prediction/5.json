@@ -1,0 +1,14 @@
+{
+  "id": "5",
+  "subject": "Compile 2026 financial predictions",
+  "description": "Based on gathered research, compile comprehensive 2026 predictions for Google including: total revenue forecast, segment-by-segment revenue, profit margins, EPS estimates, key risks and opportunities. Present findings in a structured report.",
+  "activeForm": "Compiling 2026 predictions",
+  "status": "completed",
+  "blocks": [],
+  "blockedBy": [
+    "1",
+    "2",
+    "3",
+    "4"
+  ]
+}

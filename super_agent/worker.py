@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -15,7 +16,59 @@ logger = logging.getLogger(__name__)
 EventCallback = Callable[[Any, dict], None]
 
 
+async def _graceful_close_client(client, timeout_seconds: float = 5.0) -> None:
+    """Gracefully close ClaudeSDKClient, allowing session data to persist for resume.
+
+    Sends EOF via end_input(), waits for process to exit naturally,
+    then calls disconnect() for final cleanup.
+    """
+    if not client:
+        return
+
+    try:
+        query = getattr(client, '_query', None)
+        transport = getattr(query, 'transport', None) if query else None
+
+        if transport and hasattr(transport, 'end_input'):
+            # Step 1: Send EOF to stdin — process can finish naturally
+            await transport.end_input()
+            logger.debug("[Worker] Sent EOF to SDK process")
+
+            # Step 2: Wait for process to exit naturally (with timeout)
+            process = getattr(transport, '_process', None)
+            if process and process.returncode is None:
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=timeout_seconds)
+                    logger.debug(f"[Worker] SDK process exited naturally (code={process.returncode})")
+                except asyncio.TimeoutError:
+                    logger.warning(f"[Worker] SDK process did not exit within {timeout_seconds}s, will terminate")
+    except Exception as e:
+        logger.warning(f"[Worker] Error during graceful close: {e}")
+
+    # Step 3: Standard disconnect for final cleanup
+    # If process already exited, transport.close() will just clean up references.
+    # If process didn't exit (timeout), transport.close() will terminate it.
+    try:
+        await client.disconnect()
+    except Exception as e:
+        logger.warning(f"[Worker] Error during final disconnect: {e}")
+
+
 class Worker:
+    async def connect(self, config: WorkerConfig, workspace: Optional[Path] = None):
+        """Optional: create a persistent client for reuse across multiple run_async calls."""
+        pass  # Default no-op, subclasses can override
+
+    async def disconnect(self):
+        """Optional: close the persistent client."""
+        pass  # Default no-op, subclasses can override
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        await self.disconnect()
+
     async def run_async(
         self,
         config: WorkerConfig,
@@ -25,7 +78,7 @@ class Worker:
         resume_sdk_session_id: Optional[str] = None,
     ) -> LLMResult:
         """Run worker with the given prompt.
-        
+
         Args:
             resume_sdk_session_id: If provided, resume from this SDK session
         """
@@ -55,6 +108,26 @@ class StubWorker(Worker):
 
 
 class ClaudeSdkWorker(Worker):
+    def __init__(self):
+        self._client = None  # Optional persistent ClaudeSDKClient
+
+    async def connect(self, config: WorkerConfig, workspace: Optional[Path] = None):
+        """Create a persistent SDK client for reuse across multiple run_async calls."""
+        from claude_agent_sdk import ClaudeSDKClient
+
+        options = self._build_options(config, workspace)
+        self._client = ClaudeSDKClient(options=options)
+        await self._client.__aenter__()
+        logger.info("[Worker] Persistent client connected")
+
+    async def disconnect(self):
+        """Close the persistent SDK client gracefully for session resume."""
+        if self._client:
+            timeout = float(os.environ.get('CLAUDE_SDK_GRACEFUL_CLOSE_TIMEOUT', '5'))
+            await _graceful_close_client(self._client, timeout)
+            self._client = None
+            logger.info("[Worker] Persistent client disconnected")
+
     async def run_async(
         self,
         config: WorkerConfig,
@@ -64,47 +137,105 @@ class ClaudeSdkWorker(Worker):
         resume_sdk_session_id: Optional[str] = None,
     ) -> LLMResult:
         """Run worker with the given prompt.
-        
+
+        If a persistent client exists (via connect()), reuses it.
+        Otherwise falls back to creating a new client per call (backward compatible).
+
         Args:
             config: Worker configuration (model, provider, system_prompt, etc.)
             prompt: The user prompt to send (already built by caller)
             workspace: Working directory
             event_callback: Optional callback for events
-        
-        The prompt will have placeholders replaced:
-            {{TIME}} -> current UTC time
-            {{CWD}} -> current working directory
+            resume_sdk_session_id: If provided, resume from this SDK session (only used in fallback mode)
         """
-        from claude_agent_sdk import (
-            AssistantMessage,
-            ClaudeAgentOptions,
-            ClaudeSDKClient,
-            ResultMessage,
-            SystemMessage,
-            TextBlock,
-            ToolResultBlock,
-            ToolUseBlock,
-            UserMessage,
-        )
-
-        options = self._build_options(config, workspace)
-        
-        # Enable resume if session ID provided
-        if resume_sdk_session_id:
-            options.resume = resume_sdk_session_id
-            options.system_prompt = None  # Let SDK use original session's system prompt
-            logger.info(f"[Worker] Resuming SDK session: {resume_sdk_session_id}")
-        
         # Replace placeholders in prompt
         final_prompt = self._replace_placeholders(prompt, config, workspace)
 
+        if self._client:
+            # Reuse persistent client
+            return await self._run_on_client(self._client, final_prompt, event_callback)
+        else:
+            # Fallback: create a new client per call (backward compatible)
+            return await self._run_new_client(
+                config, final_prompt, workspace, event_callback, resume_sdk_session_id
+            )
+
+    async def _run_on_client(
+        self,
+        client,
+        final_prompt: str,
+        event_callback: Optional[EventCallback] = None,
+    ) -> LLMResult:
+        """Run a query on an existing persistent client."""
+        from claude_agent_sdk import ResultMessage
+
+        logger.info(f"[Worker] Reusing persistent client, sending query (length={len(final_prompt)} chars)")
+        logger.debug(f"[Worker] Query prompt: {final_prompt[:200]}...")
+
+        # Emit worker_start event
+        if event_callback:
+            from .events import EventType
+            await event_callback(EventType.WORKER_START, {
+                "user_prompt": final_prompt,
+                "persistent_client": True,
+            })
+
+        await client.query(final_prompt)
+
+        text_parts, tool_calls, tool_results = [], [], []
+        sdk_session_id = None
+        usage = None
+        error_text = None
+
+        async for msg in client.receive_response():
+            sdk_session_id, usage, msg_error = await self._process_message(
+                msg, text_parts, tool_calls, tool_results,
+                sdk_session_id, event_callback,
+            )
+            if msg_error:
+                error_text = msg_error
+            if isinstance(msg, ResultMessage):
+                break
+
+        text = "".join(text_parts).strip()
+        logger.info(f"[Worker] Completed (persistent): {len(tool_calls)} tool calls, {len(text)} chars output")
+
+        return LLMResult(
+            text=text,
+            tool_calls=tool_calls,
+            tool_results=tool_results,
+            sdk_session_id=sdk_session_id,
+            usage=usage,
+            error=error_text,
+        )
+
+    async def _run_new_client(
+        self,
+        config: WorkerConfig,
+        final_prompt: str,
+        workspace: Optional[Path] = None,
+        event_callback: Optional[EventCallback] = None,
+        resume_sdk_session_id: Optional[str] = None,
+    ) -> LLMResult:
+        """Run with a new client per call (original behavior, backward compatible)."""
+        from claude_agent_sdk import ClaudeSDKClient, ResultMessage
+
+        options = self._build_options(config, workspace)
+
+        # Enable resume if session ID provided
+        if resume_sdk_session_id:
+            options.resume = resume_sdk_session_id
+            options.system_prompt = None
+            logger.info(f"[Worker] Resuming SDK session: {resume_sdk_session_id}")
+
+        sdk_session_id = resume_sdk_session_id
         text_parts: list[str] = []
         tool_calls: list[dict] = []
         tool_results: list[dict] = []
-        sdk_session_id = resume_sdk_session_id  # Keep same session ID on resume
         usage = None
+        error_text = None
 
-        # Emit worker_start event with EXACT SDK parameters before calling SDK
+        # Emit worker_start event
         if event_callback:
             from .events import EventType
             await event_callback(EventType.WORKER_START, {
@@ -114,90 +245,121 @@ class ClaudeSdkWorker(Worker):
                 "max_turns": getattr(options, 'max_turns', None),
                 "permission_mode": getattr(options, 'permission_mode', None),
                 "cwd": getattr(options, 'cwd', None),
-                "resume": resume_sdk_session_id,  # Show resume status in event
+                "resume": resume_sdk_session_id,
             })
 
-        async with ClaudeSDKClient(options=options) as client:
+        client = ClaudeSDKClient(options=options)
+        await client.__aenter__()
+        try:
             logger.info(f"[Worker] Connected to SDK, sending query (length={len(final_prompt)} chars, resume={resume_sdk_session_id is not None})")
             logger.debug(f"[Worker] Query prompt: {final_prompt[:200]}...")
             await client.query(final_prompt)
 
             async for msg in client.receive_messages():
-                if isinstance(msg, SystemMessage):
-                    if getattr(msg, "subtype", None) == "init":
-                        data = getattr(msg, "data", {})
-                        if isinstance(data, dict):
-                            sdk_session_id = data.get("session_id", sdk_session_id)
-
-                elif isinstance(msg, AssistantMessage):
-                    for block in msg.content:
-                        if isinstance(block, TextBlock):
-                            text_parts.append(block.text)
-                        elif isinstance(block, ToolUseBlock):
-                            logger.info(f"[Worker] Tool call: {block.name}")
-                            tool_calls.append(
-                                {
-                                    "id": block.id,
-                                    "name": block.name,
-                                    "input": block.input,
-                                }
-                            )
-                            # Emit tool call event with input
-                            if event_callback:
-                                from .events import EventType
-                                # Truncate input for large values
-                                input_preview = {}
-                                for k, v in (block.input or {}).items():
-                                    if isinstance(v, str) and len(v) > 500:
-                                        input_preview[k] = v[:500] + "..."
-                                    else:
-                                        input_preview[k] = v
-                                await event_callback(EventType.WORKER_TOOL_CALL, {
-                                    "tool_name": block.name,
-                                    "tool_id": block.id,
-                                    "input": input_preview,
-                                })
-
-                elif isinstance(msg, UserMessage):
-                    for block in msg.content:
-                        if isinstance(block, ToolResultBlock):
-                            tool_results.append(
-                                {
-                                    "tool_use_id": block.tool_use_id,
-                                    "content": block.content,
-                                    "is_error": getattr(block, "is_error", False),
-                                }
-                            )
-                            # Emit tool result event
-                            if event_callback:
-                                from .events import EventType
-                                # Truncate content for large results
-                                content_preview = block.content
-                                if isinstance(content_preview, str) and len(content_preview) > 1000:
-                                    content_preview = content_preview[:1000] + "..."
-                                await event_callback(EventType.WORKER_TOOL_RESULT, {
-                                    "tool_id": block.tool_use_id,
-                                    "content": content_preview,
-                                    "is_error": getattr(block, "is_error", False),
-                                })
-
-                elif isinstance(msg, ResultMessage):
-                    usage = getattr(msg, "usage", None)
+                sdk_session_id, usage, msg_error = await self._process_message(
+                    msg, text_parts, tool_calls, tool_results,
+                    sdk_session_id, event_callback,
+                )
+                if msg_error:
+                    error_text = msg_error
+                if isinstance(msg, ResultMessage):
                     break
+        finally:
+            timeout = float(os.environ.get('CLAUDE_SDK_GRACEFUL_CLOSE_TIMEOUT', '5'))
+            await _graceful_close_client(client, timeout)
 
         text = "".join(text_parts).strip()
-        
         logger.info(f"[Worker] Completed: {len(tool_calls)} tool calls, {len(text)} chars output")
         logger.debug(f"[Worker] Output preview: {text[:100]}...")
-        
+
         return LLMResult(
             text=text,
             tool_calls=tool_calls,
             tool_results=tool_results,
             sdk_session_id=sdk_session_id,
             usage=usage,
-            error=None,
+            error=error_text,
         )
+
+    async def _process_message(
+        self, msg, text_parts, tool_calls, tool_results,
+        sdk_session_id, event_callback,
+    ):
+        """Process a single SDK message. Returns (sdk_session_id, usage, error_text)."""
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ResultMessage,
+            SystemMessage,
+            TextBlock,
+            ToolResultBlock,
+            ToolUseBlock,
+            UserMessage,
+        )
+
+        usage = None
+        error_text = None
+
+        if isinstance(msg, SystemMessage):
+            if getattr(msg, "subtype", None) == "init":
+                data = getattr(msg, "data", {})
+                if isinstance(data, dict):
+                    sdk_session_id = data.get("session_id", sdk_session_id)
+
+        elif isinstance(msg, AssistantMessage):
+            for block in msg.content:
+                if isinstance(block, TextBlock):
+                    text_parts.append(block.text)
+                elif isinstance(block, ToolUseBlock):
+                    logger.info(f"[Worker] Tool call: {block.name}")
+                    tool_calls.append({
+                        "id": block.id,
+                        "name": block.name,
+                        "input": block.input,
+                    })
+                    if event_callback:
+                        from .events import EventType
+                        input_preview = {}
+                        for k, v in (block.input or {}).items():
+                            if isinstance(v, str) and len(v) > 500:
+                                input_preview[k] = v[:500] + "..."
+                            else:
+                                input_preview[k] = v
+                        await event_callback(EventType.WORKER_TOOL_CALL, {
+                            "tool_name": block.name,
+                            "tool_id": block.id,
+                            "input": input_preview,
+                        })
+
+        elif isinstance(msg, UserMessage):
+            for block in msg.content:
+                if isinstance(block, ToolResultBlock):
+                    tool_results.append({
+                        "tool_use_id": block.tool_use_id,
+                        "content": block.content,
+                        "is_error": getattr(block, "is_error", False),
+                    })
+                    if event_callback:
+                        from .events import EventType
+                        content_preview = block.content
+                        if isinstance(content_preview, str) and len(content_preview) > 1000:
+                            content_preview = content_preview[:1000] + "..."
+                        await event_callback(EventType.WORKER_TOOL_RESULT, {
+                            "tool_id": block.tool_use_id,
+                            "content": content_preview,
+                            "is_error": getattr(block, "is_error", False),
+                        })
+
+        elif isinstance(msg, ResultMessage):
+            usage = getattr(msg, "usage", None)
+            # Extract session_id from ResultMessage if available
+            result_session = getattr(msg, "session_id", None)
+            if result_session:
+                sdk_session_id = result_session
+            # Capture error state
+            if getattr(msg, "is_error", False):
+                error_text = getattr(msg, "result", None) or "SDK session ended with error"
+
+        return sdk_session_id, usage, error_text
 
     @staticmethod
     def _build_options(

@@ -1,0 +1,8 @@
+[
+  {
+    "from": "team-lead",
+    "text": "{\"type\":\"shutdown_request\",\"requestId\":\"shutdown-1770401665045@competitive-analyst\",\"from\":\"team-lead\",\"reason\":\"Research complete. Thank you for your work. Please shut down.\",\"timestamp\":\"2026-02-06T18:14:25.045Z\"}",
+    "timestamp": "2026-02-06T18:14:25.045Z",
+    "read": true
+  }
+]

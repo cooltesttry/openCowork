@@ -1,0 +1,19 @@
+{
+  "name": "holdem-team",
+  "description": "Build a Limit Texas Hold'em CLI game with AI opponents and comprehensive tests",
+  "createdAt": 1770440219480,
+  "leadAgentId": "team-lead@holdem-team",
+  "leadSessionId": "f38629b8-90ef-49c2-83d1-fe0cca545f34",
+  "members": [
+    {
+      "agentId": "team-lead@holdem-team",
+      "name": "team-lead",
+      "agentType": "team-lead",
+      "model": "gemini-claude-opus-4-6-thinking",
+      "joinedAt": 1770440219480,
+      "tmuxPaneId": "",
+      "cwd": "/Users/huawang/pyproject/agentholdem",
+      "subscriptions": []
+    }
+  ]
+}

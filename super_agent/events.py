@@ -45,6 +45,26 @@ class EventType(str, Enum):
     CHECKER_COMPLETE = "checker_complete"
     CHECKER_ERROR = "checker_error"
 
+    # Team Agent events
+    TEAM_SESSION_START = "team_session_start"
+    TEAM_SESSION_COMPLETE = "team_session_complete"
+    TEAM_SESSION_ERROR = "team_session_error"
+    TEAM_PLANNING_START = "team_planning_start"
+    TEAM_PLANNING_COMPLETE = "team_planning_complete"
+    TEAM_PHASE_START = "team_phase_start"
+    TEAM_PHASE_COMPLETE = "team_phase_complete"
+    TEAM_TASK_START = "team_task_start"
+    TEAM_TASK_SUBMITTED = "team_task_submitted"
+    TEAM_TASK_COMPLETE = "team_task_complete"
+    TEAM_TASK_FAILED = "team_task_failed"
+    TEAM_TASK_FEEDBACK = "team_task_feedback"
+    TEAM_TASK_RESUBMIT = "team_task_resubmit"
+    TEAM_REVIEW_START = "team_review_start"
+    TEAM_REVIEW_COMPLETE = "team_review_complete"
+    TEAM_PHASE_REVIEW_START = "team_phase_review_start"
+    TEAM_PHASE_REVIEW_COMPLETE = "team_phase_review_complete"
+    TEAM_PLAN_UPDATED = "team_plan_updated"
+
 
 @dataclass
 class SessionEvent:
