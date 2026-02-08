@@ -51,7 +51,9 @@ Return a JSON plan in this exact format (no markdown fencing):
 }}
 
 ## User Request
-{objective}"""
+{objective}
+
+Output only the JSON plan. Do not execute any tasks."""
 
 
 def build_worker_prompt(
