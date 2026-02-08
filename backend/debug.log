@@ -31522,3 +31522,14 @@ Research and analyze Google (Alphabet Inc.) latest financial reports, including 
 2026-02-08 06:45:04 - routers.team - INFO - [Team] Session completed: team-e68eb6e7539b
 2026-02-08 06:45:04 - super_agent.events - DEBUG - [Events] Session team-e68eb6e7539b: Emitted team_session_complete
 2026-02-08 06:45:09 - super_agent.events - INFO - [Events] Removed manager for session team-e68eb6e7539b
+2026-02-08 08:10:17 - core.workspace_storage - DEBUG - Ensured Claude SDK directories at /Users/huawang/pyproject/claudeagent/.claude
+2026-02-08 08:10:17 - core.workspace_storage - INFO - Initialized workspace: claudeagent at /Users/huawang/pyproject/claudeagent
+2026-02-08 08:10:17 - core.workspace_storage - INFO - Initialized search index at /Users/huawang/pyproject/claudeagent/.opencowork/search/search.sqlite
+2026-02-08 08:10:17 - core.workspace_storage - DEBUG - [WorkspaceManager] Adding workspace 8364d163-0eee-40b1-bbcf-2ade71876572 to recent. Current count: 5
+2026-02-08 08:10:17 - core.workspace_storage - INFO - [WorkspaceManager] Added workspace claudeagent (8364d163-0eee-40b1-bbcf-2ade71876572) to recent. Total: 6
+2026-02-08 08:10:20 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-08 08:10:20 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
+2026-02-08 08:10:20 - core.file_watcher - INFO - [FileWatcher] Client unregistered. Total clients: 0
+2026-02-08 08:10:20 - routers.files - INFO - [FileWatch WS] Client cleanup complete
+2026-02-08 08:10:23 - routers.files - INFO - [FileWatch WS] Client connected
+2026-02-08 08:10:23 - core.file_watcher - INFO - [FileWatcher] Client registered. Total clients: 1
