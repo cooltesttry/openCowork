@@ -6,17 +6,22 @@ import {
     Play,
     CheckCircle,
     XCircle,
-    Loader2,
-    Wrench,
     Search,
     MessageSquare,
     Send,
     ChevronRight,
-    Brain,
     FileText,
     Cpu,
+    Wrench,
 } from "lucide-react";
 import type { Plan } from "@/lib/api";
+import {
+    processEvent,
+    createInitialState,
+    type EventProcessorState,
+    type ProcessableEvent,
+} from "@/lib/event-processor";
+import { BlockList } from "@/components/blocks/block-renderer";
 
 interface SessionEvent {
     type: string;
@@ -30,14 +35,6 @@ interface AgentTabProps {
     plan: Plan | null;
 }
 
-interface StreamBlock {
-    id: string;
-    type: "text" | "thinking" | "tool_input";
-    content: string;
-    status: "streaming" | "complete";
-    toolName?: string;
-}
-
 interface StepInfo {
     systemPrompt?: string;
     userPrompt?: string;
@@ -45,6 +42,14 @@ interface StepInfo {
     maxTurns?: number;
     permissionMode?: string;
     cwd?: string;
+}
+
+/** A "run" groups a worker_start's step info, its stream blocks, and trailing timeline events */
+interface Run {
+    stepInfo: StepInfo;
+    modelInfo?: string;
+    epState: EventProcessorState;
+    timelineEvents: SessionEvent[];
 }
 
 const LEAD_EVENT_TYPES = new Set([
@@ -65,6 +70,62 @@ const LEAD_EVENT_TYPES = new Set([
     "worker_tool_call",
     "worker_tool_result",
 ]);
+
+/** Translate a worker_stream event into a ProcessableEvent for the event-processor pipeline */
+function translateWorkerStreamEvent(event: SessionEvent): ProcessableEvent | null {
+    const d = event.data;
+    const streamType = d.stream_type as string;
+    const blockId = d.block_id as string;
+
+    switch (streamType) {
+        case "text_start":
+            return { type: "text_start", id: blockId };
+        case "text_delta":
+            return { type: "text_delta", id: blockId, content: d.content as string };
+        case "text_end":
+            return { type: "text_end", id: blockId };
+        case "thinking_start":
+            return { type: "thinking_start", id: blockId };
+        case "thinking_delta":
+            return { type: "thinking_delta", id: blockId, content: d.content as string };
+        case "thinking_end":
+            return { type: "thinking_end", id: blockId };
+        case "tool_input_start":
+            return { type: "tool_input_start", id: blockId, content: { name: d.tool_name as string } };
+        case "tool_input_delta":
+            return { type: "tool_input_delta", id: blockId, content: d.content as string };
+        case "tool_input_end":
+            return { type: "tool_input_end", id: blockId };
+        default:
+            return null; // model_info and others handled separately
+    }
+}
+
+/** Translate a worker_tool_call event into a ProcessableEvent */
+function translateWorkerToolCall(event: SessionEvent): ProcessableEvent {
+    const d = event.data;
+    return {
+        type: "tool_use",
+        content: {
+            name: d.tool_name as string,
+            id: d.tool_id as string,
+            input: d.input,
+        },
+    };
+}
+
+/** Translate a worker_tool_result event into a ProcessableEvent */
+function translateWorkerToolResult(event: SessionEvent): ProcessableEvent {
+    const d = event.data;
+    return {
+        type: "tool_result",
+        content: {
+            tool_use_id: d.tool_id as string,
+            result: d.content,
+            is_error: d.is_error as boolean,
+        },
+    };
+}
 
 function getEventIcon(type: string) {
     if (type.includes("start") || type.includes("planning_start") || type.includes("phase_start")) {
@@ -128,60 +189,86 @@ function formatTime(timestamp: string): string {
     }
 }
 
-/** Process events incrementally to build stream blocks and step info */
-function processEvents(
-    events: SessionEvent[],
-    startIndex: number,
-    blocks: Map<string, StreamBlock>,
-    stepInfo: StepInfo,
-    modelInfo: { model?: string },
-    toolResults: Map<string, { content: unknown; isError: boolean }>,
-) {
-    for (let i = startIndex; i < events.length; i++) {
-        const event = events[i];
+/** Group filtered events into runs, where each run starts at a worker_start event */
+function buildRuns(events: SessionEvent[]): Run[] {
+    const runs: Run[] = [];
+    let currentRun: Run | null = null;
+
+    // Collect timeline events that arrive before the first worker_start
+    const leadingTimeline: SessionEvent[] = [];
+
+    for (const event of events) {
         if (event.type === "worker_start") {
+            // Start a new run
             const d = event.data;
+            const stepInfo: StepInfo = {};
             if (d.system_prompt) stepInfo.systemPrompt = d.system_prompt as string;
             if (d.user_prompt) stepInfo.userPrompt = d.user_prompt as string;
             if (d.model) stepInfo.model = d.model as string;
             if (d.max_turns) stepInfo.maxTurns = d.max_turns as number;
             if (d.permission_mode) stepInfo.permissionMode = d.permission_mode as string;
             if (d.cwd) stepInfo.cwd = d.cwd as string;
-        } else if (event.type === "worker_stream") {
-            const d = event.data;
-            const streamType = d.stream_type as string;
-            const blockId = d.block_id as string;
-            const content = (d.content as string) || "";
 
-            if (streamType === "model_info") {
-                modelInfo.model = d.model as string;
-            } else if (streamType === "text_start") {
-                blocks.set(blockId, { id: blockId, type: "text", content: "", status: "streaming" });
-            } else if (streamType === "thinking_start") {
-                blocks.set(blockId, { id: blockId, type: "thinking", content: "", status: "streaming" });
-            } else if (streamType === "tool_input_start") {
-                blocks.set(blockId, {
-                    id: blockId,
-                    type: "tool_input",
-                    content: "",
-                    status: "streaming",
-                    toolName: d.tool_name as string,
-                });
-            } else if (streamType === "text_delta" || streamType === "thinking_delta" || streamType === "tool_input_delta") {
-                const block = blocks.get(blockId);
-                if (block) block.content += content;
-            } else if (streamType === "text_end" || streamType === "thinking_end" || streamType === "tool_input_end") {
-                const block = blocks.get(blockId);
-                if (block) block.status = "complete";
+            currentRun = {
+                stepInfo,
+                epState: createInitialState(),
+                timelineEvents: [],
+            };
+            runs.push(currentRun);
+        } else if (event.type === "worker_stream") {
+            if (!currentRun) {
+                currentRun = { stepInfo: {}, epState: createInitialState(), timelineEvents: [] };
+                runs.push(currentRun);
             }
+            // Handle model_info separately
+            const streamType = event.data.stream_type as string;
+            if (streamType === "model_info") {
+                currentRun.modelInfo = event.data.model as string;
+            } else {
+                const pe = translateWorkerStreamEvent(event);
+                if (pe) {
+                    currentRun.epState = processEvent(currentRun.epState, pe, "agent");
+                }
+            }
+        } else if (event.type === "worker_tool_call") {
+            if (!currentRun) {
+                currentRun = { stepInfo: {}, epState: createInitialState(), timelineEvents: [] };
+                runs.push(currentRun);
+            }
+            const pe = translateWorkerToolCall(event);
+            currentRun.epState = processEvent(currentRun.epState, pe, "agent");
         } else if (event.type === "worker_tool_result") {
-            const d = event.data;
-            toolResults.set(d.tool_id as string, {
-                content: d.content,
-                isError: d.is_error as boolean,
+            if (!currentRun) {
+                currentRun = { stepInfo: {}, epState: createInitialState(), timelineEvents: [] };
+                runs.push(currentRun);
+            }
+            const pe = translateWorkerToolResult(event);
+            currentRun.epState = processEvent(currentRun.epState, pe, "agent");
+        } else {
+            // Timeline event
+            if (currentRun) {
+                currentRun.timelineEvents.push(event);
+            } else {
+                leadingTimeline.push(event);
+            }
+        }
+    }
+
+    // If there were leading timeline events but no runs, create a virtual run to hold them
+    if (leadingTimeline.length > 0) {
+        if (runs.length > 0) {
+            // Prepend to first run's timeline
+            runs[0].timelineEvents = [...leadingTimeline, ...runs[0].timelineEvents];
+        } else {
+            runs.push({
+                stepInfo: {},
+                epState: createInitialState(),
+                timelineEvents: leadingTimeline,
             });
         }
     }
+
+    return runs;
 }
 
 function PromptSection({ label, content }: { label: string; content: string }) {
@@ -200,61 +287,79 @@ function PromptSection({ label, content }: { label: string; content: string }) {
     );
 }
 
-function StreamBlockView({ block, toolResult }: { block: StreamBlock; toolResult?: { content: unknown; isError: boolean } }) {
-    if (block.type === "thinking") {
-        return (
-            <details className="group mb-1" open={block.status === "streaming"}>
-                <summary className="cursor-pointer text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 py-0.5">
-                    <Brain className="h-3 w-3" />
-                    Thinking
-                    {block.status === "streaming" && (
-                        <Loader2 className="h-3 w-3 animate-spin ml-1" />
-                    )}
-                </summary>
-                <pre className="mt-0.5 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded text-[11px] text-amber-800 dark:text-amber-300 whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto font-mono">
-                    {block.content || "..."}
-                </pre>
-            </details>
-        );
-    }
+function TimelineEventRow({ event }: { event: SessionEvent }) {
+    return (
+        <div className="flex items-start gap-2 text-xs py-1 px-2 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800">
+            <span className="text-[10px] text-zinc-400 whitespace-nowrap mt-0.5">
+                {formatTime(event.timestamp)}
+            </span>
+            <span className="mt-0.5 shrink-0">{getEventIcon(event.type)}</span>
+            <span className="flex-1 text-zinc-700 dark:text-zinc-300">{getEventLabel(event)}</span>
+        </div>
+    );
+}
 
-    if (block.type === "tool_input") {
-        return (
-            <div className="mb-1 border border-purple-200 dark:border-purple-800/40 rounded overflow-hidden">
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-purple-50 dark:bg-purple-900/20 text-[11px]">
-                    <Wrench className="h-3 w-3 text-purple-500" />
-                    <span className="font-medium text-purple-700 dark:text-purple-300">
-                        {block.toolName || "Tool"}
-                    </span>
-                    {block.status === "streaming" && (
-                        <Loader2 className="h-3 w-3 animate-spin text-purple-400 ml-auto" />
+function RunView({ run, runIndex, showDivider }: { run: Run; runIndex: number; showDivider: boolean }) {
+    const { stepInfo, modelInfo, epState, timelineEvents } = run;
+    const hasStepInfo = stepInfo.systemPrompt || stepInfo.userPrompt;
+    const hasBlocks = epState.blocks.length > 0;
+    const displayModel = modelInfo || stepInfo.model;
+
+    return (
+        <div>
+            {/* Run divider for multi-run display */}
+            {showDivider && (
+                <div className="flex items-center gap-2 py-1.5 px-2 my-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/40 rounded text-[11px] text-blue-600 dark:text-blue-400">
+                    <Play className="h-3 w-3" />
+                    <span className="font-medium">Run {runIndex + 1}</span>
+                    {displayModel && (
+                        <Badge variant="outline" className="text-[10px] ml-auto">
+                            <Cpu className="h-2.5 w-2.5 mr-0.5" />
+                            {displayModel}
+                        </Badge>
                     )}
                 </div>
-                <pre className="p-2 text-[11px] text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap break-words max-h-[150px] overflow-y-auto font-mono bg-white dark:bg-zinc-900">
-                    {block.content || "{}"}
-                </pre>
-                {toolResult && (
-                    <div className={`border-t px-2 py-1 text-[11px] ${toolResult.isError
-                        ? "border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
-                        : "border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400"
-                    }`}>
-                        <pre className="whitespace-pre-wrap break-words max-h-[100px] overflow-y-auto font-mono">
-                            {typeof toolResult.content === "string"
-                                ? toolResult.content
-                                : JSON.stringify(toolResult.content, null, 2)}
-                        </pre>
-                    </div>
-                )}
-            </div>
-        );
-    }
+            )}
 
-    // text block
-    return (
-        <div className="mb-1 text-[12px] text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words leading-relaxed">
-            {block.content}
-            {block.status === "streaming" && (
-                <span className="inline-block w-1.5 h-3.5 bg-blue-500 animate-pulse ml-0.5 align-text-bottom" />
+            {/* Step Info - collapsible prompts */}
+            {hasStepInfo && (
+                <div className="space-y-1 pb-2 border-b border-zinc-200 dark:border-zinc-700">
+                    {stepInfo.systemPrompt && (
+                        <PromptSection label="System Prompt" content={stepInfo.systemPrompt} />
+                    )}
+                    {stepInfo.userPrompt && (
+                        <PromptSection label="User Prompt" content={stepInfo.userPrompt} />
+                    )}
+                    {(stepInfo.maxTurns || stepInfo.permissionMode || stepInfo.cwd) && (
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                            {stepInfo.maxTurns && (
+                                <Badge variant="outline" className="text-[10px]">max_turns: {stepInfo.maxTurns}</Badge>
+                            )}
+                            {stepInfo.permissionMode && (
+                                <Badge variant="outline" className="text-[10px]">{stepInfo.permissionMode}</Badge>
+                            )}
+                            {stepInfo.cwd && (
+                                <Badge variant="outline" className="text-[10px] max-w-[200px] truncate" title={stepInfo.cwd}>
+                                    {stepInfo.cwd}
+                                </Badge>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Stream content via BlockList */}
+            {hasBlocks && (
+                <BlockList blocks={epState.blocks} />
+            )}
+
+            {/* Timeline events inline after stream blocks */}
+            {timelineEvents.length > 0 && (
+                <div className="space-y-0.5">
+                    {timelineEvents.map((event, i) => (
+                        <TimelineEventRow key={`${runIndex}-tl-${i}`} event={event} />
+                    ))}
+                </div>
             )}
         </div>
     );
@@ -262,18 +367,13 @@ function StreamBlockView({ block, toolResult }: { block: StreamBlock; toolResult
 
 export function AgentTab({ agentId, events, plan }: AgentTabProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
-    const lastProcessedRef = useRef(0);
-    const blocksRef = useRef<Map<string, StreamBlock>>(new Map());
-    const stepInfoRef = useRef<StepInfo>({});
-    const modelInfoRef = useRef<{ model?: string }>({});
-    const toolResultsRef = useRef<Map<string, { content: unknown; isError: boolean }>>(new Map());
     const wasAtBottomRef = useRef(true);
 
     // Filter events based on agentId
     const filteredEvents = useMemo(() => {
         return events.filter((event) => {
             if (agentId === "lead") {
-                if (event.type === "worker_start" || event.type === "worker_stream" || event.type === "worker_tool_result") {
+                if (event.type === "worker_start" || event.type === "worker_stream" || event.type === "worker_tool_call" || event.type === "worker_tool_result") {
                     return (event.data.agent as string) === "lead";
                 }
                 return LEAD_EVENT_TYPES.has(event.type);
@@ -284,40 +384,17 @@ export function AgentTab({ agentId, events, plan }: AgentTabProps) {
         });
     }, [agentId, events]);
 
-    // Process new events incrementally
-    const { blocks, stepInfo, modelInfo, timelineEvents, toolResults } = useMemo(() => {
-        // Reset if events got shorter (new session)
-        if (filteredEvents.length < lastProcessedRef.current) {
-            blocksRef.current = new Map();
-            stepInfoRef.current = {};
-            modelInfoRef.current = {};
-            toolResultsRef.current = new Map();
-            lastProcessedRef.current = 0;
+    // Build runs from filtered events - groups stream blocks with interleaved timeline events
+    const runs = useMemo(() => buildRuns(filteredEvents), [filteredEvents]);
+
+    // Derive display model from runs for header
+    const displayModel = useMemo(() => {
+        for (const run of runs) {
+            if (run.modelInfo) return run.modelInfo;
+            if (run.stepInfo.model) return run.stepInfo.model;
         }
-
-        processEvents(
-            filteredEvents,
-            lastProcessedRef.current,
-            blocksRef.current,
-            stepInfoRef.current,
-            modelInfoRef.current,
-            toolResultsRef.current,
-        );
-        lastProcessedRef.current = filteredEvents.length;
-
-        // Separate timeline events from stream events
-        const timeline = filteredEvents.filter(
-            (e) => e.type !== "worker_stream" && e.type !== "worker_start" && e.type !== "worker_tool_result"
-        );
-
-        return {
-            blocks: blocksRef.current,
-            stepInfo: stepInfoRef.current,
-            modelInfo: modelInfoRef.current,
-            timelineEvents: timeline,
-            toolResults: toolResultsRef.current,
-        };
-    }, [filteredEvents]);
+        return undefined;
+    }, [runs]);
 
     // Track scroll position - only auto-scroll if user is near bottom
     const handleScroll = useCallback(() => {
@@ -339,9 +416,7 @@ export function AgentTab({ agentId, events, plan }: AgentTabProps) {
         ? plan.phases.flatMap((p) => p.tasks).find((t) => t.task_id === taskId)
         : null;
 
-    const displayModel = modelInfo.model || stepInfo.model;
-    const blockArray = Array.from(blocks.values());
-    const hasStreamContent = blockArray.length > 0;
+    const hasContent = runs.some(r => r.epState.blocks.length > 0 || r.timelineEvents.length > 0);
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
@@ -382,62 +457,16 @@ export function AgentTab({ agentId, events, plan }: AgentTabProps) {
             {/* Scrollable content area */}
             <div className="flex-1 overflow-y-auto" ref={scrollRef} onScroll={handleScroll}>
                 <div className="p-3 space-y-2">
-                    {/* Step Info - collapsible prompts */}
-                    {(stepInfo.systemPrompt || stepInfo.userPrompt) && (
-                        <div className="space-y-1 pb-2 border-b border-zinc-200 dark:border-zinc-700">
-                            {stepInfo.systemPrompt && (
-                                <PromptSection label="System Prompt" content={stepInfo.systemPrompt} />
-                            )}
-                            {stepInfo.userPrompt && (
-                                <PromptSection label="User Prompt" content={stepInfo.userPrompt} />
-                            )}
-                            {(stepInfo.maxTurns || stepInfo.permissionMode || stepInfo.cwd) && (
-                                <div className="flex flex-wrap gap-1.5 mt-1">
-                                    {stepInfo.maxTurns && (
-                                        <Badge variant="outline" className="text-[10px]">max_turns: {stepInfo.maxTurns}</Badge>
-                                    )}
-                                    {stepInfo.permissionMode && (
-                                        <Badge variant="outline" className="text-[10px]">{stepInfo.permissionMode}</Badge>
-                                    )}
-                                    {stepInfo.cwd && (
-                                        <Badge variant="outline" className="text-[10px] max-w-[200px] truncate" title={stepInfo.cwd}>
-                                            {stepInfo.cwd}
-                                        </Badge>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )}
+                    {runs.map((run, i) => (
+                        <RunView
+                            key={i}
+                            run={run}
+                            runIndex={i}
+                            showDivider={runs.length > 1}
+                        />
+                    ))}
 
-                    {/* Streaming content blocks */}
-                    {hasStreamContent && (
-                        <div className="space-y-1">
-                            {blockArray.map((block) => (
-                                <StreamBlockView
-                                    key={block.id}
-                                    block={block}
-                                    toolResult={block.type === "tool_input" ? toolResults.get(block.id) : undefined}
-                                />
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Timeline events (non-stream) */}
-                    {timelineEvents.length > 0 && (
-                        <div className="space-y-0.5">
-                            {timelineEvents.map((event, i) => (
-                                <div key={i} className="flex items-start gap-2 text-xs py-1 px-2 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                                    <span className="text-[10px] text-zinc-400 whitespace-nowrap mt-0.5">
-                                        {formatTime(event.timestamp)}
-                                    </span>
-                                    <span className="mt-0.5 shrink-0">{getEventIcon(event.type)}</span>
-                                    <span className="flex-1 text-zinc-700 dark:text-zinc-300">{getEventLabel(event)}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {!hasStreamContent && timelineEvents.length === 0 && (
+                    {!hasContent && (
                         <div className="text-center text-zinc-400 text-sm py-8">
                             No events yet
                         </div>
