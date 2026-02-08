@@ -131,9 +131,10 @@ class SessionEventManager:
             timestamp=timestamp,
             data=data or {},
         )
-        
-        # Store in history
-        self.event_history.append(event)
+
+        # Skip high-frequency stream events from history to avoid memory bloat
+        if event_type not in (EventType.WORKER_STREAM, EventType.CHECKER_STREAM):
+            self.event_history.append(event)
         
         # Broadcast to all connections
         message = event.to_json()

@@ -150,7 +150,14 @@ class PhaseScheduler:
         # Create an independent worker for this task and connect
         task_worker = self.worker_factory()
         try:
+            # Enable streaming for real-time display
+            config.include_partial_messages = True
             await task_worker.connect(config, workspace=task_dir)
+
+            # Create event callback that tags events with task_id
+            async def task_event_callback(event_type, data=None):
+                event_data = {"task_id": task.task_id, **(data or {})}
+                self._emit(event_type, event_data)
 
             while True:
                 # Max submits hard limit
@@ -169,6 +176,7 @@ class PhaseScheduler:
                     config=config,
                     prompt=prompt,
                     workspace=task_dir,
+                    event_callback=task_event_callback,
                 )
 
                 # Check for SDK-level errors

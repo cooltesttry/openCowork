@@ -262,7 +262,14 @@ class TeamOrchestrator:
             # Create Lead-specific persistent worker
             lead_worker = self.worker_factory()
             try:
+                # Enable streaming for real-time display
+                session.lead_config.include_partial_messages = True
                 await lead_worker.connect(session.lead_config)
+
+                # Create event callback for lead worker
+                async def lead_event_callback(event_type, data=None):
+                    event_data = {"agent": "lead", **(data or {})}
+                    self._emit(event_type, event_data)
 
                 lead_result = await lead_worker.run_async(
                     config=session.lead_config,
@@ -270,6 +277,7 @@ class TeamOrchestrator:
                         session.plan.objective,
                         worker_types_info or [],
                     ),
+                    event_callback=lead_event_callback,
                 )
                 session.lead_sdk_session_id = lead_result.sdk_session_id
                 session.plan = _parse_plan(
@@ -299,7 +307,7 @@ class TeamOrchestrator:
 
                     # Lead review callback (closure captures session and lead_worker)
                     async def lead_review_fn(task: TaskStep, message: Message) -> Message:
-                        return await self._lead_review_task(session, task, message, lead_worker)
+                        return await self._lead_review_task(session, task, message, lead_worker, lead_event_callback)
 
                     # Execute Phase
                     scheduler = PhaseScheduler(
@@ -336,7 +344,7 @@ class TeamOrchestrator:
 
                     remaining_phases = session.plan.phases[phase_idx + 1 :]
                     review_text = await self._lead_phase_review(
-                        session, phase, remaining_phases, lead_worker
+                        session, phase, remaining_phases, lead_worker, lead_event_callback
                     )
                     decision = _extract_json(review_text)
 
@@ -415,6 +423,7 @@ class TeamOrchestrator:
                     final_result = await lead_worker.run_async(
                         config=session.lead_config,
                         prompt=build_final_summary_prompt(session.plan),
+                        event_callback=lead_event_callback,
                     )
                     session.lead_sdk_session_id = final_result.sdk_session_id
                     session.final_output = final_result.text
@@ -458,6 +467,7 @@ class TeamOrchestrator:
     async def _lead_review_task(
         self, session: TeamSession, task: TaskStep, message: Message,
         lead_worker: Optional[Worker] = None,
+        event_callback=None,
     ) -> Message:
         """Lead reviews a single Worker submission."""
         prompt = build_task_review_prompt(task, message)
@@ -466,6 +476,7 @@ class TeamOrchestrator:
             config=session.lead_config,
             prompt=prompt,
             resume_sdk_session_id=session.lead_sdk_session_id if not lead_worker else None,
+            event_callback=event_callback,
         )
         session.lead_sdk_session_id = result.sdk_session_id
 
@@ -491,6 +502,7 @@ class TeamOrchestrator:
     async def _lead_phase_review(
         self, session: TeamSession, phase: Phase, remaining_phases: list[Phase],
         lead_worker: Optional[Worker] = None,
+        event_callback=None,
     ) -> str:
         """Lead performs Phase-level review."""
         prompt = build_phase_review_prompt(phase, remaining_phases)
@@ -499,6 +511,7 @@ class TeamOrchestrator:
             config=session.lead_config,
             prompt=prompt,
             resume_sdk_session_id=session.lead_sdk_session_id if not lead_worker else None,
+            event_callback=event_callback,
         )
         session.lead_sdk_session_id = result.sdk_session_id
         return result.text

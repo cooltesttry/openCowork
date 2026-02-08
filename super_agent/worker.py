@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import uuid as uuid_mod
 from pathlib import Path
 from typing import Optional
 
@@ -110,6 +111,7 @@ class StubWorker(Worker):
 class ClaudeSdkWorker(Worker):
     def __init__(self):
         self._client = None  # Optional persistent ClaudeSDKClient
+        self._block_state = {}  # Track content block state across stream events
 
     async def connect(self, config: WorkerConfig, workspace: Optional[Path] = None):
         """Create a persistent SDK client for reuse across multiple run_async calls."""
@@ -295,9 +297,15 @@ class ClaudeSdkWorker(Worker):
             ToolUseBlock,
             UserMessage,
         )
+        from claude_agent_sdk.types import StreamEvent
 
         usage = None
         error_text = None
+
+        if isinstance(msg, StreamEvent):
+            if event_callback:
+                await self._process_stream_event(msg, event_callback)
+            return sdk_session_id, usage, error_text
 
         if isinstance(msg, SystemMessage):
             if getattr(msg, "subtype", None) == "init":
@@ -306,6 +314,14 @@ class ClaudeSdkWorker(Worker):
                     sdk_session_id = data.get("session_id", sdk_session_id)
 
         elif isinstance(msg, AssistantMessage):
+            if event_callback:
+                from .events import EventType
+                model = getattr(msg, 'model', None)
+                if model:
+                    await event_callback(EventType.WORKER_STREAM, {
+                        "stream_type": "model_info",
+                        "model": model,
+                    })
             for block in msg.content:
                 if isinstance(block, TextBlock):
                     text_parts.append(block.text)
@@ -360,6 +376,92 @@ class ClaudeSdkWorker(Worker):
                 error_text = getattr(msg, "result", None) or "SDK session ended with error"
 
         return sdk_session_id, usage, error_text
+
+    async def _process_stream_event(self, sdk_event, event_callback):
+        """Process an SDK StreamEvent and emit WORKER_STREAM events."""
+        from .events import EventType
+
+        raw_event = sdk_event.event
+        event_type = raw_event.get("type")
+
+        if event_type == "content_block_start":
+            index = raw_event.get("index", 0)
+            content_block = raw_event.get("content_block", {})
+            block_type = content_block.get("type")
+
+            if block_type == "text":
+                block_id = f"text_{uuid_mod.uuid4().hex[:8]}_{index}"
+                self._block_state[index] = {"type": "text", "id": block_id}
+                await event_callback(EventType.WORKER_STREAM, {
+                    "stream_type": "text_start",
+                    "block_id": block_id,
+                    "content": "",
+                })
+            elif block_type == "tool_use":
+                tool_id = content_block.get("id", f"tool_{index}")
+                tool_name = content_block.get("name", "unknown")
+                self._block_state[index] = {
+                    "type": "tool_input",
+                    "id": tool_id,
+                    "name": tool_name,
+                }
+                await event_callback(EventType.WORKER_STREAM, {
+                    "stream_type": "tool_input_start",
+                    "block_id": tool_id,
+                    "tool_name": tool_name,
+                    "content": "",
+                })
+            elif block_type == "thinking":
+                block_id = f"thinking_{uuid_mod.uuid4().hex[:8]}_{index}"
+                self._block_state[index] = {"type": "thinking", "id": block_id}
+                await event_callback(EventType.WORKER_STREAM, {
+                    "stream_type": "thinking_start",
+                    "block_id": block_id,
+                    "content": "",
+                })
+
+        elif event_type == "content_block_delta":
+            index = raw_event.get("index", 0)
+            delta = raw_event.get("delta", {})
+            delta_type = delta.get("type")
+            block = self._block_state.get(index)
+            if not block:
+                return
+
+            if delta_type == "text_delta" and block["type"] == "text":
+                text = delta.get("text", "")
+                await event_callback(EventType.WORKER_STREAM, {
+                    "stream_type": "text_delta",
+                    "block_id": block["id"],
+                    "content": text,
+                })
+            elif delta_type == "thinking_delta" and block["type"] == "thinking":
+                text = delta.get("thinking", "")
+                await event_callback(EventType.WORKER_STREAM, {
+                    "stream_type": "thinking_delta",
+                    "block_id": block["id"],
+                    "content": text,
+                })
+            elif delta_type == "input_json_delta" and block["type"] == "tool_input":
+                partial = delta.get("partial_json", "")
+                await event_callback(EventType.WORKER_STREAM, {
+                    "stream_type": "tool_input_delta",
+                    "block_id": block["id"],
+                    "content": partial,
+                })
+
+        elif event_type == "content_block_stop":
+            index = raw_event.get("index", 0)
+            block = self._block_state.pop(index, None)
+            if block:
+                suffix = {"text": "text_end", "thinking": "thinking_end", "tool_input": "tool_input_end"}
+                stream_type = suffix.get(block["type"])
+                if stream_type:
+                    await event_callback(EventType.WORKER_STREAM, {
+                        "stream_type": stream_type,
+                        "block_id": block["id"],
+                        "content": "",
+                    })
 
     @staticmethod
     def _build_options(
