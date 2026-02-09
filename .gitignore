@@ -31,6 +31,10 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+debug.log*
+
+# Super Agent runtime data
+super_agent/claudeagent/tasks/
 
 # Test coverage
 coverage/
