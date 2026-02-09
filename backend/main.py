@@ -25,7 +25,8 @@ from core.mcp_registry import (
 
 
 # Configure logging with file and console output
-LOG_DIR = Path(__file__).parent
+LOG_DIR = Path(__file__).parent.parent / "storage" / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "debug.log"
 
 def setup_logging():

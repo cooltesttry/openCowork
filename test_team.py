@@ -54,6 +54,8 @@ from super_agent.team.team_orchestrator import (
     _ensure_unique_task_ids,
     _read_plan_from_file,
     _plan_data_to_plan,
+    _slugify,
+    _unique_dir,
 )
 from super_agent.events import EventType
 
@@ -95,18 +97,17 @@ def make_session(sid="test-session") -> TeamSession:
     )
 
 
-def _write_plan_json(workspace_dir: Path, plan_data: dict):
-    """Helper: write plan.json to workspace .team directory."""
-    team_dir = workspace_dir / ".team"
-    team_dir.mkdir(parents=True, exist_ok=True)
-    (team_dir / "plan.json").write_text(
+def _write_plan_json(team_data_dir: Path, plan_data: dict):
+    """Helper: write plan.json to team data directory."""
+    team_data_dir.mkdir(parents=True, exist_ok=True)
+    (team_data_dir / "plan.json").write_text(
         json.dumps(plan_data, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
 
-def _write_inbox_mail(workspace_dir: Path, agent_id: str, mails: list[dict]):
+def _write_inbox_mail(team_data_dir: Path, agent_id: str, mails: list[dict]):
     """Helper: write mail to an agent's inbox file."""
-    inbox_dir = workspace_dir / ".team" / "inboxes"
+    inbox_dir = team_data_dir / "inboxes"
     inbox_dir.mkdir(parents=True, exist_ok=True)
     inbox_file = inbox_dir / f"{agent_id}.json"
     inbox_file.write_text(
@@ -246,7 +247,9 @@ class TestFileMailbox(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp())
-        self.mailbox = FileMailbox(self.tmpdir)
+        self.team_data_dir = self.tmpdir / "team_data"
+        self.team_data_dir.mkdir(parents=True, exist_ok=True)
+        self.mailbox = FileMailbox(self.team_data_dir)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -256,7 +259,7 @@ class TestFileMailbox(unittest.TestCase):
 
     def test_register_agent_creates_inbox(self):
         self.mailbox.register_agent("lead")
-        inbox_file = self.tmpdir / ".team" / "inboxes" / "lead.json"
+        inbox_file = self.team_data_dir / "inboxes" / "lead.json"
         self.assertTrue(inbox_file.exists())
         self.assertEqual(json.loads(inbox_file.read_text()), [])
 
@@ -266,7 +269,7 @@ class TestFileMailbox(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_peek_undelivered_with_mail(self):
-        _write_inbox_mail(self.tmpdir, "lead", [
+        _write_inbox_mail(self.team_data_dir, "lead", [
             {"id": "msg-1", "from": "worker-t1", "content": "hello", "delivered": False},
             {"id": "msg-2", "from": "worker-t2", "content": "world", "delivered": True},
         ])
@@ -275,18 +278,18 @@ class TestFileMailbox(unittest.TestCase):
         self.assertEqual(result[0]["id"], "msg-1")
 
     def test_ack_delivered_marks_messages(self):
-        _write_inbox_mail(self.tmpdir, "lead", [
+        _write_inbox_mail(self.team_data_dir, "lead", [
             {"id": "msg-1", "from": "worker-t1", "content": "hello", "delivered": False},
             {"id": "msg-2", "from": "worker-t2", "content": "world", "delivered": False},
         ])
         self.mailbox.ack_delivered("lead", ["msg-1"])
-        inbox_file = self.tmpdir / ".team" / "inboxes" / "lead.json"
+        inbox_file = self.team_data_dir / "inboxes" / "lead.json"
         mails = json.loads(inbox_file.read_text())
         self.assertTrue(mails[0]["delivered"])
         self.assertFalse(mails[1]["delivered"])
 
     def test_ack_then_peek_filters_delivered(self):
-        _write_inbox_mail(self.tmpdir, "lead", [
+        _write_inbox_mail(self.team_data_dir, "lead", [
             {"id": "msg-1", "from": "worker-t1", "content": "hello", "delivered": False},
             {"id": "msg-2", "from": "worker-t2", "content": "world", "delivered": False},
         ])
@@ -297,7 +300,7 @@ class TestFileMailbox(unittest.TestCase):
 
     def test_wait_for_mail_returns_immediately_when_mail_exists(self):
         async def go():
-            _write_inbox_mail(self.tmpdir, "worker-t1", [
+            _write_inbox_mail(self.team_data_dir, "worker-t1", [
                 {"id": "msg-1", "from": "lead", "content": "feedback", "delivered": False},
             ])
             result = await asyncio.wait_for(
@@ -318,7 +321,7 @@ class TestFileMailbox(unittest.TestCase):
                     "tasks": [{"task_id": "t1", "status": "approved"}]
                 }]
             }
-            _write_plan_json(self.tmpdir, plan_data)
+            _write_plan_json(self.team_data_dir, plan_data)
             self.mailbox.register_agent("worker-t1")
             result = await asyncio.wait_for(
                 self.mailbox.wait_for_mail("worker-t1", task_id="t1"), timeout=2.0
@@ -346,7 +349,7 @@ class TestFileMailbox(unittest.TestCase):
                 "tasks": [{"task_id": "t1", "status": "approved"}]
             }]
         }
-        _write_plan_json(self.tmpdir, plan_data)
+        _write_plan_json(self.team_data_dir, plan_data)
         self.assertTrue(self.mailbox._is_task_terminal("t1"))
 
     def test_is_task_terminal_running(self):
@@ -356,7 +359,7 @@ class TestFileMailbox(unittest.TestCase):
                 "tasks": [{"task_id": "t1", "status": "running"}]
             }]
         }
-        _write_plan_json(self.tmpdir, plan_data)
+        _write_plan_json(self.team_data_dir, plan_data)
         self.assertFalse(self.mailbox._is_task_terminal("t1"))
 
     def test_is_task_terminal_no_plan(self):
@@ -372,7 +375,7 @@ class TestFileMailbox(unittest.TestCase):
                 ]
             }]
         }
-        _write_plan_json(self.tmpdir, plan_data)
+        _write_plan_json(self.team_data_dir, plan_data)
         self.assertEqual(self.mailbox.get_task_status("t1"), "approved")
         self.assertEqual(self.mailbox.get_task_status("t2"), "running")
         self.assertIsNone(self.mailbox.get_task_status("t3"))
@@ -395,7 +398,7 @@ class TestMCPPlanServer(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp())
-        (self.tmpdir / ".team").mkdir(parents=True, exist_ok=True)
+        self.tmpdir.mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -426,7 +429,7 @@ class TestMCPPlanServer(unittest.TestCase):
             self.assertIn("2", result)  # 2 Tasks
 
             # Verify plan.json
-            plan = json.loads((self.tmpdir / ".team" / "plan.json").read_text())
+            plan = json.loads((self.tmpdir / "plan.json").read_text())
             self.assertEqual(plan["objective"], "Test objective")
             self.assertEqual(len(plan["phases"]), 1)
             self.assertEqual(len(plan["phases"][0]["tasks"]), 2)
@@ -464,7 +467,7 @@ class TestMCPPlanServer(unittest.TestCase):
             result = mod.update_task("t1", "approved")
             self.assertIn("approved", result)
 
-            plan = json.loads((self.tmpdir / ".team" / "plan.json").read_text())
+            plan = json.loads((self.tmpdir / "plan.json").read_text())
             self.assertEqual(plan["phases"][0]["tasks"][0]["status"], "approved")
         finally:
             self._unpatch_workspace(mod)
@@ -508,7 +511,7 @@ class TestMCPPlanServer(unittest.TestCase):
             result = mod.modify_phases(0, new_phases)
             self.assertIn("v2", result)
 
-            plan = json.loads((self.tmpdir / ".team" / "plan.json").read_text())
+            plan = json.loads((self.tmpdir / "plan.json").read_text())
             self.assertEqual(len(plan["phases"]), 3)  # p0 kept + 2 new
             self.assertEqual(plan["phases"][0]["phase_id"], "p0")
             self.assertEqual(plan["phases"][1]["phase_id"], "p1_new")
@@ -527,7 +530,7 @@ class TestMCPMailboxServer(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp())
-        (self.tmpdir / ".team" / "inboxes").mkdir(parents=True, exist_ok=True)
+        (self.tmpdir / "inboxes").mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -551,7 +554,7 @@ class TestMCPMailboxServer(unittest.TestCase):
             self.assertIn("lead", result)
 
             inbox = json.loads(
-                (self.tmpdir / ".team" / "inboxes" / "lead.json").read_text()
+                (self.tmpdir / "inboxes" / "lead.json").read_text()
             )
             self.assertEqual(len(inbox), 1)
             self.assertEqual(inbox[0]["from"], "worker-t1")
@@ -580,7 +583,7 @@ class TestMCPMailboxServer(unittest.TestCase):
         mod = self._patch_env("worker-t1")
         try:
             # Create empty inbox
-            (self.tmpdir / ".team" / "inboxes" / "worker-t1.json").write_text("[]")
+            (self.tmpdir / "inboxes" / "worker-t1.json").write_text("[]")
             result = mod.read_inbox()
             self.assertIn("没有新邮件", result)
         finally:
@@ -607,7 +610,7 @@ class TestMCPMailboxServer(unittest.TestCase):
                     {"id": "worker-t1", "role": "Worker", "description": "Does work"},
                 ]
             }
-            (self.tmpdir / ".team" / "config.json").write_text(
+            (self.tmpdir / "config.json").write_text(
                 json.dumps(config), encoding="utf-8"
             )
             result = mod.list_members()
@@ -631,7 +634,7 @@ class TestMCPMailboxServer(unittest.TestCase):
             for i in range(5):
                 mod.send_mail("lead", f"Message {i}")
             inbox = json.loads(
-                (self.tmpdir / ".team" / "inboxes" / "lead.json").read_text()
+                (self.tmpdir / "inboxes" / "lead.json").read_text()
             )
             self.assertEqual(len(inbox), 5)
             contents = [m["content"] for m in inbox]
@@ -884,10 +887,10 @@ class _MockWorker(Worker):
         )
 
 
-def _sim_append_inbox(workspace_dir: Path, to: str, content: str, from_id: str):
+def _sim_append_inbox(team_data_dir: Path, to: str, content: str, from_id: str):
     """Simulate send_mail MCP tool call — append a mail to an inbox file."""
     import uuid as _uuid
-    inbox_dir = workspace_dir / ".team" / "inboxes"
+    inbox_dir = team_data_dir / "inboxes"
     inbox_dir.mkdir(parents=True, exist_ok=True)
     inbox_file = inbox_dir / f"{to}.json"
     if not inbox_file.exists():
@@ -903,9 +906,9 @@ def _sim_append_inbox(workspace_dir: Path, to: str, content: str, from_id: str):
     inbox_file.write_text(json.dumps(mails, ensure_ascii=False, indent=2))
 
 
-def _sim_update_task(workspace_dir: Path, task_id: str, status: str):
+def _sim_update_task(team_data_dir: Path, task_id: str, status: str):
     """Simulate update_task MCP tool call — update task status in plan.json."""
-    plan_file = workspace_dir / ".team" / "plan.json"
+    plan_file = team_data_dir / "plan.json"
     if not plan_file.exists():
         return
     plan = json.loads(plan_file.read_text())
@@ -928,14 +931,30 @@ def _extract_agent_id_from_config(config: WorkerConfig) -> str:
     return ""
 
 
+def _extract_team_workspace_from_config(config: WorkerConfig) -> str:
+    """Extract TEAM_WORKSPACE from injected MCP server config."""
+    if isinstance(config.mcp_servers, dict):
+        for mcp in config.mcp_servers.values():
+            ws = mcp.get("env", {}).get("TEAM_WORKSPACE", "")
+            if ws:
+                return ws
+    elif isinstance(config.mcp_servers, list):
+        for s in config.mcp_servers:
+            ws = s.get("env", {}).get("TEAM_WORKSPACE", "")
+            if ws:
+                return ws
+    return ""
+
+
 class _SimWorker(Worker):
     """Worker that simulates MCP tool calls by writing to inbox/plan files.
 
-    Extracts TEAM_AGENT_ID from the injected MCP config to determine identity.
+    Extracts TEAM_AGENT_ID and TEAM_WORKSPACE from the injected MCP config.
+    TEAM_WORKSPACE now points to team_data_dir (not workspace_dir).
     """
 
-    def __init__(self, workspace_dir: Path, approve_immediately: bool = True):
-        self._workspace_dir = workspace_dir
+    def __init__(self, team_data_dir: Path, approve_immediately: bool = True):
+        self._team_data_dir = team_data_dir
         self._approve_immediately = approve_immediately
         self._call_count = 0
         self._connected = False
@@ -944,8 +963,9 @@ class _SimWorker(Worker):
     async def connect(self, config, workspace=None):
         self._connected = True
         self._agent_id = _extract_agent_id_from_config(config)
-        if workspace:
-            self._workspace_dir = Path(workspace)
+        team_ws = _extract_team_workspace_from_config(config)
+        if team_ws:
+            self._team_data_dir = Path(team_ws)
 
     async def disconnect(self):
         self._connected = False
@@ -953,7 +973,8 @@ class _SimWorker(Worker):
     async def run_async(self, config, prompt, workspace=None,
                         event_callback=None, resume_sdk_session_id=None) -> LLMResult:
         self._call_count += 1
-        ws = Path(workspace) if workspace else self._workspace_dir
+        team_ws = _extract_team_workspace_from_config(config)
+        td = Path(team_ws) if team_ws else self._team_data_dir
 
         # Determine role from agent_id
         agent_id = self._agent_id or _extract_agent_id_from_config(config)
@@ -961,7 +982,7 @@ class _SimWorker(Worker):
 
         if not is_lead:
             # Worker: send result to Lead
-            _sim_append_inbox(ws, "lead", f"Task completed (call {self._call_count})", agent_id)
+            _sim_append_inbox(td, "lead", f"Task completed (call {self._call_count})", agent_id)
             return LLMResult(text=f"Worker output", sdk_session_id=f"worker-sdk-{self._call_count}")
 
         else:
@@ -970,10 +991,10 @@ class _SimWorker(Worker):
             task_ids = set(re.findall(r"worker-([a-zA-Z0-9_-]+)", prompt))
             for tid in task_ids:
                 if self._approve_immediately:
-                    _sim_update_task(ws, tid, "approved")
-                    _sim_append_inbox(ws, f"worker-{tid}", "approved", "lead")
+                    _sim_update_task(td, tid, "approved")
+                    _sim_append_inbox(td, f"worker-{tid}", "approved", "lead")
                 else:
-                    _sim_append_inbox(ws, f"worker-{tid}", "Please fix X", "lead")
+                    _sim_append_inbox(td, f"worker-{tid}", "Please fix X", "lead")
             return LLMResult(text="Lead reviewed", sdk_session_id=f"lead-sdk-{self._call_count}")
 
 
@@ -982,8 +1003,10 @@ class TestScheduler(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp())
-        # Create .team directory structure
-        (self.tmpdir / ".team" / "inboxes").mkdir(parents=True, exist_ok=True)
+        self.workspace_dir = self.tmpdir / "workspace"
+        self.workspace_dir.mkdir(parents=True, exist_ok=True)
+        self.team_data_dir = self.tmpdir / "team_data"
+        (self.team_data_dir / "inboxes").mkdir(parents=True, exist_ok=True)
         self.events: list[tuple] = []
 
     def tearDown(self):
@@ -1007,7 +1030,7 @@ class TestScheduler(unittest.TestCase):
                 "tasks": tasks,
             }]
         }
-        _write_plan_json(self.tmpdir, plan)
+        _write_plan_json(self.team_data_dir, plan)
 
     def test_all_tasks_approved(self):
         """Workers submit, Lead approves all via plan.json update."""
@@ -1017,14 +1040,15 @@ class TestScheduler(unittest.TestCase):
                 {"task_id": "t2", "description": "Do B", "worker_type_id": "default", "status": "pending"},
             ])
 
-            lead_worker = _SimWorker(self.tmpdir, approve_immediately=True)
+            lead_worker = _SimWorker(self.team_data_dir, approve_immediately=True)
             await lead_worker.connect(make_worker_config("lead"))
-            mailbox = FileMailbox(self.tmpdir)
+            mailbox = FileMailbox(self.team_data_dir)
             persist_calls = []
 
             scheduler = PhaseScheduler(
-                worker_factory=lambda: _SimWorker(self.tmpdir, approve_immediately=True),
-                workspace_dir=self.tmpdir,
+                worker_factory=lambda: _SimWorker(self.team_data_dir, approve_immediately=True),
+                workspace_dir=self.workspace_dir,
+                team_data_dir=self.team_data_dir,
                 mailbox=mailbox,
                 event_emitter=self._emitter,
                 persist_fn=lambda: persist_calls.append(1),
@@ -1053,13 +1077,14 @@ class TestScheduler(unittest.TestCase):
                 {"task_id": "t1", "description": "Do A", "worker_type_id": "default", "status": "pending"},
             ])
 
-            lead_worker = _SimWorker(self.tmpdir, approve_immediately=True)
+            lead_worker = _SimWorker(self.team_data_dir, approve_immediately=True)
             await lead_worker.connect(make_worker_config("lead"))
-            mailbox = FileMailbox(self.tmpdir)
+            mailbox = FileMailbox(self.team_data_dir)
 
             scheduler = PhaseScheduler(
-                worker_factory=lambda: _MockWorker(should_fail=True, workspace_dir=self.tmpdir),
-                workspace_dir=self.tmpdir,
+                worker_factory=lambda: _MockWorker(should_fail=True, workspace_dir=self.workspace_dir),
+                workspace_dir=self.workspace_dir,
+                team_data_dir=self.team_data_dir,
                 mailbox=mailbox,
                 event_emitter=self._emitter,
             )
@@ -1084,13 +1109,14 @@ class TestScheduler(unittest.TestCase):
                 {"task_id": "t1", "description": "Do A", "worker_type_id": "nonexistent", "status": "pending"},
             ])
 
-            lead_worker = _SimWorker(self.tmpdir, approve_immediately=True)
+            lead_worker = _SimWorker(self.team_data_dir, approve_immediately=True)
             await lead_worker.connect(make_worker_config("lead"))
-            mailbox = FileMailbox(self.tmpdir)
+            mailbox = FileMailbox(self.team_data_dir)
 
             scheduler = PhaseScheduler(
-                worker_factory=lambda: _SimWorker(self.tmpdir),
-                workspace_dir=self.tmpdir,
+                worker_factory=lambda: _SimWorker(self.team_data_dir),
+                workspace_dir=self.workspace_dir,
+                team_data_dir=self.team_data_dir,
                 mailbox=mailbox,
                 event_emitter=self._emitter,
             )
@@ -1127,19 +1153,21 @@ class TestOrchestratorUtils(unittest.TestCase):
             "version": 1,
             "phases": [{"phase_id": "p0", "tasks": []}],
         }
-        _write_plan_json(self.tmpdir, plan_data)
-        result = _read_plan_from_file(self.tmpdir)
+        team_data_dir = self.tmpdir / "team_data"
+        _write_plan_json(team_data_dir, plan_data)
+        result = _read_plan_from_file(team_data_dir)
         self.assertIsNotNone(result)
         self.assertEqual(result["objective"], "Test")
 
     def test_read_plan_from_file_missing(self):
-        result = _read_plan_from_file(self.tmpdir)
+        result = _read_plan_from_file(self.tmpdir / "nonexistent")
         self.assertIsNone(result)
 
     def test_read_plan_from_file_corrupt(self):
-        (self.tmpdir / ".team").mkdir(parents=True, exist_ok=True)
-        (self.tmpdir / ".team" / "plan.json").write_text("not json!!!")
-        result = _read_plan_from_file(self.tmpdir)
+        team_data_dir = self.tmpdir / "team_data"
+        team_data_dir.mkdir(parents=True, exist_ok=True)
+        (team_data_dir / "plan.json").write_text("not json!!!")
+        result = _read_plan_from_file(team_data_dir)
         self.assertIsNone(result)
 
     def test_plan_data_to_plan(self):
@@ -1207,6 +1235,73 @@ class TestOrchestratorUtils(unittest.TestCase):
 
 
 # ═══════════════════════════════════════════════════════════════
+# 9b. Unit Tests: _slugify and _unique_dir
+# ═══════════════════════════════════════════════════════════════
+
+class TestSlugifyAndUniqueDir(unittest.TestCase):
+    """Test _slugify and _unique_dir helpers."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_slugify_ascii(self):
+        self.assertEqual(_slugify("market-analysis"), "market-analysis")
+
+    def test_slugify_spaces_and_special(self):
+        slug = _slugify("My Cool Project! #1")
+        self.assertNotIn(" ", slug)
+        self.assertNotIn("!", slug)
+        self.assertNotIn("#", slug)
+        self.assertTrue(len(slug) > 0)
+
+    def test_slugify_chinese(self):
+        slug = _slugify("市场分析报告")
+        # CJK characters should be preserved, not degraded to "project"
+        self.assertNotEqual(slug, "project")
+        self.assertIn("市场", slug)
+
+    def test_slugify_mixed_cjk_ascii(self):
+        slug = _slugify("Q1 市场分析")
+        self.assertIn("Q1", slug)
+        self.assertIn("市场分析", slug)
+
+    def test_slugify_empty(self):
+        self.assertEqual(_slugify(""), "project")
+
+    def test_slugify_only_special_chars(self):
+        self.assertEqual(_slugify("!@#$%"), "project")
+
+    def test_slugify_truncation(self):
+        slug = _slugify("a" * 100, max_len=20)
+        self.assertLessEqual(len(slug), 20)
+
+    def test_unique_dir_first_call(self):
+        d = _unique_dir(self.tmpdir, "report")
+        self.assertEqual(d.name, "report")
+        self.assertTrue(d.exists())
+
+    def test_unique_dir_dedup(self):
+        d1 = _unique_dir(self.tmpdir, "report")
+        d2 = _unique_dir(self.tmpdir, "report")
+        d3 = _unique_dir(self.tmpdir, "report")
+        self.assertEqual(d1.name, "report")
+        self.assertEqual(d2.name, "report-2")
+        self.assertEqual(d3.name, "report-3")
+        self.assertTrue(d1.exists())
+        self.assertTrue(d2.exists())
+        self.assertTrue(d3.exists())
+
+    def test_unique_dir_different_slugs_independent(self):
+        a = _unique_dir(self.tmpdir, "alpha")
+        b = _unique_dir(self.tmpdir, "beta")
+        self.assertEqual(a.name, "alpha")
+        self.assertEqual(b.name, "beta")
+
+
+# ═══════════════════════════════════════════════════════════════
 # 10. Unit Tests: task_id sanitization
 # ═══════════════════════════════════════════════════════════════
 
@@ -1265,13 +1360,15 @@ class TestDeliveryThenAck(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp())
-        self.mailbox = FileMailbox(self.tmpdir)
+        self.team_data_dir = self.tmpdir / "team_data"
+        self.team_data_dir.mkdir(parents=True, exist_ok=True)
+        self.mailbox = FileMailbox(self.team_data_dir)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_peek_does_not_modify_file(self):
-        _write_inbox_mail(self.tmpdir, "lead", [
+        _write_inbox_mail(self.team_data_dir, "lead", [
             {"id": "msg-1", "from": "worker-t1", "content": "hello", "delivered": False},
         ])
         # Peek should not modify
@@ -1279,7 +1376,7 @@ class TestDeliveryThenAck(unittest.TestCase):
         self.assertEqual(len(result), 1)
 
         # Read file directly - should still be undelivered
-        inbox = json.loads((self.tmpdir / ".team" / "inboxes" / "lead.json").read_text())
+        inbox = json.loads((self.team_data_dir / "inboxes" / "lead.json").read_text())
         self.assertFalse(inbox[0]["delivered"])
 
         # Peek again should return same result
@@ -1287,7 +1384,7 @@ class TestDeliveryThenAck(unittest.TestCase):
         self.assertEqual(len(result2), 1)
 
     def test_ack_after_peek(self):
-        _write_inbox_mail(self.tmpdir, "lead", [
+        _write_inbox_mail(self.team_data_dir, "lead", [
             {"id": "msg-1", "from": "worker-t1", "content": "hello", "delivered": False},
         ])
 
@@ -1303,7 +1400,7 @@ class TestDeliveryThenAck(unittest.TestCase):
         self.assertEqual(len(result2), 0)
 
     def test_partial_ack(self):
-        _write_inbox_mail(self.tmpdir, "lead", [
+        _write_inbox_mail(self.team_data_dir, "lead", [
             {"id": "msg-1", "from": "worker-t1", "content": "hello", "delivered": False},
             {"id": "msg-2", "from": "worker-t2", "content": "world", "delivered": False},
         ])
@@ -1326,14 +1423,14 @@ class TestAtomicWrite(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp())
-        (self.tmpdir / ".team").mkdir(parents=True, exist_ok=True)
+        self.tmpdir.mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_atomic_write_creates_file(self):
         import super_agent.team.mcp_plan_server as plan_mod
-        path = self.tmpdir / ".team" / "test.json"
+        path = self.tmpdir / "test.json"
         plan_mod._atomic_write(path, {"key": "value"})
         self.assertTrue(path.exists())
         data = json.loads(path.read_text())
@@ -1341,7 +1438,7 @@ class TestAtomicWrite(unittest.TestCase):
 
     def test_atomic_write_overwrites(self):
         import super_agent.team.mcp_plan_server as plan_mod
-        path = self.tmpdir / ".team" / "test.json"
+        path = self.tmpdir / "test.json"
         plan_mod._atomic_write(path, {"version": 1})
         plan_mod._atomic_write(path, {"version": 2})
         data = json.loads(path.read_text())
@@ -1349,11 +1446,10 @@ class TestAtomicWrite(unittest.TestCase):
 
     def test_no_temp_files_left(self):
         import super_agent.team.mcp_plan_server as plan_mod
-        path = self.tmpdir / ".team" / "test.json"
+        path = self.tmpdir / "test.json"
         plan_mod._atomic_write(path, {"key": "value"})
         # No .tmp files should remain
-        team_dir = self.tmpdir / ".team"
-        tmp_files = list(team_dir.glob("*.tmp"))
+        tmp_files = list(self.tmpdir.glob("*.tmp"))
         self.assertEqual(len(tmp_files), 0, f"Leftover temp files: {tmp_files}")
 
 
@@ -1368,6 +1464,7 @@ class _IntegrationWorker(Worker):
     - If config has "team-plan" MCP → this is the Lead
     - If config has TEAM_AGENT_ID starting with "worker-" → this is a Worker
 
+    Uses TEAM_WORKSPACE from MCP config as team_data_dir for file operations.
     Simulates: create_plan, send_mail, update_task, phase review, final summary.
     """
 
@@ -1376,6 +1473,7 @@ class _IntegrationWorker(Worker):
         self._calls: list[dict] = []
         self._connected = False
         self._workspace_dir: Optional[Path] = None
+        self._team_data_dir: Optional[Path] = None
         self._agent_id = ""
         self._is_lead = False
 
@@ -1384,6 +1482,9 @@ class _IntegrationWorker(Worker):
         if workspace:
             self._workspace_dir = Path(workspace)
         self._agent_id = _extract_agent_id_from_config(config)
+        team_ws = _extract_team_workspace_from_config(config)
+        if team_ws:
+            self._team_data_dir = Path(team_ws)
         # Detect if this is Lead (has plan MCP)
         if isinstance(config.mcp_servers, dict):
             self._is_lead = "team-plan" in config.mcp_servers
@@ -1396,7 +1497,8 @@ class _IntegrationWorker(Worker):
     async def run_async(self, config, prompt, workspace=None,
                         event_callback=None, resume_sdk_session_id=None) -> LLMResult:
         self._call_count += 1
-        ws = Path(workspace) if workspace else self._workspace_dir
+        team_ws = _extract_team_workspace_from_config(config)
+        td = Path(team_ws) if team_ws else self._team_data_dir or self._workspace_dir
         self._calls.append({
             "call": self._call_count,
             "prompt_prefix": prompt[:100],
@@ -1410,7 +1512,7 @@ class _IntegrationWorker(Worker):
 
         if not is_lead and agent_id.startswith("worker-"):
             # === WORKER: send result to Lead via send_mail ===
-            _sim_append_inbox(ws, "lead", f"Task completed (call {self._call_count})", agent_id)
+            _sim_append_inbox(td, "lead", f"Task completed (call {self._call_count})", agent_id)
             return LLMResult(text="Worker output", sdk_session_id=f"worker-sdk-{self._call_count}")
 
         # === LEAD operations ===
@@ -1419,6 +1521,7 @@ class _IntegrationWorker(Worker):
         if "create_plan" in prompt:
             plan_data = {
                 "objective": "Test integration",
+                "project_name": "integration-report",
                 "version": 1,
                 "change_log": ["v1: initial plan"],
                 "phases": [
@@ -1446,7 +1549,7 @@ class _IntegrationWorker(Worker):
                     }
                 ]
             }
-            _write_plan_json(ws, plan_data)
+            _write_plan_json(td, plan_data)
             return LLMResult(text="Plan created", sdk_session_id="lead-session-1")
 
         # Lead reviewing worker submissions: approve via update_task + send_mail
@@ -1454,8 +1557,8 @@ class _IntegrationWorker(Worker):
         task_ids = set(re.findall(r"worker-([a-zA-Z0-9_]+)", prompt))
         if task_ids and "update_task" in prompt:
             for tid in task_ids:
-                _sim_update_task(ws, tid, "approved")
-                _sim_append_inbox(ws, f"worker-{tid}", "approved", "lead")
+                _sim_update_task(td, tid, "approved")
+                _sim_append_inbox(td, f"worker-{tid}", "approved", "lead")
             return LLMResult(text="Lead approved", sdk_session_id="lead-session-1")
 
         # Phase review: approve (no modify_phases call)
@@ -1478,8 +1581,12 @@ class TestIntegration(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp())
+        self.workspace_dir = self.tmpdir / "workspace"
+        self.workspace_dir.mkdir(parents=True, exist_ok=True)
+        self.team_base_dir = self.workspace_dir / ".opencowork" / "team"
+        self.team_base_dir.mkdir(parents=True, exist_ok=True)
         self.orchestrator = TeamOrchestrator(
-            base_dir=self.tmpdir,
+            base_dir=self.team_base_dir,
             worker_factory=lambda: _IntegrationWorker(),
         )
 
@@ -1496,13 +1603,14 @@ class TestIntegration(unittest.TestCase):
             session = self.orchestrator.create_session(
                 objective="Research and report on AI trends",
                 lead_config=lead_config,
+                workspace_dir=str(self.workspace_dir),
             )
             self.assertEqual(session.status, "pending")
 
-            # Verify .team directory created
-            ws = Path(session.workspace_dir)
-            self.assertTrue((ws / ".team").exists())
-            self.assertTrue((ws / ".team" / "inboxes").exists())
+            # Verify team data directory created
+            td = Path(session.team_data_dir)
+            self.assertTrue(td.exists())
+            self.assertTrue((td / "inboxes").exists())
 
             # Verify session persisted
             loaded = self.orchestrator.store.load_session(session.session_id)
@@ -1534,11 +1642,17 @@ class TestIntegration(unittest.TestCase):
             self.assertEqual(p1.status, "completed")
             self.assertEqual(len(p1.tasks), 1)
 
-            # Check __final_output.json
-            final_output_path = ws / "__final_output.json"
+            # Check __final_output.json in team_data_dir
+            final_output_path = td / "__final_output.json"
             self.assertTrue(final_output_path.exists())
             final_output_data = json.loads(final_output_path.read_text())
             self.assertIn("final_output", final_output_data)
+
+            # Check project_dir was created using project_name from plan
+            self.assertIsNotNone(final.project_dir)
+            self.assertTrue(Path(final.project_dir).exists())
+            # project_name in plan is "integration-report", so dir should match
+            self.assertEqual(Path(final.project_dir).name, "integration-report")
 
             # Verify Lead session continuity
             self.assertIsNotNone(final.lead_sdk_session_id)
@@ -1563,12 +1677,19 @@ class TestAPIRouter(unittest.TestCase):
             raise unittest.SkipTest("fastapi/httpx not installed")
 
         cls._tmpdir = Path(tempfile.mkdtemp())
-        cls._original_base_dir = None
+        cls._workspace_dir = cls._tmpdir / "workspace"
+        cls._workspace_dir.mkdir(parents=True, exist_ok=True)
 
-        # Patch the TEAM_BASE_DIR in the team router
+        # Patch the team router module
         import routers.team as team_router_module
-        cls._original_base_dir = team_router_module.TEAM_BASE_DIR
-        team_router_module.TEAM_BASE_DIR = cls._tmpdir
+
+        # Patch _get_workspace_path to return our test workspace
+        cls._original_get_workspace = team_router_module._get_workspace_path
+
+        def mock_get_workspace_path(request):
+            return str(cls._workspace_dir)
+
+        team_router_module._get_workspace_path = mock_get_workspace_path
 
         # Patch ClaudeSdkWorker to use our scripted worker
         cls._original_sdk_worker = team_router_module.ClaudeSdkWorker
@@ -1611,8 +1732,8 @@ class TestAPIRouter(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls._tmpdir, ignore_errors=True)
         # Restore patches
-        if cls._original_base_dir is not None:
-            cls.team_module.TEAM_BASE_DIR = cls._original_base_dir
+        if hasattr(cls, '_original_get_workspace'):
+            cls.team_module._get_workspace_path = cls._original_get_workspace
         if hasattr(cls, '_original_sdk_worker'):
             cls.team_module.ClaudeSdkWorker = cls._original_sdk_worker
         if hasattr(cls, '_original_get_config'):
@@ -1716,8 +1837,10 @@ class TestFix1SysExecutable(unittest.TestCase):
     def test_orchestrator_lead_config_uses_sys_executable(self):
         tmpdir = Path(tempfile.mkdtemp())
         try:
-            orch = TeamOrchestrator(base_dir=tmpdir)
-            session = orch.create_session("test", make_worker_config("lead"))
+            team_dir = tmpdir / ".opencowork" / "team"
+            team_dir.mkdir(parents=True, exist_ok=True)
+            orch = TeamOrchestrator(base_dir=team_dir)
+            session = orch.create_session("test", make_worker_config("lead"), workspace_dir=str(tmpdir))
             config = orch._build_lead_config_with_mcps(session)
             # Check both MCP entries use sys.executable
             if isinstance(config.mcp_servers, dict):
@@ -1734,11 +1857,13 @@ class TestFix1SysExecutable(unittest.TestCase):
     def test_scheduler_inject_mcp_uses_sys_executable(self):
         tmpdir = Path(tempfile.mkdtemp())
         try:
-            (tmpdir / ".team" / "inboxes").mkdir(parents=True, exist_ok=True)
-            mailbox = FileMailbox(tmpdir)
+            team_data_dir = tmpdir / "team_data"
+            (team_data_dir / "inboxes").mkdir(parents=True, exist_ok=True)
+            mailbox = FileMailbox(team_data_dir)
             scheduler = PhaseScheduler(
                 worker_factory=lambda: _MockWorker(),
                 workspace_dir=tmpdir,
+                team_data_dir=team_data_dir,
                 mailbox=mailbox,
                 event_emitter=lambda *a, **k: None,
             )
@@ -1763,28 +1888,32 @@ class TestFix2SubmitCountNoDouble(unittest.TestCase):
         async def go():
             tmpdir = Path(tempfile.mkdtemp())
             try:
-                (tmpdir / ".team" / "inboxes").mkdir(parents=True, exist_ok=True)
-                _write_plan_json(tmpdir, {
+                workspace_dir = tmpdir / "workspace"
+                workspace_dir.mkdir(parents=True, exist_ok=True)
+                team_data_dir = tmpdir / "team_data"
+                (team_data_dir / "inboxes").mkdir(parents=True, exist_ok=True)
+                _write_plan_json(team_data_dir, {
                     "objective": "test", "version": 1,
                     "phases": [{"phase_id": "p0", "phase_index": 0, "status": "pending",
                                 "tasks": [{"task_id": "t1", "description": "A", "worker_type_id": "default", "status": "pending"}]}]
                 })
 
                 # Lead gives feedback first, then approves on second submit
-                lead_worker = _SimWorker(tmpdir, approve_immediately=False)
+                lead_worker = _SimWorker(team_data_dir, approve_immediately=False)
                 lead_worker._approve_on_call = 2  # Approve on 2nd review
                 await lead_worker.connect(make_worker_config("lead"))
-                mailbox = FileMailbox(tmpdir)
+                mailbox = FileMailbox(team_data_dir)
                 scheduler = PhaseScheduler(
-                    worker_factory=lambda: _SimWorker(tmpdir, approve_immediately=True),
-                    workspace_dir=tmpdir,
+                    worker_factory=lambda: _SimWorker(team_data_dir, approve_immediately=True),
+                    workspace_dir=workspace_dir,
+                    team_data_dir=team_data_dir,
                     mailbox=mailbox,
                     event_emitter=lambda *a, **k: None,
                 )
 
                 # Use approve_immediately=True for the simpler path
                 # Just verify that _lead_loop no longer increments submit_count
-                lead_worker2 = _SimWorker(tmpdir, approve_immediately=True)
+                lead_worker2 = _SimWorker(team_data_dir, approve_immediately=True)
                 await lead_worker2.connect(make_worker_config("lead"))
 
                 t1 = make_task("t1")
@@ -1812,18 +1941,19 @@ class TestFix3AckOnlyOnSuccess(unittest.TestCase):
         async def go():
             tmpdir = Path(tempfile.mkdtemp())
             try:
-                (tmpdir / ".team" / "inboxes").mkdir(parents=True, exist_ok=True)
-                _write_plan_json(tmpdir, {
+                team_data_dir = tmpdir / "team_data"
+                (team_data_dir / "inboxes").mkdir(parents=True, exist_ok=True)
+                _write_plan_json(team_data_dir, {
                     "objective": "test", "version": 1,
                     "phases": [{"phase_id": "p0", "phase_index": 0, "status": "pending",
                                 "tasks": [{"task_id": "t1", "description": "A", "worker_type_id": "default", "status": "pending"}]}]
                 })
                 # Put mail in lead inbox
-                _write_inbox_mail(tmpdir, "lead", [
+                _write_inbox_mail(team_data_dir, "lead", [
                     {"id": "msg-1", "from": "worker-t1", "content": "Task done", "delivered": False}
                 ])
 
-                mailbox = FileMailbox(tmpdir)
+                mailbox = FileMailbox(team_data_dir)
                 mailbox.register_agent("lead")
                 mailbox.register_agent("worker-t1")
 
@@ -1855,7 +1985,7 @@ class TestFix4AbortPlan(unittest.TestCase):
         """abort_plan sets abort flag in plan.json."""
         tmpdir = Path(tempfile.mkdtemp())
         try:
-            (tmpdir / ".team").mkdir(parents=True, exist_ok=True)
+            tmpdir.mkdir(parents=True, exist_ok=True)
             import super_agent.team.mcp_plan_server as plan_mod
             orig = plan_mod.WORKSPACE
             plan_mod.WORKSPACE = str(tmpdir)
@@ -1869,7 +1999,7 @@ class TestFix4AbortPlan(unittest.TestCase):
                 self.assertIn("终止", result)
 
                 # Check plan.json
-                plan = json.loads((tmpdir / ".team" / "plan.json").read_text())
+                plan = json.loads((tmpdir / "plan.json").read_text())
                 self.assertTrue(plan.get("abort"))
                 self.assertEqual(plan.get("abort_reason"), "严重问题")
             finally:
@@ -1954,14 +2084,16 @@ class TestFix7AutoSubmit(unittest.TestCase):
         """Scheduler auto-submits if worker doesn't send mail to lead."""
         tmpdir = Path(tempfile.mkdtemp())
         try:
-            (tmpdir / ".team" / "inboxes").mkdir(parents=True, exist_ok=True)
-            mailbox = FileMailbox(tmpdir)
+            team_data_dir = tmpdir / "team_data"
+            (team_data_dir / "inboxes").mkdir(parents=True, exist_ok=True)
+            mailbox = FileMailbox(team_data_dir)
             mailbox.register_agent("lead")
             mailbox.register_agent("worker-t1")
 
             scheduler = PhaseScheduler(
                 worker_factory=lambda: _MockWorker(),
                 workspace_dir=tmpdir,
+                team_data_dir=team_data_dir,
                 mailbox=mailbox,
                 event_emitter=lambda *a, **k: None,
             )
@@ -1984,19 +2116,21 @@ class TestFix7AutoSubmit(unittest.TestCase):
         """No auto-submit if worker already sent mail to lead."""
         tmpdir = Path(tempfile.mkdtemp())
         try:
-            (tmpdir / ".team" / "inboxes").mkdir(parents=True, exist_ok=True)
-            mailbox = FileMailbox(tmpdir)
+            team_data_dir = tmpdir / "team_data"
+            (team_data_dir / "inboxes").mkdir(parents=True, exist_ok=True)
+            mailbox = FileMailbox(team_data_dir)
             mailbox.register_agent("lead")
             mailbox.register_agent("worker-t1")
 
             # Worker already sent mail
-            _write_inbox_mail(tmpdir, "lead", [
+            _write_inbox_mail(team_data_dir, "lead", [
                 {"id": "msg-1", "from": "worker-t1", "content": "Done", "delivered": False}
             ])
 
             scheduler = PhaseScheduler(
                 worker_factory=lambda: _MockWorker(),
                 workspace_dir=tmpdir,
+                team_data_dir=team_data_dir,
                 mailbox=mailbox,
                 event_emitter=lambda *a, **k: None,
             )
@@ -2014,7 +2148,9 @@ class TestFix7AutoSubmit(unittest.TestCase):
         """FileMailbox.send_auto_mail writes to inbox correctly."""
         tmpdir = Path(tempfile.mkdtemp())
         try:
-            mailbox = FileMailbox(tmpdir)
+            team_data_dir = tmpdir / "team_data"
+            team_data_dir.mkdir(parents=True, exist_ok=True)
+            mailbox = FileMailbox(team_data_dir)
             mailbox.register_agent("lead")
             mailbox.send_auto_mail("worker-t1", "lead", "Auto result")
 
@@ -2032,7 +2168,7 @@ class TestFix8RecipientValidation(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp())
-        (self.tmpdir / ".team" / "inboxes").mkdir(parents=True, exist_ok=True)
+        (self.tmpdir / "inboxes").mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)

@@ -12,6 +12,7 @@ In the dual MCP architecture:
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 import re
@@ -83,9 +84,9 @@ def _build_previous_results_summary(plan: Plan, up_to_phase_index: int) -> str:
     return "\n".join(parts)
 
 
-def _read_plan_from_file(workspace_dir: Path) -> Optional[dict]:
-    """Read plan.json from the workspace .team directory."""
-    plan_file = workspace_dir / ".team" / "plan.json"
+def _read_plan_from_file(team_data_dir: Path) -> Optional[dict]:
+    """Read plan.json from the team data directory."""
+    plan_file = team_data_dir / "plan.json"
     if not plan_file.exists():
         return None
     try:
@@ -137,6 +138,31 @@ def _plan_data_to_plan(plan_data: dict, plan_id: str, available_worker_ids: Opti
     )
 
 
+def _slugify(text: str, max_len: int = 40) -> str:
+    """Convert text to a slug suitable for directory names.
+
+    Preserves CJK characters (U+4E00–U+9FFF) alongside ASCII alphanumerics.
+    Non-slug characters become hyphens; consecutive hyphens are collapsed.
+    """
+    # Keep ASCII alphanumerics and CJK unified ideographs; replace rest with hyphen
+    slug = re.sub(r"[^a-zA-Z0-9\u4e00-\u9fff]+", "-", text).strip("-")
+    # Truncate
+    if len(slug) > max_len:
+        slug = slug[:max_len].rstrip("-")
+    return slug or "project"
+
+
+def _unique_dir(parent: Path, slug: str) -> Path:
+    """Create a uniquely-named directory under parent using atomic mkdir."""
+    for i in itertools.count(1):
+        name = slug if i == 1 else f"{slug}-{i}"
+        try:
+            (parent / name).mkdir(parents=True, exist_ok=False)
+            return parent / name
+        except FileExistsError:
+            continue
+
+
 class TeamOrchestrator:
     """Main orchestrator for Agent Team runs."""
 
@@ -179,15 +205,16 @@ class TeamOrchestrator:
         ws_dir = workspace_dir or str(self.base_dir / "workspace" / session_id)
         Path(ws_dir).mkdir(parents=True, exist_ok=True)
 
-        # Create .team directory structure
-        team_dir = Path(ws_dir) / ".team"
-        team_dir.mkdir(parents=True, exist_ok=True)
-        (team_dir / "inboxes").mkdir(exist_ok=True)
+        # Create team data directory under .opencowork/team/{session_id}/
+        team_data_dir = str(self.base_dir / session_id)
+        Path(team_data_dir).mkdir(parents=True, exist_ok=True)
+        (Path(team_data_dir) / "inboxes").mkdir(exist_ok=True)
 
         session = TeamSession(
             session_id=session_id,
             lead_config=lead_config,
             workspace_dir=ws_dir,
+            team_data_dir=team_data_dir,
             plan=Plan(plan_id=f"plan-{session_id}", objective=objective),
         )
         self.store.save_session(session)
@@ -197,18 +224,19 @@ class TeamOrchestrator:
         """Build Lead's WorkerConfig with both Plan MCP and Mailbox MCP injected."""
         config = WorkerConfig.from_dict(session.lead_config.to_dict())
 
+        team_ws = session.team_data_dir or session.workspace_dir
         plan_mcp = {
             "command": sys.executable,
             "args": [self._plan_mcp_path],
             "env": {
-                "TEAM_WORKSPACE": session.workspace_dir,
+                "TEAM_WORKSPACE": team_ws,
             },
         }
         mailbox_mcp = {
             "command": sys.executable,
             "args": [self._mailbox_mcp_path],
             "env": {
-                "TEAM_WORKSPACE": session.workspace_dir,
+                "TEAM_WORKSPACE": team_ws,
                 "TEAM_AGENT_ID": "lead",
             },
         }
@@ -239,6 +267,7 @@ class TeamOrchestrator:
             raise ValueError(f"Session {session_id} not found")
 
         workspace_dir = Path(session.workspace_dir)
+        team_data_dir = Path(session.team_data_dir) if session.team_data_dir else workspace_dir
         self._emit(EventType.TEAM_SESSION_START, {"session_id": session_id})
 
         try:
@@ -265,13 +294,14 @@ class TeamOrchestrator:
                     prompt=build_planning_prompt(
                         session.plan.objective,
                         worker_types_info or [],
+                        workspace_path=session.workspace_dir,
                     ),
                     event_callback=lead_event_callback,
                 )
                 session.lead_sdk_session_id = lead_result.sdk_session_id
 
                 # Read plan from plan.json (created by Leader via Plan MCP)
-                plan_data = _read_plan_from_file(workspace_dir)
+                plan_data = _read_plan_from_file(team_data_dir)
                 if not plan_data:
                     raise RuntimeError("Leader did not create a plan via create_plan tool")
 
@@ -279,6 +309,16 @@ class TeamOrchestrator:
                 session.plan = _plan_data_to_plan(
                     plan_data, session.plan.plan_id, available_ids
                 )
+
+                # Create project directory from plan's project_name
+                project_name = plan_data.get("project_name", "")
+                if not project_name:
+                    project_name = _slugify(session.plan.objective)
+                else:
+                    project_name = _slugify(project_name)
+                project_path = _unique_dir(workspace_dir, project_name)
+                session.project_dir = str(project_path)
+
                 self.store.save_session(session)
                 self._emit(EventType.TEAM_PLANNING_COMPLETE, {
                     "session_id": session_id,
@@ -294,7 +334,7 @@ class TeamOrchestrator:
                     self.store.save_session(session)
 
                     # Create Phase mailbox
-                    mailbox = FileMailbox(workspace_dir)
+                    mailbox = FileMailbox(team_data_dir)
                     self._active_mailbox = mailbox
 
                     # Build previous results summary
@@ -304,11 +344,13 @@ class TeamOrchestrator:
                     scheduler = PhaseScheduler(
                         worker_factory=self.worker_factory,
                         workspace_dir=workspace_dir,
+                        team_data_dir=team_data_dir,
                         mailbox=mailbox,
                         event_emitter=self._emit,
                         persist_fn=lambda: self.store.save_session(session),
                         previous_results_summary=prev_summary,
                         mcp_mailbox_server_path=self._mailbox_mcp_path,
+                        project_dir=session.project_dir or "",
                     )
                     phase = await scheduler.execute_phase(
                         phase, available_worker_configs,
@@ -344,7 +386,7 @@ class TeamOrchestrator:
                     session.lead_sdk_session_id = review_result.sdk_session_id
 
                     # Check if Leader modified the plan via modify_phases MCP
-                    updated_plan_data = _read_plan_from_file(workspace_dir)
+                    updated_plan_data = _read_plan_from_file(team_data_dir)
                     if updated_plan_data:
                         old_version = session.plan.version
                         new_plan = _plan_data_to_plan(
@@ -402,7 +444,7 @@ class TeamOrchestrator:
 
                     # Write __final_output.json
                     try:
-                        final_output_path = workspace_dir / "__final_output.json"
+                        final_output_path = team_data_dir / "__final_output.json"
                         final_output_path.write_text(
                             json.dumps({
                                 "objective": session.plan.objective if session.plan else "",

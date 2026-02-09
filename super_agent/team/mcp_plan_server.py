@@ -18,7 +18,7 @@ WORKSPACE = os.environ.get("TEAM_WORKSPACE", "")
 
 
 def _team_dir() -> Path:
-    return Path(WORKSPACE) / ".team"
+    return Path(WORKSPACE)
 
 
 def _plan_path() -> Path:
@@ -56,9 +56,9 @@ def _read_plan() -> dict | None:
 
 @mcp.tool(
     name="create_plan",
-    description="创建执行计划。将任务目标分解为多个 Phase，每个 Phase 包含可并行执行的 Tasks。",
+    description="创建执行计划。将任务目标分解为多个 Phase，每个 Phase 包含可并行执行的 Tasks。你必须提供 project_name 参数（简短的 kebab-case 英文名称，如 market-analysis、code-review-report），系统会在工作目录下创建对应的项目文件夹。",
 )
-def create_plan(objective: str, phases: str) -> str:
+def create_plan(objective: str, phases: str, project_name: str = "") -> str:
     """Create an execution plan.
 
     Args:
@@ -67,6 +67,7 @@ def create_plan(objective: str, phases: str) -> str:
             [{"phase_id": "phase_0", "description": "...", "tasks": [
                 {"task_id": "task_001", "description": "...", "worker_type_id": "default", "context": {}}
             ]}]
+        project_name: Short kebab-case project name (e.g. "market-analysis"). Used to create a project directory in workspace.
     """
     if not WORKSPACE:
         return "错误：TEAM_WORKSPACE 环境变量未设置"
@@ -82,6 +83,7 @@ def create_plan(objective: str, phases: str) -> str:
     # Build plan structure
     plan = {
         "objective": objective,
+        "project_name": project_name,
         "version": 1,
         "change_log": ["v1: initial plan"],
         "phases": [],

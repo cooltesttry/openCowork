@@ -83,5 +83,5 @@ MCP server for web scraping:
 
 ## Logs
 
-- Backend: `backend/debug.log` or `/tmp/stockagent_backend.log`
+- Backend: `storage/logs/debug.log` or `/tmp/stockagent_backend.log`
 - Frontend: `/tmp/stockagent_frontend.log`

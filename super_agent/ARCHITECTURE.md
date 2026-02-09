@@ -313,7 +313,7 @@ TaskDefinition(
 
 ### 8.2 调试技巧
 
-1. 查看 `backend/debug.log` 获取详细日志
+1. 查看 `storage/logs/debug.log` 获取详细日志
 2. 检查 `__output.json` 验证 Worker 输出
 3. 查看事件流了解执行过程
 4. 检查 Checker 的 verified 列表确认验证内容

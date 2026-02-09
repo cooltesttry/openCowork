@@ -218,6 +218,8 @@ class TeamSession:
     lead_config: Optional[WorkerConfig] = None
     lead_sdk_session_id: Optional[str] = None
     workspace_dir: str = ""
+    team_data_dir: Optional[str] = None
+    project_dir: Optional[str] = None
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
     completed_at: Optional[str] = None
@@ -233,6 +235,8 @@ class TeamSession:
             "lead_config": self.lead_config.to_dict() if self.lead_config else None,
             "lead_sdk_session_id": self.lead_sdk_session_id,
             "workspace_dir": self.workspace_dir,
+            "team_data_dir": self.team_data_dir,
+            "project_dir": self.project_dir,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "completed_at": self.completed_at,
@@ -250,6 +254,8 @@ class TeamSession:
             lead_config=WorkerConfig.from_dict(data["lead_config"]) if data.get("lead_config") else None,
             lead_sdk_session_id=data.get("lead_sdk_session_id"),
             workspace_dir=data.get("workspace_dir", ""),
+            team_data_dir=data.get("team_data_dir"),
+            project_dir=data.get("project_dir"),
             created_at=data.get("created_at", utc_now()),
             updated_at=data.get("updated_at", utc_now()),
             completed_at=data.get("completed_at"),

@@ -268,7 +268,7 @@ npm start
 
 ### Logs
 
-- **Backend logs**: `/tmp/stockagent_backend.log` or `backend/debug.log`
+- **Backend logs**: `/tmp/stockagent_backend.log` or `storage/logs/debug.log`
 - **Frontend logs**: `/tmp/stockagent_frontend.log`
 
 ---

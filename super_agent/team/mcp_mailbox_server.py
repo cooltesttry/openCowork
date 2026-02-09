@@ -25,7 +25,7 @@ AGENT_ID = os.environ.get("TEAM_AGENT_ID", "")
 
 
 def _team_dir() -> Path:
-    return Path(WORKSPACE) / ".team"
+    return Path(WORKSPACE)
 
 
 def _inbox_path(agent_id: str) -> Path:

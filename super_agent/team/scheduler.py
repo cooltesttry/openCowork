@@ -40,11 +40,13 @@ class PhaseScheduler:
         *,
         worker_factory: Optional[Callable[[], Worker]] = None,
         workspace_dir: Path,
+        team_data_dir: Optional[Path] = None,
         mailbox: FileMailbox,
         event_emitter: Callable[[EventType, Optional[dict]], None],
         persist_fn: Optional[Callable[[], None]] = None,
         previous_results_summary: str = "",
         mcp_mailbox_server_path: str = "",
+        project_dir: str = "",
         # Legacy compat
         worker: Optional[Worker] = None,
         max_task_submits: int = 3,
@@ -57,6 +59,7 @@ class PhaseScheduler:
         else:
             raise ValueError("Either worker_factory or worker must be provided")
         self.workspace_dir = workspace_dir
+        self.team_data_dir = team_data_dir or workspace_dir
         self.mailbox = mailbox
         self._emit = event_emitter
         self.persist_fn = persist_fn
@@ -64,6 +67,7 @@ class PhaseScheduler:
         self.mcp_mailbox_server_path = mcp_mailbox_server_path or str(
             Path(__file__).parent / "mcp_mailbox_server.py"
         )
+        self.project_dir = project_dir
         self.max_task_submits = max_task_submits
 
     async def execute_phase(
@@ -161,7 +165,7 @@ class PhaseScheduler:
 
         # Inject Mailbox MCP into worker config
         worker_config = self._inject_mailbox_mcp(config, task)
-        prompt = build_worker_prompt(task, phase.tasks, self.previous_results_summary)
+        prompt = build_worker_prompt(task, phase.tasks, self.previous_results_summary, project_dir=self.project_dir)
 
         task_worker = self.worker_factory()
         try:
@@ -380,7 +384,7 @@ class PhaseScheduler:
 
     def _sync_plan_to_tasks(self, phase: Phase):
         """Sync plan.json task statuses back to in-memory TaskStep objects."""
-        plan_file = self.workspace_dir / ".team" / "plan.json"
+        plan_file = self.team_data_dir / "plan.json"
         if not plan_file.exists():
             return
         try:
@@ -406,7 +410,7 @@ class PhaseScheduler:
             "command": sys.executable,
             "args": [self.mcp_mailbox_server_path],
             "env": {
-                "TEAM_WORKSPACE": str(self.workspace_dir),
+                "TEAM_WORKSPACE": str(self.team_data_dir),
                 "TEAM_AGENT_ID": f"worker-{task.task_id}",
             },
         }
@@ -445,7 +449,7 @@ class PhaseScheduler:
 
     def _write_team_config(self, phase: Phase):
         """Write .team/config.json with member info for list_members tool."""
-        config_path = self.workspace_dir / ".team" / "config.json"
+        config_path = self.team_data_dir / "config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
         members = [{"id": "lead", "role": "Lead Agent", "description": "规划、审核和指挥"}]

@@ -33,8 +33,24 @@ logger = logging.getLogger(__name__)
 # Running tasks registry
 _running_tasks: dict[str, asyncio.Task] = {}
 
-# Base directory for team sessions
-TEAM_BASE_DIR = Path(__file__).parent.parent.parent / "storage" / "super_agent"
+
+# ============== Helper Functions ==============
+
+def _get_workspace_path(request: Request) -> str:
+    """Get the current workspace path from workspace_manager."""
+    manager = getattr(request.app.state, 'workspace_manager', None)
+    ws = manager.get_current_workspace() if manager else None
+    if not ws or not ws.path:
+        raise HTTPException(400, "No workspace is currently open")
+    return ws.path
+
+
+def _get_team_store(request: Request):
+    """Get a TeamSessionStore scoped to the current workspace."""
+    from super_agent.team.persistence import TeamSessionStore
+    ws_path = _get_workspace_path(request)
+    team_dir = Path(ws_path) / ".opencowork" / "team"
+    return TeamSessionStore(team_dir)
 
 
 # ============== Request/Response Models ==============
@@ -128,19 +144,22 @@ async def _run_team_session(
 @router.post("/run", response_model=TeamRunResponse, status_code=201)
 async def start_team_run(req: TeamRunRequest, request: Request):
     """Start a new Team Agent session."""
+    ws_path = _get_workspace_path(request)
     lead_config = get_worker_config(req.lead_worker_id, request)
     available_configs = _get_available_worker_configs(request)
     worker_types_info = _get_worker_types_info()
 
-    TEAM_BASE_DIR.mkdir(parents=True, exist_ok=True)
+    team_dir = Path(ws_path) / ".opencowork" / "team"
+    team_dir.mkdir(parents=True, exist_ok=True)
     orchestrator = TeamOrchestrator(
-        base_dir=TEAM_BASE_DIR,
+        base_dir=team_dir,
         worker_factory=lambda: ClaudeSdkWorker(),
     )
 
     session = orchestrator.create_session(
         objective=req.objective,
         lead_config=lead_config,
+        workspace_dir=ws_path,
     )
 
     task_handle = asyncio.create_task(
@@ -153,10 +172,9 @@ async def start_team_run(req: TeamRunRequest, request: Request):
 
 
 @router.get("/session/{session_id}")
-async def get_team_session(session_id: str):
+async def get_team_session(session_id: str, request: Request):
     """Get the full state of a Team session."""
-    from super_agent.team.persistence import TeamSessionStore
-    store = TeamSessionStore(TEAM_BASE_DIR)
+    store = _get_team_store(request)
     session = store.load_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
@@ -164,15 +182,13 @@ async def get_team_session(session_id: str):
 
 
 @router.post("/session/{session_id}/cancel", response_model=TeamCancelResponse)
-async def cancel_team_session(session_id: str):
+async def cancel_team_session(session_id: str, request: Request):
     """Cancel a running Team session."""
-    from super_agent.team.persistence import TeamSessionStore
-    store = TeamSessionStore(TEAM_BASE_DIR)
+    # Try to load from current workspace store
+    store = _get_team_store(request)
     session = store.load_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
 
-    # Cancel the asyncio task
+    # Cancel the asyncio task (works even if workspace has changed)
     task = _running_tasks.get(session_id)
     if task and not task.done():
         task.cancel()
@@ -181,6 +197,12 @@ async def cancel_team_session(session_id: str):
         except asyncio.CancelledError:
             pass
         _running_tasks.pop(session_id, None)
+
+    if not session:
+        # Session not in current workspace but task was running in memory
+        if task:
+            return TeamCancelResponse(session_id=session_id, status="cancelled")
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
 
     # Update session status
     if session.status not in ("completed", "failed"):
@@ -192,10 +214,9 @@ async def cancel_team_session(session_id: str):
 
 
 @router.get("/sessions")
-async def list_team_sessions():
+async def list_team_sessions(request: Request):
     """List all Team sessions."""
-    from super_agent.team.persistence import TeamSessionStore
-    store = TeamSessionStore(TEAM_BASE_DIR)
+    store = _get_team_store(request)
     return {"sessions": store.list_sessions()}
 
 

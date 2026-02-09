@@ -25,11 +25,11 @@ class FileMailbox:
     MCP servers write to these files. Scheduler polls and delivers.
     """
 
-    def __init__(self, workspace_dir: Path):
-        self.workspace_dir = workspace_dir
-        self.inbox_dir = workspace_dir / ".team" / "inboxes"
+    def __init__(self, team_data_dir: Path):
+        self.team_data_dir = team_data_dir
+        self.inbox_dir = team_data_dir / "inboxes"
         self.inbox_dir.mkdir(parents=True, exist_ok=True)
-        self.plan_file = workspace_dir / ".team" / "plan.json"
+        self.plan_file = team_data_dir / "plan.json"
         self._cancelled = False
 
     def register_agent(self, agent_id: str):

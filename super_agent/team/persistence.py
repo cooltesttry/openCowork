@@ -16,7 +16,7 @@ class TeamSessionStore:
 
     def __init__(self, base_dir: Path):
         self.base_dir = base_dir
-        self.sessions_dir = base_dir / "team_sessions"
+        self.sessions_dir = base_dir
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
 
     def _session_path(self, session_id: str) -> Path:
