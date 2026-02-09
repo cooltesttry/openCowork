@@ -1,15 +1,24 @@
-"""Prompt templates for Agent Team system."""
+"""Prompt templates for Agent Team system.
+
+Updated for dual MCP architecture:
+- Workers use send_mail MCP tool to submit results
+- Leader uses create_plan/update_task MCP tools for plan management
+- Leader uses send_mail for communication with Workers
+"""
 
 from __future__ import annotations
 
 import json
 from typing import Optional
 
-from .models import Phase, Plan, TaskStep, Message
+from .models import Phase, Plan, TaskStep
 
 
 def build_planning_prompt(objective: str, worker_types: list[dict]) -> str:
-    """Build the planning prompt for Lead Agent."""
+    """Build the planning prompt for Lead Agent.
+
+    Leader creates the plan via create_plan MCP tool (not JSON text output).
+    """
     worker_list = ""
     for wt in worker_types:
         worker_list += f"- **{wt.get('id', 'unknown')}** ({wt.get('name', '')}): {wt.get('description', wt.get('model', ''))}\n"
@@ -17,43 +26,41 @@ def build_planning_prompt(objective: str, worker_types: list[dict]) -> str:
         if tools:
             worker_list += f"  Tools: {', '.join(tools)}\n"
 
-    return f"""You are the Lead Agent in a Team Agent system. Your role is ONLY to plan, review, and direct — you do NOT execute tasks yourself.
+    return f"""你是 Team Agent 的 Lead。你的职责是规划、审核和指挥 — 你不执行具体任务。
 
-## Available Worker Types
+## 可用 Worker 类型
 {worker_list}
 
-## Planning Rules
-1. Organize work into **Phases**. Phases execute **sequentially** (Phase 0 → Phase 1 → ...).
-2. Within each Phase, tasks execute **in parallel** by independent Workers.
-3. Each task is assigned to one worker type.
-4. After each task completes, you will review the result and can request adjustments.
-5. After all tasks in a Phase complete, you will do a Phase review and can adjust the remaining plan.
-6. Keep phases focused — don't put dependent tasks in the same phase.
+## 规划规则
+1. 将工作组织为 **Phase**。Phase **顺序**执行（Phase 0 → Phase 1 → ...）。
+2. 每个 Phase 内的 Task **并行**执行，由独立的 Worker 完成。
+3. 每个 Task 分配一个 Worker 类型。
+4. Phase 之间可以有依赖 — 不要把有依赖的任务放在同一 Phase。
+5. 保持 Phase 聚焦 — 每个 Phase 有明确的目标。
 
-## Output Format
-Return a JSON plan in this exact format (no markdown fencing):
-{{
-  "objective": "<restate the objective briefly>",
-  "phases": [
+## 操作方式
+使用 `create_plan` 工具创建执行计划。参数：
+- objective: 任务目标（简要概述）
+- phases: JSON 字符串，格式如下：
+  [
     {{
       "phase_id": "phase_0",
-      "description": "<what this phase accomplishes>",
+      "description": "这个 Phase 要完成什么",
       "tasks": [
         {{
           "task_id": "task_001",
-          "description": "<detailed task description>",
-          "worker_type_id": "<worker type id from the list above>",
+          "description": "详细的任务描述，包含文件路径、预期行为、验收标准等",
+          "worker_type_id": "从上方 Worker 类型中选择",
           "context": {{}}
         }}
       ]
     }}
   ]
-}}
 
-## User Request
+## 用户请求
 {objective}
 
-Output only the JSON plan. Do not execute any tasks."""
+请使用 create_plan 工具创建执行计划。不要执行任何具体任务。"""
 
 
 def build_worker_prompt(
@@ -61,8 +68,10 @@ def build_worker_prompt(
     phase_tasks: list[TaskStep],
     previous_results_summary: str = "",
 ) -> str:
-    """Build the execution prompt for a Worker."""
-    # Other tasks in the same phase (for awareness)
+    """Build the execution prompt for a Worker.
+
+    Worker uses send_mail MCP tool to submit results (not __result.json).
+    """
     other_tasks = ""
     for t in phase_tasks:
         if t.task_id != task.task_id:
@@ -71,84 +80,89 @@ def build_worker_prompt(
     other_section = ""
     if other_tasks:
         other_section = f"""
-## Other Tasks in This Phase (being handled by other Workers in parallel)
+## 同 Phase 的其他任务（其他 Worker 并行处理中）
 {other_tasks}"""
 
     prev_section = ""
     if previous_results_summary:
         prev_section = f"""
-## Results from Previous Phases
+## 之前 Phase 的结果
 {previous_results_summary}"""
 
     context_section = ""
     if task.context:
         context_section = f"""
-## Additional Context
+## 附加上下文
 {json.dumps(task.context, ensure_ascii=False, indent=2)}"""
 
-    return f"""You are an independent Worker in a Team Agent system. Focus on completing your assigned task.
+    return f"""你是 Team Agent 中的一名 Worker。专注完成你的任务。
 {other_section}{prev_section}{context_section}
 
-## Your Task
+## 你的任务
 {task.description}
 
-## Output Protocol
-When you finish your task, you MUST create a file called `__result.json` in your working directory with this format:
-{{
-  "summary": "<one-line summary of what you accomplished>",
-  "content": "<full result text — research findings, analysis, code explanation, etc.>",
-  "files": ["<list of other files you created, if any>"],
-  "instruction": "<optional notes for whoever uses your output next>"
-}}
+## 团队通信
+完成任务后，使用 `send_mail` 工具向 Lead 提交结果：
+- 调用 send_mail(to="lead", content="你的报告")
+- 报告应包含：
+  1. 完成了什么
+  2. 修改/创建了哪些文件
+  3. 测试运行结果（如适用）
+  4. 遗留问题或风险
+- 发送后你的本轮工作结束，Lead 会审核并回复
 
-This file is critical — it's how your results are communicated to the Lead Agent and subsequent phases.
+如果收到 Lead 的反馈，请根据反馈继续修改，完成后再次用 send_mail 提交。
 
-Now begin working on your task."""
+## 工作目录
+你的工作目录是共享项目目录，其他 Worker 也在此目录工作。注意文件命名避免冲突。
+
+现在开始你的任务。"""
 
 
-def build_task_review_prompt(task: TaskStep, message: Message) -> str:
-    """Build the review prompt for Lead to assess a Worker's submission."""
-    # Message history for this task
+def build_task_review_prompt(task: TaskStep, mail_content: str) -> str:
+    """Build the review prompt for Lead to assess a Worker's submission.
+
+    In the new architecture, this prompt is built from inbox mail content,
+    not from a structured Message object.
+    """
     history = ""
     for msg in task.messages:
-        if msg.message_id == message.message_id:
-            continue
         role = "Worker" if msg.from_id.startswith("worker-") else "Lead"
-        history += f"[{role}] ({msg.message_type}): {msg.content[:500]}\n"
+        history += f"[{role}]: {msg.content[:500]}\n"
 
     history_section = ""
     if history:
         history_section = f"""
-## Previous Messages
+## 之前的沟通记录
 {history}"""
 
-    files_section = ""
-    if task.result and task.result.files:
-        files_section = f"\n## Output Files\n" + "\n".join(f"- {f}" for f in task.result.files)
+    return f"""Worker [{task.task_id}] 提交了工作结果，请审核。
 
-    result_summary = ""
-    if task.result and task.result.summary:
-        result_summary = f"\nSummary: {task.result.summary}"
-
-    return f"""Worker [{task.task_id}] has submitted results for review.
-
-## Task Description
+## 任务描述
 {task.description}
 
-## Worker's Submission (attempt #{task.submit_count})
-{message.content[:3000]}{result_summary}{files_section}{history_section}
+## Worker 的提交（第 {task.submit_count} 次）
+{mail_content[:3000]}{history_section}
 
-## Your Decision
-Review the submission and respond with JSON (no markdown fencing):
-- If satisfactory: {{"decision": "approve"}}
-- If needs changes: {{"decision": "feedback", "content": "<specific feedback for the worker>"}}
+## 审核操作
+审核后请执行以下操作：
 
-Be concise and actionable in your feedback."""
+**如果通过：**
+1. 调用 update_task(task_id="{task.task_id}", status="approved")
+2. 调用 send_mail(to="worker-{task.task_id}", content="approved")
+
+**如果需要修改：**
+1. 调用 send_mail(to="worker-{task.task_id}", content="具体的修改意见")
+（不要改 task 状态，Worker 会继续工作后重新提交）
+
+请简洁、可操作地给出反馈。"""
 
 
 def build_phase_review_prompt(phase: Phase, remaining_phases: list[Phase]) -> str:
-    """Build the Phase-level review prompt for Lead."""
-    # Task summaries
+    """Build the Phase-level review prompt for Lead.
+
+    Lead uses modify_phases MCP tool if plan adjustment is needed.
+    """
     task_summaries = ""
     for task in phase.tasks:
         status = task.status
@@ -158,10 +172,9 @@ def build_phase_review_prompt(phase: Phase, remaining_phases: list[Phase]) -> st
         elif task.result_text:
             summary = task.result_text[:200]
         elif task.result_error:
-            summary = f"FAILED: {task.result_error}"
+            summary = f"失败: {task.result_error}"
         task_summaries += f"- [{task.task_id}] ({status}): {summary}\n"
 
-    # Remaining plan
     remaining_plan = ""
     if remaining_phases:
         for p in remaining_phases:
@@ -169,24 +182,29 @@ def build_phase_review_prompt(phase: Phase, remaining_phases: list[Phase]) -> st
             for t in p.tasks:
                 remaining_plan += f"  - [{t.task_id}] {t.description} (worker: {t.worker_type_id})\n"
     else:
-        remaining_plan = "No remaining phases — this is the final phase."
+        remaining_plan = "没有后续 Phase — 这是最后一个 Phase。"
 
-    return f"""Phase {phase.phase_index} ("{phase.description}") is complete. You have already reviewed each task individually.
+    return f"""Phase {phase.phase_index}（"{phase.description}"）已完成。
 
-## Phase Results Summary
+## Phase 结果概要
 {task_summaries}
 
-## Remaining Plan
+## 剩余计划
 {remaining_plan}
 
-## Your Decision
-Evaluate whether to proceed as planned or adjust. Respond with JSON (no markdown fencing):
+## 审核操作
+评估是否按计划继续：
 
-- Proceed as planned: {{"decision": "approve"}}
-- Modify remaining phases: {{"decision": "modify", "reason": "<why>", "updated_phases": [<new phase objects in same format as planning output>]}}
-- Abort execution: {{"decision": "abort", "reason": "<why>"}}
+**按计划继续：** 不需要额外操作，直接回复"Phase 审核通过，继续执行"。
 
-Only modify if the results of this phase reveal something that requires changing the plan."""
+**调整后续 Phase：** 使用 modify_phases 工具修改后续计划：
+- 调用 modify_phases(from_index={phase.phase_index}, new_phases="[新的 phase JSON 数组]")
+- 并说明修改原因。
+
+**终止执行：** 如果发现严重问题需要停止，使用 `abort_plan` 工具终止执行：
+- 调用 abort_plan(reason="终止原因说明")
+
+只有当本 Phase 的结果揭示了需要改变计划的问题时，才需要修改。"""
 
 
 def build_final_summary_prompt(plan: Plan) -> str:
@@ -208,19 +226,19 @@ def build_final_summary_prompt(plan: Plan) -> str:
                 files = f"\nFiles: {', '.join(task.result.files)}"
             all_results += f"- [{task.task_id}] {summary}{content_preview}{files}\n"
 
-    return f"""All phases are complete. Generate a final summary report.
+    return f"""所有 Phase 已完成，请生成最终报告。
 
-## Objective
+## 目标
 {plan.objective}
 
-## All Phase Results
+## 各 Phase 结果
 {all_results}
 
-## Instructions
-Write a comprehensive final report that:
-1. Summarizes what was accomplished
-2. Lists key findings or deliverables
-3. Notes any issues or limitations
-4. Provides recommendations if applicable
+## 要求
+请写一份全面的最终报告，包括：
+1. 完成了什么
+2. 关键成果或交付物
+3. 存在的问题或限制
+4. 后续建议（如适用）
 
-Be thorough but concise."""
+请简洁但全面。"""

@@ -42,7 +42,6 @@ TEAM_BASE_DIR = Path(__file__).parent.parent.parent / "storage" / "super_agent"
 class TeamRunRequest(BaseModel):
     objective: str = Field(..., description="The task/objective for the team")
     lead_worker_id: str = Field(..., description="Worker ID for the Lead Agent")
-    max_task_submits: int = Field(default=3, ge=1, le=10, description="Max feedback rounds per task")
 
 
 class TeamRunResponse(BaseModel):
@@ -142,7 +141,6 @@ async def start_team_run(req: TeamRunRequest, request: Request):
     session = orchestrator.create_session(
         objective=req.objective,
         lead_config=lead_config,
-        max_task_submits=req.max_task_submits,
     )
 
     task_handle = asyncio.create_task(

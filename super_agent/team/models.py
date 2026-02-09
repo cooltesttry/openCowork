@@ -15,13 +15,17 @@ def _new_msg_id() -> str:
 
 @dataclass
 class Message:
-    """Mailbox message between Worker and Lead."""
+    """Mailbox message between Worker and Lead.
+
+    In the new architecture, messages are plain text delivered via Mailbox MCP.
+    The message_type field is kept for backward compatibility but is no longer
+    used for approve/feedback routing (that's handled by plan.json status).
+    """
 
     from_id: str          # "worker-{task_id}" or "lead"
     to_id: str            # "lead" or "worker-{task_id}"
-    task_id: str          # Associated task
-    content: str          # Message body (worker result or lead feedback)
-    message_type: str     # "submit_result" | "feedback" | "approve"
+    content: str          # Message body (plain text)
+    task_id: str = ""     # Associated task (optional, for tracking)
     message_id: str = field(default_factory=_new_msg_id)
     timestamp: str = field(default_factory=utc_now)
 
@@ -29,9 +33,8 @@ class Message:
         return {
             "from_id": self.from_id,
             "to_id": self.to_id,
-            "task_id": self.task_id,
             "content": self.content,
-            "message_type": self.message_type,
+            "task_id": self.task_id,
             "message_id": self.message_id,
             "timestamp": self.timestamp,
         }
@@ -41,9 +44,8 @@ class Message:
         return cls(
             from_id=data["from_id"],
             to_id=data["to_id"],
-            task_id=data["task_id"],
             content=data.get("content", ""),
-            message_type=data["message_type"],
+            task_id=data.get("task_id", ""),
             message_id=data.get("message_id", _new_msg_id()),
             timestamp=data.get("timestamp", utc_now()),
         )
@@ -87,7 +89,7 @@ class TaskStep:
     description: str
     worker_type_id: str
     context: dict = field(default_factory=dict)
-    status: str = "pending"  # pending | running | submitted | approved | failed
+    status: str = "pending"  # pending | running | approved | failed
     worker_sdk_session_id: Optional[str] = None
     messages: list[Message] = field(default_factory=list)
     result: Optional[TaskResult] = None
@@ -216,7 +218,6 @@ class TeamSession:
     lead_config: Optional[WorkerConfig] = None
     lead_sdk_session_id: Optional[str] = None
     workspace_dir: str = ""
-    max_task_submits: int = 3
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
     completed_at: Optional[str] = None
@@ -232,7 +233,6 @@ class TeamSession:
             "lead_config": self.lead_config.to_dict() if self.lead_config else None,
             "lead_sdk_session_id": self.lead_sdk_session_id,
             "workspace_dir": self.workspace_dir,
-            "max_task_submits": self.max_task_submits,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "completed_at": self.completed_at,
@@ -250,7 +250,6 @@ class TeamSession:
             lead_config=WorkerConfig.from_dict(data["lead_config"]) if data.get("lead_config") else None,
             lead_sdk_session_id=data.get("lead_sdk_session_id"),
             workspace_dir=data.get("workspace_dir", ""),
-            max_task_submits=int(data.get("max_task_submits", 3)),
             created_at=data.get("created_at", utc_now()),
             updated_at=data.get("updated_at", utc_now()),
             completed_at=data.get("completed_at"),
