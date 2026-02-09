@@ -229,7 +229,7 @@ if [ -d "$PLAYWRIGHT_BROWSERS_PATH" ] && [ -d "$PLAYWRIGHT_BROWSERS_PATH/chromiu
     print_status skip "Playwright Chromium already installed ($CHROMIUM_VERSION)"
 else
     print_status action "Installing Playwright Chromium browser..."
-    npx playwright install chromium
+    ./node_modules/.bin/playwright install chromium
     print_status ok "Playwright Chromium installed"
 fi
 
