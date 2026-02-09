@@ -1332,10 +1332,15 @@ async def websocket_multiplexed(websocket: WebSocket):
                     yield {"type": "error", "content": str(e), "metadata": {"error_type": type(e).__name__}}
         
         # Start the background task
+        event_storage_dir = None
+        if workspace_storage_obj:
+            event_storage_dir = workspace_storage_obj.sessions_dir / storage_session.id
+
         task_id = await task_runner.start_task(
             session_id=storage_session.id,
             prompt=message.content,
             task_coroutine=task_coroutine,
+            storage_dir=event_storage_dir,
         )
         
         return storage_session.id, task_id

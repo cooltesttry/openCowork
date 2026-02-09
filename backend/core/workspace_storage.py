@@ -610,7 +610,7 @@ class WorkspaceManager:
         Returns the number of sessions migrated.
         """
         # Legacy sessions directory
-        legacy_dir = self.global_config_path.parent / "sessions"
+        legacy_dir = self.storage_dir / "sessions"
 
         if not legacy_dir.exists():
             logger.info("[WorkspaceManager] No legacy sessions to migrate")

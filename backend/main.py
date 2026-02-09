@@ -152,7 +152,7 @@ async def lifespan(app: FastAPI):
     await session_manager.start()
 
     # Start task runner for background task execution
-    await task_runner.start()
+    await task_runner.start(workspace_manager=app.state.workspace_manager)
 
     disable_file_watcher = os.getenv("OPENCOWORK_DISABLE_FILE_WATCHER", "").strip().lower() in (
         "1",

@@ -54,6 +54,7 @@ class SessionTaskState:
     subscribers: List[asyncio.Queue] = field(default_factory=list)
     events_file: Optional[Any] = None  # File handle for appending events
     auto_compact_phase: Optional[str] = None  # "compact" | "context" when auto-compact is running
+    storage_dir: Optional[Path] = None  # Per-session persistent storage directory
 
 
 class TaskRunner:
@@ -72,10 +73,10 @@ class TaskRunner:
         self._sessions: Dict[str, SessionTaskState] = {}
         self._lock = asyncio.Lock()
         
-    async def start(self):
+    async def start(self, workspace_manager=None):
         """Initialize task runner, restore any persisted state."""
         self._storage_path.mkdir(parents=True, exist_ok=True)
-        await self._restore_persisted_state()
+        await self._restore_persisted_state(workspace_manager)
         logger.info("[TaskRunner] Started")
     
     async def stop(self):
@@ -92,33 +93,39 @@ class TaskRunner:
                     state.events_file.close()
         logger.info("[TaskRunner] Stopped")
     
-    async def _restore_persisted_state(self):
+    async def _restore_persisted_state(self, workspace_manager=None):
         """Restore task state from disk on startup."""
-        if not self._storage_path.exists():
-            return
-            
-        for session_dir in self._storage_path.iterdir():
+        # Phase 1: workspaces first (newer, authoritative data)
+        if workspace_manager:
+            for ws_info in workspace_manager.get_recent_workspaces():
+                ws_path = Path(ws_info.get("path", ""))
+                sessions_dir = ws_path / ".opencowork" / "sessions"
+                if sessions_dir.exists():
+                    self._restore_from_dir(sessions_dir, source=f"workspace:{ws_path.name}")
+
+        # Phase 2: global legacy directory (fallback for unmigrated sessions)
+        if self._storage_path.exists():
+            self._restore_from_dir(self._storage_path, source="global")
+
+    def _restore_from_dir(self, base_dir: Path, source: str):
+        """Restore sessions from a directory containing session subdirs."""
+        for session_dir in base_dir.iterdir():
             if not session_dir.is_dir():
                 continue
-                
+
             state_file = session_dir / "current.json"
             if not state_file.exists():
                 continue
-                
+
             try:
                 with open(state_file, "r") as f:
-                    data = json.load(f)
-                    execution = TaskExecution.from_dict(data)
-                    
-                # If task was running when server stopped, mark as error
-                if execution.status == "running":
-                    execution.status = "error"
-                    execution.error = "Server restarted during execution"
-                    execution.completed_at = datetime.utcnow().isoformat() + "Z"
-                    execution.was_viewed = False
-                    self._save_execution(execution)
-                    logger.warning(f"[TaskRunner] Session {execution.session_id} task marked as error (server restart)")
-                
+                    execution = TaskExecution.from_dict(json.load(f))
+
+                # Skip already-restored sessions (avoid global/workspace duplicates)
+                if execution.session_id in self._sessions:
+                    logger.info(f"[TaskRunner] Skipping duplicate {execution.session_id} from {source}")
+                    continue
+
                 # Load cached events
                 events = []
                 events_file = session_dir / "events.jsonl"
@@ -127,19 +134,34 @@ class TaskRunner:
                         for line in f:
                             if line.strip():
                                 events.append(json.loads(line))
-                
-                # Create session state
-                self._sessions[execution.session_id] = SessionTaskState(
+
+                # Create state with storage_dir and put into _sessions first
+                state = SessionTaskState(
                     execution=execution,
                     events=events,
+                    storage_dir=session_dir,
                 )
-                logger.info(f"[TaskRunner] Restored session {execution.session_id}: status={execution.status}, events={len(events)}")
-                
+                self._sessions[execution.session_id] = state
+
+                # If task was running when server stopped, mark as error
+                if execution.status == "running":
+                    execution.status = "error"
+                    execution.error = "Server restarted during execution"
+                    execution.completed_at = datetime.utcnow().isoformat() + "Z"
+                    execution.was_viewed = False
+                    self._save_execution(execution)
+                    logger.warning(f"[TaskRunner] Session {execution.session_id} task marked as error (server restart)")
+
+                logger.info(f"[TaskRunner] Restored session {execution.session_id} from {source}: status={execution.status}, events={len(events)}")
+
             except Exception as e:
                 logger.error(f"[TaskRunner] Failed to restore session from {session_dir}: {e}")
     
     def _get_session_dir(self, session_id: str) -> Path:
         """Get the storage directory for a session."""
+        state = self._sessions.get(session_id)
+        if state and state.storage_dir:
+            return state.storage_dir
         return self._storage_path / session_id
     
     def _save_execution(self, execution: TaskExecution):
@@ -186,15 +208,17 @@ class TaskRunner:
         session_id: str,
         prompt: str,
         task_coroutine: Callable[[], AsyncGenerator[dict, None]],
+        storage_dir: Optional[Path] = None,
     ) -> str:
         """
         Start a new task for a session.
-        
+
         Args:
             session_id: The session ID
             prompt: The user's prompt
             task_coroutine: An async generator that yields events
-            
+            storage_dir: Optional per-workspace storage directory
+
         Returns:
             The task ID
         """
@@ -203,7 +227,7 @@ class TaskRunner:
             state = self._sessions.get(session_id)
             if state and state.execution and state.execution.status == "running":
                 raise ValueError(f"Session {session_id} already has a running task")
-            
+
             # Create new execution
             task_id = str(uuid.uuid4())
             execution = TaskExecution(
@@ -213,17 +237,18 @@ class TaskRunner:
                 status="running",
                 started_at=datetime.utcnow().isoformat() + "Z",
             )
-            
-            # Clear old events and create new state
-            session_dir = self._get_session_dir(session_id)
-            session_dir.mkdir(parents=True, exist_ok=True)
-            events_file = session_dir / "events.jsonl"
+
+            # Use provided storage_dir or default to global path
+            effective_dir = storage_dir or (self._storage_path / session_id)
+            effective_dir.mkdir(parents=True, exist_ok=True)
+            events_file = effective_dir / "events.jsonl"
             if events_file.exists():
                 events_file.unlink()  # Clear old events
-            
+
             state = SessionTaskState(
                 execution=execution,
                 events=[],
+                storage_dir=effective_dir,
             )
             self._sessions[session_id] = state
             
@@ -436,17 +461,22 @@ class TaskRunner:
     
     def clear_session(self, session_id: str):
         """Clear task state for a session (e.g., when session is deleted)."""
-        state = self._sessions.pop(session_id, None)
+        state = self._sessions.get(session_id)
         if state:
+            # Get directory while state is still in _sessions
+            session_dir = self._get_session_dir(session_id)
+
+            # Remove from _sessions
+            self._sessions.pop(session_id, None)
+
             if state.task and not state.task.done():
                 state.task.cancel()
-            
+
             # Remove persisted files
-            session_dir = self._get_session_dir(session_id)
             if session_dir.exists():
                 import shutil
                 shutil.rmtree(session_dir)
-            
+
             logger.info(f"[TaskRunner] Cleared session {session_id}")
 
 

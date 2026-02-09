@@ -376,6 +376,10 @@ async def delete_workspace_session(request: Request, workspace_id: str, session_
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # Clear TaskRunner state only after confirming session existed
+    from core.task_runner import task_runner
+    task_runner.clear_session(session_id)
+
     return {"success": True, "deleted_id": session_id}
 
 
