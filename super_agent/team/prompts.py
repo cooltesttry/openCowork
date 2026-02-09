@@ -232,7 +232,7 @@ Evaluate whether to continue as planned:
 Only modify the plan when this Phase's results reveal issues that necessitate changes."""
 
 
-def build_final_summary_prompt(plan: Plan) -> str:
+def build_final_summary_prompt(plan: Plan, project_dir: str = "") -> str:
     """Build the final summary prompt for Lead."""
     all_results = ""
     for phase in plan.phases:
@@ -251,19 +251,26 @@ def build_final_summary_prompt(plan: Plan) -> str:
                 files = f"\nFiles: {', '.join(task.result.files)}"
             all_results += f"- [{task.task_id}] {summary}{content_preview}{files}\n"
 
-    return f"""所有 Phase 已完成，请生成最终报告。
+    project_section = ""
+    if project_dir:
+        project_section = f"""
+## Project Directory
+{project_dir}
+"""
 
-## 目标
+    return f"""All Phases are complete. Please generate the final report.
+
+## Objective
 {plan.objective}
 
-## 各 Phase 结果
+## Results by Phase
 {all_results}
+{project_section}
+## Requirements
+Please write a comprehensive final report including:
+1. What was accomplished
+2. Key deliverables or outputs
+3. Outstanding issues or limitations
+4. Follow-up recommendations (if applicable)
 
-## 要求
-请写一份全面的最终报告，包括：
-1. 完成了什么
-2. 关键成果或交付物
-3. 存在的问题或限制
-4. 后续建议（如适用）
-
-请简洁但全面。"""
+Be concise but thorough."""

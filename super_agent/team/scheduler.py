@@ -340,7 +340,7 @@ class PhaseScheduler:
                     task = next((t for t in phase.tasks if t.task_id == tid), None)
                     if task:
                         review_tasks.add(tid)
-                        prompt += f"\n\n{build_task_review_prompt(task, m.get('content', ''))}"
+                        prompt += f"\n\n{build_task_review_prompt(task, m.get('content', ''), project_dir=self.project_dir)}"
 
             self._emit(EventType.TEAM_REVIEW_START, {
                 "task_ids": list(review_tasks),
@@ -430,7 +430,7 @@ class PhaseScheduler:
         parts = []
         for mail in mails:
             parts.append(
-                f"来自 {mail.get('from', 'unknown')} 的邮件：\n"
+                f"Mail from {mail.get('from', 'unknown')}:\n"
                 f"─────────────────\n"
                 f"{mail.get('content', '')}\n"
                 f"─────────────────"
@@ -444,7 +444,7 @@ class PhaseScheduler:
         worker_sent = any(m.get("from") == worker_id for m in lead_inbox)
         if not worker_sent:
             logger.warning(f"[Scheduler] Worker {task.task_id} didn't send_mail, auto-submitting")
-            content = f"[自动提交] Worker 执行完成。\n\n{task.result_text[:2000] if task.result_text else '(无输出)'}"
+            content = f"[Auto-submitted] Worker execution complete.\n\n{task.result_text[:2000] if task.result_text else '(no output)'}"
             self.mailbox.send_auto_mail(worker_id, "lead", content)
 
     def _write_team_config(self, phase: Phase):
@@ -452,7 +452,7 @@ class PhaseScheduler:
         config_path = self.team_data_dir / "config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        members = [{"id": "lead", "role": "Lead Agent", "description": "规划、审核和指挥"}]
+        members = [{"id": "lead", "role": "Lead Agent", "description": "Plans, reviews, and directs"}]
         for task in phase.tasks:
             members.append({
                 "id": f"worker-{task.task_id}",

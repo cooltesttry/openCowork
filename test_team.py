@@ -726,8 +726,7 @@ class TestPrompts(unittest.TestCase):
     def test_build_phase_review_prompt_final_phase(self):
         phase = make_phase("p0", 0, [make_task("t1")])
         prompt = build_phase_review_prompt(phase, [])
-        # Chinese: 最后一个 Phase
-        self.assertIn("Phase", prompt)
+        self.assertIn("final Phase", prompt)
 
     def test_build_final_summary_prompt(self):
         t1 = make_task("t1")
@@ -738,6 +737,24 @@ class TestPrompts(unittest.TestCase):
         self.assertIn("Found 5 papers", prompt)
         self.assertIn("Details...", prompt)
         self.assertIn("papers.md", prompt)
+
+    def test_build_task_review_prompt_with_project_dir(self):
+        task = make_task("t1", desc="Write a report")
+        task.submit_count = 1
+        prompt = build_task_review_prompt(task, "my report", project_dir="/workspace/my-project")
+        self.assertIn("/workspace/my-project", prompt)
+
+    def test_build_phase_review_prompt_with_project_dir(self):
+        phase = make_phase("p0", 0, [make_task("t1")])
+        prompt = build_phase_review_prompt(phase, [], project_dir="/workspace/my-project")
+        self.assertIn("/workspace/my-project", prompt)
+
+    def test_build_final_summary_prompt_with_project_dir(self):
+        t1 = make_task("t1")
+        t1.result = TaskResult(summary="Done")
+        plan = make_plan("Goal", [make_phase("p0", 0, [t1])])
+        prompt = build_final_summary_prompt(plan, project_dir="/workspace/my-project")
+        self.assertIn("/workspace/my-project", prompt)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1563,10 +1580,10 @@ class _IntegrationWorker(Worker):
 
         # Phase review: approve (no modify_phases call)
         if "modify_phases" in prompt:
-            return LLMResult(text="Phase 审核通过，继续执行", sdk_session_id="lead-session-1")
+            return LLMResult(text="Phase review approved, continue execution", sdk_session_id="lead-session-1")
 
         # Final summary
-        if "所有 Phase 已完成" in prompt:
+        if "All Phases are complete" in prompt:
             return LLMResult(
                 text="# Final Report\n\nAll tasks completed successfully.",
                 sdk_session_id="lead-session-1",
@@ -2108,7 +2125,7 @@ class TestFix7AutoSubmit(unittest.TestCase):
             lead_mails = mailbox._peek_undelivered("lead")
             self.assertEqual(len(lead_mails), 1)
             self.assertEqual(lead_mails[0]["from"], "worker-t1")
-            self.assertIn("自动提交", lead_mails[0]["content"])
+            self.assertIn("Auto-submitted", lead_mails[0]["content"])
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 

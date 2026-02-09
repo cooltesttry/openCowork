@@ -380,7 +380,7 @@ class TeamOrchestrator:
                     remaining_phases = session.plan.phases[phase_idx + 1:]
                     review_result = await lead_worker.run_async(
                         config=lead_config,
-                        prompt=build_phase_review_prompt(phase, remaining_phases),
+                        prompt=build_phase_review_prompt(phase, remaining_phases, project_dir=session.project_dir or ""),
                         event_callback=lead_event_callback,
                     )
                     session.lead_sdk_session_id = review_result.sdk_session_id
@@ -434,7 +434,7 @@ class TeamOrchestrator:
 
                     final_result = await lead_worker.run_async(
                         config=lead_config,
-                        prompt=build_final_summary_prompt(session.plan),
+                        prompt=build_final_summary_prompt(session.plan, project_dir=session.project_dir or ""),
                         event_callback=lead_event_callback,
                     )
                     session.lead_sdk_session_id = final_result.sdk_session_id
