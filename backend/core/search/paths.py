@@ -6,7 +6,6 @@ from pathlib import Path
 
 
 VEC0_ENV = "OPENCOWORK_VEC0_PATH"
-MODEL_ENV = "OPENCOWORK_EMBEDDING_MODEL_PATH"
 EMBED_SERVER_ENV = "OPENCOWORK_EMBEDDING_SERVER_URL"
 
 
@@ -19,6 +18,14 @@ def default_vec_extension_path() -> Path:
     if env_path:
         return Path(env_path)
 
+    # Use sqlite-vec pip package's bundled extension
+    try:
+        import sqlite_vec
+        return Path(sqlite_vec.loadable_path())
+    except (ImportError, AttributeError):
+        pass
+
+    # Fallback to storage/bin/
     if sys.platform == "darwin":
         ext = ".dylib"
     elif sys.platform.startswith("win"):
@@ -27,14 +34,6 @@ def default_vec_extension_path() -> Path:
         ext = ".so"
 
     return repo_root() / "storage" / "bin" / f"vec0{ext}"
-
-
-def default_model_path() -> Path:
-    env_path = os.getenv(MODEL_ENV)
-    if env_path:
-        return Path(env_path)
-
-    return repo_root() / "storage" / "models" / "embeddinggemma-q8_0.gguf"
 
 
 def default_embedding_server_url() -> str:

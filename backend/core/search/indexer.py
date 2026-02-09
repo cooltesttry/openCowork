@@ -13,7 +13,6 @@ from core.search.extractors import ExtractionError, extract_text
 from core.search.metadata import classify_kind, extract_metadata
 from core.search.paths import (
     default_embedding_server_url,
-    default_model_path,
     default_vec_extension_path,
     index_root_for_workdir,
 )
@@ -47,7 +46,6 @@ class SearchIndex:
         self.index_root = index_root_for_workdir(self.workdir)
         self.db_path = self.index_root / "search.sqlite"
         self.vec_extension_path = default_vec_extension_path()
-        self.model_path = default_model_path()
         self.embedding_server_url = default_embedding_server_url()
 
     def _connect(self) -> sqlite3.Connection:
@@ -69,15 +67,12 @@ class SearchIndex:
         return conn
 
     def _load_vec_extension(self, conn: sqlite3.Connection) -> bool:
-        if not self.vec_extension_path.exists():
-            logger.warning("sqlite-vec extension not found: %s", self.vec_extension_path)
-            return False
         try:
             conn.enable_load_extension(True)
             conn.execute("SELECT load_extension(?)", (str(self.vec_extension_path),))
             return True
         except sqlite3.Error as exc:
-            logger.warning("Failed to load sqlite-vec extension: %s", exc)
+            logger.warning("Failed to load sqlite-vec extension (%s): %s", self.vec_extension_path, exc)
             return False
 
     def _require_vec_extension(self, conn: sqlite3.Connection, action: str) -> bool:
@@ -285,7 +280,7 @@ class SearchIndex:
         vec_enabled = self._require_vec_extension(conn, "embedding")
         self._init_schema(conn, vec_enabled)
 
-        embedder = EmbeddingProvider(self.model_path, self.embedding_server_url)
+        embedder = EmbeddingProvider(self.embedding_server_url)
         vector_available = embedder.is_available() and self._table_exists(conn, "vec_chunks")
         if not vector_available:
             conn.close()
@@ -339,7 +334,7 @@ class SearchIndex:
         conn = self._connect()
         vec_enabled = self._require_vec_extension(conn, "index_text")
         self._init_schema(conn, vec_enabled)
-        embedder = EmbeddingProvider(self.model_path, self.embedding_server_url) if vec_enabled else None
+        embedder = EmbeddingProvider(self.embedding_server_url) if vec_enabled else None
         vector_available = (
             vec_enabled
             and embedder is not None
@@ -561,7 +556,7 @@ class SearchIndex:
         vec_enabled = self._require_vec_extension(conn, "indexing")
         self._init_schema(conn, vec_enabled)
 
-        embedder = EmbeddingProvider(self.model_path, self.embedding_server_url) if vec_enabled else None
+        embedder = EmbeddingProvider(self.embedding_server_url) if vec_enabled else None
         vector_available = vec_enabled and embedder is not None and embedder.is_available()
 
         try:
@@ -687,7 +682,7 @@ class SearchIndex:
         if use_vector:
             vec_enabled = self._load_vec_extension(conn)
         self._init_schema(conn, vec_enabled)
-        embedder = EmbeddingProvider(self.model_path, self.embedding_server_url) if vec_enabled else None
+        embedder = EmbeddingProvider(self.embedding_server_url) if vec_enabled else None
         vector_available = (
             vec_enabled
             and embedder is not None

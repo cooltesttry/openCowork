@@ -1,15 +1,11 @@
 # Backend dependencies
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
-websockets>=14.0
 pydantic>=2.10.0
-pydantic-settings>=2.6.0
-python-dotenv>=1.0.1
 httpx>=0.28.0
 claude-agent-sdk>=0.1.0
-aiofiles>=24.1.0
+mcp>=1.0.0
 watchdog>=6.0.0
-llama-cpp-python>=0.2.88
 sqlite-vec>=0.1.6
 requests>=2.32.0
 pyyaml>=6.0.2
@@ -20,3 +16,6 @@ pillow-heif>=0.13.0
 
 # Document extraction (MarkItDown)
 markitdown[pdf,docx,pptx,xlsx,xls]>=0.1.0
+
+# JSON repair
+json-repair

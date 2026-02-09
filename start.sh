@@ -8,8 +8,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/backend"
 FRONTEND_DIR="$SCRIPT_DIR/frontend"
-LLAMA_DIR="$SCRIPT_DIR/third_party/llama.cpp"
-LLAMA_BIN="$LLAMA_DIR/build/bin/llama-server"
+LLAMA_BIN="$SCRIPT_DIR/third_party/llama-server/llama-server"
 EMBED_MODEL="$SCRIPT_DIR/storage/models/embeddinggemma-q8_0.gguf"
 BACKEND_PORT=8000
 FRONTEND_PORT=3000
@@ -58,7 +57,7 @@ start_services() {
     # Start embedding server (llama.cpp) if available
     if [ -x "$LLAMA_BIN" ] && [ -f "$EMBED_MODEL" ]; then
         echo -e "${GREEN}Starting Embedding Server (llama-server on port $EMBED_PORT)...${NC}"
-        DYLD_LIBRARY_PATH="$LLAMA_DIR/build/bin" "$LLAMA_BIN" -m "$EMBED_MODEL" --embd-gemma-default --port "$EMBED_PORT" > /tmp/stockagent_embedding.log 2>&1 &
+        "$LLAMA_BIN" -m "$EMBED_MODEL" --embd-gemma-default --port "$EMBED_PORT" > /tmp/stockagent_embedding.log 2>&1 &
         EMBED_PID=$!
         sleep 1
     else
@@ -98,10 +97,20 @@ cleanup() {
 }
 
 # Main
-case "${1:-start}" in
+ACTION="start"
+FOREGROUND=false
+
+for arg in "$@"; do
+    case "$arg" in
+        start|stop|restart) ACTION="$arg" ;;
+        -f|--foreground) FOREGROUND=true ;;
+    esac
+done
+
+case "$ACTION" in
     start)
         start_services
-        if [ "${2:-}" = "-f" ] || [ "${2:-}" = "--foreground" ]; then
+        if [ "$FOREGROUND" = true ]; then
             trap cleanup SIGINT SIGTERM
             echo -e "\nPress Ctrl+C to stop both servers.\n"
             wait
@@ -114,6 +123,11 @@ case "${1:-start}" in
         stop_services
         sleep 1
         start_services
+        if [ "$FOREGROUND" = true ]; then
+            trap cleanup SIGINT SIGTERM
+            echo -e "\nPress Ctrl+C to stop both servers.\n"
+            wait
+        fi
         ;;
     *)
         echo "Usage: $0 {start|stop|restart} [-f|--foreground]"

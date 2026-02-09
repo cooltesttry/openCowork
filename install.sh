@@ -1,5 +1,5 @@
 #!/bin/bash
-# Smart Installation Script for Claude Agent Project
+# Smart Installation Script for OpenCowork Project
 # Features: Pre-installation checks, skip if already installed, detailed status output
 
 set -e
@@ -8,10 +8,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/backend"
 FRONTEND_DIR="$SCRIPT_DIR/frontend"
 CRAWLER_DIR="$SCRIPT_DIR/simple-crawler"
+LLAMA_DIR="$SCRIPT_DIR/third_party/llama-server"
 
 # Required versions
 MIN_PYTHON_VERSION="3.11"
 MIN_NODE_VERSION="20"
+
+# llama.cpp release config
+LLAMA_VERSION="b7974"
+LLAMA_RELEASE_URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_VERSION}"
 
 # Colors
 GREEN='\033[0;32m'
@@ -28,7 +33,7 @@ ARROW="→"
 SKIP="⊘"
 
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║      Claude Agent Project - Smart Installation Script      ║${NC}"
+echo -e "${CYAN}║        OpenCowork Project - Smart Installation Script      ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -58,7 +63,7 @@ print_status() {
 # Step 1: Check System Dependencies
 #=============================================================================
 
-echo -e "${BLUE}[Step 1/5] Checking System Dependencies${NC}"
+echo -e "${BLUE}[Step 1/6] Checking System Dependencies${NC}"
 echo ""
 
 SYSTEM_OK=true
@@ -120,7 +125,7 @@ fi
 # Step 2: Backend Setup (Python Virtual Environment)
 #=============================================================================
 
-echo -e "${BLUE}[Step 2/5] Setting up Backend (Python)${NC}"
+echo -e "${BLUE}[Step 2/6] Setting up Backend (Python)${NC}"
 echo ""
 
 cd "$BACKEND_DIR"
@@ -168,7 +173,7 @@ echo ""
 # Step 3: Frontend Setup (Node.js)
 #=============================================================================
 
-echo -e "${BLUE}[Step 3/5] Setting up Frontend (Next.js)${NC}"
+echo -e "${BLUE}[Step 3/6] Setting up Frontend (Next.js)${NC}"
 echo ""
 
 cd "$FRONTEND_DIR"
@@ -176,7 +181,8 @@ cd "$FRONTEND_DIR"
 # Check if node_modules exists and matches package-lock.json
 if [ -d "node_modules" ] && [ -f "node_modules/.package-lock.json" ]; then
     # Compare timestamps
-    if [ "package-lock.json" -ot "node_modules/.package-lock.json" ]; then
+    if [ "package-lock.json" -ot "node_modules/.package-lock.json" ] && \
+       [ "package.json" -ot "node_modules/.package-lock.json" ]; then
         print_status skip "Frontend dependencies already installed"
     else
         print_status action "Installing frontend dependencies (package-lock.json updated)..."
@@ -195,14 +201,15 @@ echo ""
 # Step 4: Simple-Crawler Setup (Node.js + Playwright)
 #=============================================================================
 
-echo -e "${BLUE}[Step 4/5] Setting up Simple-Crawler (MCP Server)${NC}"
+echo -e "${BLUE}[Step 4/6] Setting up Simple-Crawler (MCP Server)${NC}"
 echo ""
 
 cd "$CRAWLER_DIR"
 
 # Check node_modules
 if [ -d "node_modules" ] && [ -f "node_modules/.package-lock.json" ]; then
-    if [ "package-lock.json" -ot "node_modules/.package-lock.json" ]; then
+    if [ "package-lock.json" -ot "node_modules/.package-lock.json" ] && \
+       [ "package.json" -ot "node_modules/.package-lock.json" ]; then
         print_status skip "Crawler dependencies already installed"
     else
         print_status action "Installing crawler dependencies (package-lock.json updated)..."
@@ -222,17 +229,114 @@ if [ -d "$PLAYWRIGHT_BROWSERS_PATH" ] && [ -d "$PLAYWRIGHT_BROWSERS_PATH/chromiu
     print_status skip "Playwright Chromium already installed ($CHROMIUM_VERSION)"
 else
     print_status action "Installing Playwright Chromium browser..."
-    npx playwright install chromium --quiet
+    npx playwright install chromium
     print_status ok "Playwright Chromium installed"
+fi
+
+# Build crawler
+if [ ! -d "dist" ] || [ "src/mcp-server.ts" -nt "dist/mcp-server.js" ]; then
+    print_status action "Building simple-crawler..."
+    npm run build --silent
+    print_status ok "Simple-crawler built"
+else
+    print_status skip "Simple-crawler already built"
 fi
 
 echo ""
 
 #=============================================================================
-# Step 5: Environment Configuration
+# Step 5: Embedding Server (llama-server)
 #=============================================================================
 
-echo -e "${BLUE}[Step 5/5] Checking Environment Configuration${NC}"
+echo -e "${BLUE}[Step 5/6] Setting up Embedding Server (llama-server)${NC}"
+echo ""
+
+cd "$SCRIPT_DIR"
+
+# Detect platform and architecture
+detect_llama_archive() {
+    local os=$(uname -s)
+    local arch=$(uname -m)
+    case "$os" in
+        Darwin)
+            if [ "$arch" = "arm64" ]; then
+                echo "llama-${LLAMA_VERSION}-bin-macos-arm64.tar.gz"
+            else
+                echo "llama-${LLAMA_VERSION}-bin-macos-x64.tar.gz"
+            fi
+            ;;
+        Linux)
+            echo "llama-${LLAMA_VERSION}-bin-ubuntu-x64.tar.gz"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+LLAMA_ARCHIVE=$(detect_llama_archive)
+LLAMA_SERVER="$LLAMA_DIR/llama-server"
+VERSION_MARKER="$LLAMA_DIR/.version"
+
+if [ -z "$LLAMA_ARCHIVE" ]; then
+    print_status info "Unsupported platform for auto-download ($(uname -s)/$(uname -m))"
+    print_status info "Please manually install llama-server to $LLAMA_DIR/"
+elif [ -x "$LLAMA_SERVER" ] && [ -f "$VERSION_MARKER" ] && [ "$(cat "$VERSION_MARKER")" = "$LLAMA_VERSION" ]; then
+    print_status skip "llama-server already installed ($LLAMA_VERSION)"
+else
+    print_status action "Downloading llama-server ${LLAMA_VERSION}..."
+    DOWNLOAD_URL="${LLAMA_RELEASE_URL}/${LLAMA_ARCHIVE}"
+
+    # Download to temp and extract
+    TMPFILE=$(mktemp /tmp/llama-download.XXXXXX.tar.gz)
+    if curl -sL -o "$TMPFILE" "$DOWNLOAD_URL"; then
+        # Clean old install
+        rm -rf "$LLAMA_DIR"
+        mkdir -p "$LLAMA_DIR"
+
+        # Extract — release tar has a top-level directory like llama-b7974/
+        tar xzf "$TMPFILE" -C "$LLAMA_DIR" --strip-components=1 2>/dev/null || \
+        tar xzf "$TMPFILE" -C "$LLAMA_DIR" 2>/dev/null
+
+        rm -f "$TMPFILE"
+
+        if [ -x "$LLAMA_SERVER" ]; then
+            echo "$LLAMA_VERSION" > "$VERSION_MARKER"
+            print_status ok "llama-server ${LLAMA_VERSION} installed"
+        else
+            print_status error "Download succeeded but llama-server binary not found"
+        fi
+    else
+        rm -f "$TMPFILE"
+        print_status error "Failed to download llama-server (check network connection)"
+    fi
+fi
+
+# Check embedding model
+EMBED_MODEL="$SCRIPT_DIR/storage/models/embeddinggemma-q8_0.gguf"
+EMBED_MODEL_URL="https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf"
+
+if [ -f "$EMBED_MODEL" ]; then
+    print_status ok "Embedding model found"
+else
+    print_status action "Downloading embedding model (EmbeddingGemma 300M, ~313MB)..."
+    mkdir -p "$(dirname "$EMBED_MODEL")"
+    if curl -sL -o "$EMBED_MODEL" "$EMBED_MODEL_URL"; then
+        print_status ok "Embedding model downloaded"
+    else
+        rm -f "$EMBED_MODEL"
+        print_status error "Failed to download embedding model (check network connection)"
+        print_status info "Vector search will be unavailable until model is placed at $EMBED_MODEL"
+    fi
+fi
+
+echo ""
+
+#=============================================================================
+# Step 6: Environment Configuration
+#=============================================================================
+
+echo -e "${BLUE}[Step 6/6] Checking Environment Configuration${NC}"
 echo ""
 
 cd "$SCRIPT_DIR"

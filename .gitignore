@@ -15,6 +15,9 @@ storage/
 dist/
 build/
 
+# Third-party binaries (downloaded by install.sh)
+third_party/llama-server/
+
 # IDE
 .idea/
 .vscode/

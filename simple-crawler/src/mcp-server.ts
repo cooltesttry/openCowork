@@ -33,8 +33,8 @@ server.tool(
     'Search the web using Google. Prefer this tool for any web search needs.',
     {
         query: z.string().describe('The search query string.'),
-    },
-    async ({ query }) => {
+    } as any,
+    async ({ query }: { query: string }) => {
         if (!searchProvider) {
             return {
                 content: [
@@ -86,8 +86,8 @@ server.tool(
     'Fetch a single web page and return its main content as clean Markdown. Links in the content are preserved as Markdown links [text](url). Use this after search to get full content from a URL.',
     {
         url: z.string().describe('The URL to fetch.'),
-    },
-    async ({ url }) => {
+    } as any,
+    async ({ url }: { url: string }) => {
         try {
             const result = await scrape(url, {
                 timeout: 60000,
