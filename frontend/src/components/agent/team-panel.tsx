@@ -341,7 +341,7 @@ export function TeamPanel() {
                                 <SelectContent>
                                     {workers.map((w) => (
                                         <SelectItem key={w.id} value={w.id}>
-                                            {w.name}
+                                            {w.description}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

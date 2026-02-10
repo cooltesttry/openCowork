@@ -21,7 +21,7 @@ def test_crud():
     print("\n2. Creating new worker...")
     new_worker = {
         "id": "test_worker",
-        "name": "Test Worker",
+        "description": "Test Worker",
         "model": "claude-3-5-sonnet-20241022",
         "preserve_context": True,
         "max_turns": 5

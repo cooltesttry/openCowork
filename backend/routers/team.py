@@ -76,16 +76,9 @@ def _get_worker_types_info() -> list[dict]:
     data = load_agents()
     types = []
     for w in data.get("workers", []):
-        description = w.get("prompt", {}).get("system", "")[:500]
-        user_prompt = w.get("prompt", {}).get("user", "")
-        if user_prompt:
-            description += f"\nDefault user prompt: {user_prompt[:200]}"
         types.append({
             "id": w.get("id", ""),
-            "name": w.get("name", ""),
-            "model": w.get("model", ""),
-            "tools_allow": w.get("tools_allow", []),
-            "description": description,
+            "description": w.get("description", w.get("name", "")),
         })
     return types
 

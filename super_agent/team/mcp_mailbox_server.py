@@ -58,6 +58,34 @@ def _append_mail(inbox_file: Path, mail: dict):
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
+def _append_to_mail_log(mail: dict, to_id: str):
+    """Append mail record to mail_log.jsonl for activity log."""
+    log_file = _team_dir() / "mail_log.jsonl"
+
+    from_id = mail.get("from", "")
+    task_id = ""
+    if from_id.startswith("worker-"):
+        task_id = from_id[len("worker-"):]
+    elif to_id.startswith("worker-"):
+        task_id = to_id[len("worker-"):]
+
+    record = {
+        "id": mail["id"],
+        "from": from_id,
+        "to": to_id,
+        "content": mail.get("content", ""),
+        "task_id": task_id,
+        "timestamp": mail.get("timestamp", ""),
+    }
+
+    with open(log_file, "a") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
 @mcp.tool(
     name="send_mail",
     description="发送邮件给团队成员。完成任务后用此工具向 Lead 提交结果，或与其他成员通信。",
@@ -90,6 +118,12 @@ def send_mail(to: str, content: str) -> str:
 
     inbox_file = _inbox_path(to)
     _append_mail(inbox_file, mail)
+
+    # Append to mail_log.jsonl for activity log (best-effort)
+    try:
+        _append_to_mail_log(mail, to_id=to)
+    except Exception:
+        pass
 
     return f"邮件已发送给 {to}"
 

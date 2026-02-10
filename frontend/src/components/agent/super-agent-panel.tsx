@@ -68,7 +68,7 @@ export function SuperAgentPanel() {
                     setSelectedWorkerId(data.workers[0].id);
                 }
                 // Auto-select checker: prefer agent with id/name containing 'checker'
-                const defaultChecker = data.workers?.find(w => w.id === 'checker' || w.name.toLowerCase().includes('checker'));
+                const defaultChecker = data.workers?.find(w => w.id === 'checker' || w.description.toLowerCase().includes('checker'));
                 if (defaultChecker && !selectedCheckerId) {
                     setSelectedCheckerId(defaultChecker.id);
                 } else if (data.workers?.length > 0 && !selectedCheckerId) {
@@ -221,7 +221,7 @@ export function SuperAgentPanel() {
                                 <SelectContent>
                                     {workers.map((w) => (
                                         <SelectItem key={w.id} value={w.id}>
-                                            {w.name}
+                                            {w.description}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -241,7 +241,7 @@ export function SuperAgentPanel() {
                                 <SelectContent>
                                     {workers.map((w) => (
                                         <SelectItem key={w.id} value={w.id}>
-                                            {w.name}
+                                            {w.description}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

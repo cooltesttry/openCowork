@@ -20,7 +20,7 @@ def _clone_mcp_servers(value: object) -> object:
 @dataclass
 class WorkerConfig:
     id: str
-    name: str
+    description: str
     model: str
     provider: Optional[str] = None
     api_key: Optional[str] = None
@@ -43,7 +43,7 @@ class WorkerConfig:
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "name": self.name,
+            "description": self.description,
             "model": self.model,
             "provider": self.provider,
             "api_key": self.api_key,
@@ -72,7 +72,7 @@ class WorkerConfig:
     def from_dict(cls, data: dict) -> "WorkerConfig":
         return cls(
             id=data["id"],
-            name=data.get("name", data["id"]),
+            description=data.get("description", data.get("name", data["id"])),
             model=data["model"],
             provider=data.get("provider"),
             api_key=data.get("api_key"),

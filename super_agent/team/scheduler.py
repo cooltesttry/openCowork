@@ -23,6 +23,7 @@ from super_agent.events import EventType
 from .models import Message, Phase, TaskResult, TaskStep
 from .mailbox import FileMailbox
 from .prompts import build_worker_prompt, build_task_review_prompt
+from .activity_log import TeamActivityLog
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class PhaseScheduler:
         previous_results_summary: str = "",
         mcp_mailbox_server_path: str = "",
         project_dir: str = "",
+        activity_log: Optional[TeamActivityLog] = None,
         # Legacy compat
         worker: Optional[Worker] = None,
         max_task_submits: int = 3,
@@ -69,6 +71,8 @@ class PhaseScheduler:
         )
         self.project_dir = project_dir
         self.max_task_submits = max_task_submits
+        self.activity_log = activity_log
+        self._phase_index = 0
 
     async def execute_phase(
         self,
@@ -80,6 +84,9 @@ class PhaseScheduler:
         """Execute all tasks in a phase with parallel Workers and Lead review."""
         phase.status = "running"
         phase.started_at = utc_now()
+        self._phase_index = phase.phase_index
+        if self.activity_log:
+            self.activity_log.log_section(f"Phase {phase.phase_index}: {phase.description}")
         self._emit(EventType.TEAM_PHASE_START, {
             "phase_id": phase.phase_id,
             "phase_index": phase.phase_index,
@@ -162,10 +169,16 @@ class PhaseScheduler:
             "worker_type_id": task.worker_type_id,
         })
         self._persist()
+        if self.activity_log:
+            self.activity_log.log_event(f"Task {task.task_id} started (worker: {task.worker_type_id})")
 
         # Inject Mailbox MCP into worker config
         worker_config = self._inject_mailbox_mcp(config, task)
-        prompt = build_worker_prompt(task, phase.tasks, self.previous_results_summary, project_dir=self.project_dir)
+        prompt = build_worker_prompt(
+            task, phase.tasks, self.previous_results_summary,
+            project_dir=self.project_dir,
+            logs_dir=str(self.activity_log.logs_dir) if self.activity_log else "",
+        )
 
         task_worker = self.worker_factory()
         try:
@@ -204,6 +217,14 @@ class PhaseScheduler:
                 if plan_status == "approved":
                     task.status = "approved"
                     task.completed_at = utc_now()
+                    if self.activity_log:
+                        self.activity_log.drain_mail_log(
+                            self._phase_index,
+                        )
+                        self.activity_log.mark_final(
+                            self._phase_index, task.task_id,
+                            f"worker-{task.task_id}",
+                        )
                     self._emit(EventType.TEAM_TASK_COMPLETE, {
                         "task_id": task.task_id,
                         "status": "approved",
@@ -237,6 +258,8 @@ class PhaseScheduler:
                     break
 
                 # Wrap feedback mails as prompt and deliver
+                if self.activity_log:
+                    self.activity_log.drain_mail_log(self._phase_index)
                 feedback_prompt = self._wrap_mail_as_prompt(mails)
                 task.status = "running"
 
@@ -329,6 +352,9 @@ class PhaseScheduler:
                         )
 
             # Build review prompt with all pending mails
+            # Drain mail log to capture Worker→Lead mails
+            if self.activity_log:
+                self.activity_log.drain_mail_log(self._phase_index)
             prompt = self._wrap_mail_as_prompt(mails)
 
             # Add review instructions
@@ -351,11 +377,17 @@ class PhaseScheduler:
                     event_data = {"agent": "lead", **(data or {})}
                     self._emit(event_type, event_data)
 
-                await lead_worker.run_async(
+                lead_result = await lead_worker.run_async(
                     config=lead_config,
                     prompt=prompt,
                     event_callback=lead_event_callback,
                 )
+                if self.activity_log:
+                    self.activity_log.log_lead_response(
+                        f"task_review({','.join(review_tasks)})",
+                        lead_result.text or "",
+                    )
+                    self.activity_log.drain_mail_log(self._phase_index)
                 # Ack delivery only after successful review
                 self.mailbox.ack_delivered("lead", [m["id"] for m in mails])
             except Exception as e:

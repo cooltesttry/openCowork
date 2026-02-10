@@ -65,7 +65,7 @@ from super_agent.events import EventType
 # ═══════════════════════════════════════════════════════════════
 
 def make_worker_config(wid="default") -> WorkerConfig:
-    return WorkerConfig(id=wid, name=f"Worker-{wid}", model="test-model")
+    return WorkerConfig(id=wid, description=f"Worker-{wid}", model="test-model")
 
 def make_message(task_id="t1", content="hello") -> Message:
     return Message(
@@ -653,13 +653,12 @@ class TestPrompts(unittest.TestCase):
 
     def test_build_planning_prompt(self):
         prompt = build_planning_prompt("Research AI", [
-            {"id": "researcher", "name": "Researcher", "tools_allow": ["Read", "Bash"]},
-            {"id": "writer", "name": "Writer", "model": "claude-3"},
+            {"id": "researcher", "description": "Researcher"},
+            {"id": "writer", "description": "Writer"},
         ])
         self.assertIn("Research AI", prompt)
         self.assertIn("researcher", prompt)
         self.assertIn("Researcher", prompt)
-        self.assertIn("Read, Bash", prompt)
         self.assertIn("writer", prompt)
         self.assertIn("create_plan", prompt)  # Instructs to use MCP tool
 
@@ -1637,7 +1636,7 @@ class TestIntegration(unittest.TestCase):
             await self.orchestrator.run_async(
                 session_id=session.session_id,
                 available_worker_configs={"default": make_worker_config()},
-                worker_types_info=[{"id": "default", "name": "Default Worker"}],
+                worker_types_info=[{"id": "default", "description": "Default Worker"}],
             )
 
             # Load final state

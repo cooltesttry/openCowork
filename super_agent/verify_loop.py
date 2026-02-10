@@ -31,7 +31,7 @@ class MockReflectiveChecker(Checker):
         return CheckerResult(passed=True, reason="mock_pass")
 
 async def main():
-    config = WorkerConfig(id="test-worker", name="Test", model="claude-3-5-sonnet")
+    config = WorkerConfig(id="test-worker", description="Test", model="claude-3-5-sonnet")
     task = TaskDefinition(task_id="t1", objective="Test Loop", inputs={"start": "true"})
     
     # We want it to fail twice, then pass.

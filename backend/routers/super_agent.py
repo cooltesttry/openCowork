@@ -142,7 +142,7 @@ def get_worker_config(worker_id: str, request=None) -> SAWorkerConfig:
             # Convert to super_agent WorkerConfig
             config = SAWorkerConfig(
                 id=worker.get("id", "unknown"),
-                name=worker.get("name", worker.get("id", "unknown")),
+                description=worker.get("description", worker.get("name", worker.get("id", "unknown"))),
                 model=worker.get("model", "claude-3-5-sonnet-20241022"),
                 provider=worker.get("provider"),
                 api_key=worker.get("api_key"),

@@ -18,7 +18,7 @@ AGENTS_FILE = STORAGE_DIR / "agents.json"
 class WorkerConfig(BaseModel):
     """Worker configuration schema."""
     id: str
-    name: str
+    description: str
     model: str
     provider: Optional[str] = None
     api_key: Optional[str] = None
@@ -45,7 +45,7 @@ def create_default_worker() -> dict:
     """Create default worker configuration."""
     return {
         "id": "default",
-        "name": "Default Worker",
+        "description": "Default Worker",
         "model": "claude-3-5-sonnet-20241022",
         "provider": "openrouter",
         "api_key": "",
@@ -188,8 +188,8 @@ async def validate_worker(config: WorkerConfig):
         # Check required fields
         if not config.id:
             errors.append("ID is required")
-        if not config.name:
-            errors.append("Name is required")
+        if not config.description:
+            errors.append("Description is required")
         if not config.model:
             errors.append("Model is required")
         

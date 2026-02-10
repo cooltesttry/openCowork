@@ -169,6 +169,39 @@ class FileMailbox:
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"[Mailbox] Failed to send auto-mail to {to_id}: {e}")
 
+        # Append to mail_log.jsonl for activity log (best-effort)
+        try:
+            self._append_to_mail_log(mail, to_id)
+        except Exception:
+            logger.warning(f"[Mailbox] Failed to write mail_log for {to_id}")
+
+    def _append_to_mail_log(self, mail: dict, to_id: str):
+        """Append to mail_log.jsonl."""
+        log_file = self.team_data_dir / "mail_log.jsonl"
+
+        from_id = mail.get("from", "")
+        task_id = ""
+        if from_id.startswith("worker-"):
+            task_id = from_id[len("worker-"):]
+        elif to_id.startswith("worker-"):
+            task_id = to_id[len("worker-"):]
+
+        record = {
+            "id": mail["id"],
+            "from": from_id,
+            "to": to_id,
+            "content": mail.get("content", ""),
+            "task_id": task_id,
+            "timestamp": mail.get("timestamp", ""),
+        }
+
+        with open(log_file, "a") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+
     async def shutdown(self):
         """Signal all wait loops to exit."""
         self._cancelled = True

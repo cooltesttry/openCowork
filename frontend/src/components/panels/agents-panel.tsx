@@ -98,7 +98,7 @@ interface AgentsPanelProps extends IDockviewPanelProps {
 
 const EMPTY_WORKER: WorkerConfig = {
     id: '',
-    name: '',
+    description: '',
     model: 'claude-3-5-sonnet-20241022',
     provider: 'openrouter',
     api_key: '',
@@ -179,8 +179,8 @@ export function AgentsPanel({ }: AgentsPanelProps) {
 
     const handleSave = async () => {
         // Validation - allow empty model for System inheritance
-        if (!editingWorker.id || !editingWorker.name) {
-            toast.error('Please fill in ID and Name');
+        if (!editingWorker.id || !editingWorker.description) {
+            toast.error('Please fill in ID and Description');
             return;
         }
 
@@ -188,12 +188,12 @@ export function AgentsPanel({ }: AgentsPanelProps) {
         try {
             if (isNew) {
                 await createWorker(editingWorker);
-                toast.success(`Worker "${editingWorker.name}" created`);
+                toast.success(`Worker "${editingWorker.description}" created`);
             } else if (selectedWorkerId) {
                 // Ensure ID matches the selected worker ID to prevent API errors
                 const payload = { ...editingWorker, id: selectedWorkerId };
                 await updateWorker(selectedWorkerId, payload);
-                toast.success(`Worker "${editingWorker.name}" updated`);
+                toast.success(`Worker "${editingWorker.description}" updated`);
             }
             await loadWorkers();
             setSelectedWorkerId(editingWorker.id);
@@ -214,7 +214,7 @@ export function AgentsPanel({ }: AgentsPanelProps) {
             return;
         }
 
-        if (!confirm(`Delete worker "${editingWorker.name}"?`)) return;
+        if (!confirm(`Delete worker "${editingWorker.description}"?`)) return;
 
         setLoading(true);
         try {
@@ -283,11 +283,11 @@ export function AgentsPanel({ }: AgentsPanelProps) {
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium mb-1">Worker Name *</label>
+                    <label className="block text-sm font-medium mb-1">Description *</label>
                     <input
                         type="text"
-                        value={editingWorker.name}
-                        onChange={(e) => updateField('name', e.target.value)}
+                        value={editingWorker.description}
+                        onChange={(e) => updateField('description', e.target.value)}
                         className="w-full p-2 border rounded text-sm"
                         placeholder="e.g., Research Assistant"
                     />
@@ -619,7 +619,7 @@ export function AgentsPanel({ }: AgentsPanelProps) {
                             className={`px-3 py-2 cursor-pointer border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors ${selectedWorkerId === worker.id && !isNew ? 'bg-zinc-100 dark:bg-zinc-800' : ''
                                 }`}
                         >
-                            <div className="text-sm font-medium truncate">{worker.name}</div>
+                            <div className="text-sm font-medium truncate">{worker.description}</div>
                             <div className="text-xs text-gray-500 truncate">ID: {worker.id}</div>
                         </div>
                     ))}
@@ -630,7 +630,7 @@ export function AgentsPanel({ }: AgentsPanelProps) {
             <div className="flex-1 flex flex-col">
                 <div className="p-4 border-b border-zinc-200 dark:border-zinc-700">
                     <h2 className="text-lg font-semibold">
-                        {isNew ? 'New Worker' : editingWorker.name || 'Worker'}
+                        {isNew ? 'New Worker' : editingWorker.description || 'Worker'}
                     </h2>
                 </div>
 

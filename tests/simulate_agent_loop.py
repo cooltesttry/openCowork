@@ -113,7 +113,7 @@ async def run_test():
     workspace_root.mkdir(parents=True)
     
     # Init
-    config = WorkerConfig(id="sim-worker", name="Sim", model="mock")
+    config = WorkerConfig(id="sim-worker", description="Sim", model="mock")
     task = TaskDefinition(task_id="sim-task", name="Sim Task", objective="Write Hello World")
     
     worker = ScriptedWorker()

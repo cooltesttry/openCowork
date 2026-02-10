@@ -570,7 +570,7 @@ export async function warmupSession(options: {
 
 export interface WorkerConfig {
     id: string;
-    name: string;
+    description: string;
     model: string;
     provider?: string;
     api_key?: string;

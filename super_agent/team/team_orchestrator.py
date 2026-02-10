@@ -34,6 +34,7 @@ from .prompts import (
     build_planning_prompt,
 )
 from .scheduler import PhaseScheduler
+from .activity_log import TeamActivityLog
 
 logger = logging.getLogger(__name__)
 
@@ -268,6 +269,7 @@ class TeamOrchestrator:
 
         workspace_dir = Path(session.workspace_dir)
         team_data_dir = Path(session.team_data_dir) if session.team_data_dir else workspace_dir
+        activity_log = TeamActivityLog(team_data_dir)
         self._emit(EventType.TEAM_SESSION_START, {"session_id": session_id})
 
         try:
@@ -289,6 +291,8 @@ class TeamOrchestrator:
                     self._emit(event_type, event_data)
 
                 # Leader creates plan via create_plan MCP tool
+                activity_log.log_section("Planning")
+                activity_log.log_prompt_summary("planning", f"Objective: {session.plan.objective}")
                 lead_result = await lead_worker.run_async(
                     config=lead_config,
                     prompt=build_planning_prompt(
@@ -299,11 +303,14 @@ class TeamOrchestrator:
                     event_callback=lead_event_callback,
                 )
                 session.lead_sdk_session_id = lead_result.sdk_session_id
+                activity_log.log_lead_response("planning", lead_result.text or "")
 
                 # Read plan from plan.json (created by Leader via Plan MCP)
                 plan_data = _read_plan_from_file(team_data_dir)
                 if not plan_data:
                     raise RuntimeError("Leader did not create a plan via create_plan tool")
+
+                activity_log.log_plan(plan_data)
 
                 available_ids = set(available_worker_configs.keys()) if available_worker_configs else None
                 session.plan = _plan_data_to_plan(
@@ -351,6 +358,7 @@ class TeamOrchestrator:
                         previous_results_summary=prev_summary,
                         mcp_mailbox_server_path=self._mailbox_mcp_path,
                         project_dir=session.project_dir or "",
+                        activity_log=activity_log,
                     )
                     phase = await scheduler.execute_phase(
                         phase, available_worker_configs,
@@ -378,12 +386,19 @@ class TeamOrchestrator:
 
                     # Leader reviews phase via Plan MCP (may call modify_phases)
                     remaining_phases = session.plan.phases[phase_idx + 1:]
+                    activity_log.log_section(f"Phase {phase_idx} Review")
+                    activity_log.log_prompt_summary("phase_review", f"Phase {phase_idx}: {phase.description}")
                     review_result = await lead_worker.run_async(
                         config=lead_config,
-                        prompt=build_phase_review_prompt(phase, remaining_phases, project_dir=session.project_dir or ""),
+                        prompt=build_phase_review_prompt(
+                            phase, remaining_phases,
+                            project_dir=session.project_dir or "",
+                            logs_dir=str(activity_log.logs_dir),
+                        ),
                         event_callback=lead_event_callback,
                     )
                     session.lead_sdk_session_id = review_result.sdk_session_id
+                    activity_log.log_lead_response("phase_review", review_result.text or "")
 
                     # Check if Leader modified the plan via modify_phases MCP
                     updated_plan_data = _read_plan_from_file(team_data_dir)
@@ -395,6 +410,7 @@ class TeamOrchestrator:
                         if new_plan.version > old_version:
                             # Plan was modified — Leader used modify_phases
                             phase.phase_review_decision = "modify"
+                            activity_log.log_event("Plan modified by Lead")
                             # Preserve completed phases' runtime data
                             old_phases = session.plan.phases
                             session.plan = new_plan
@@ -432,13 +448,15 @@ class TeamOrchestrator:
                     session.status = "completing"
                     self.store.save_session(session)
 
+                    activity_log.log_section("Final Summary")
                     final_result = await lead_worker.run_async(
                         config=lead_config,
-                        prompt=build_final_summary_prompt(session.plan, project_dir=session.project_dir or ""),
+                        prompt=build_final_summary_prompt(session.plan, project_dir=session.project_dir or "", logs_dir=str(activity_log.logs_dir)),
                         event_callback=lead_event_callback,
                     )
                     session.lead_sdk_session_id = final_result.sdk_session_id
                     session.final_output = final_result.text
+                    activity_log.log_lead_response("final_summary", final_result.text or "")
                     session.status = "completed"
                     session.completed_at = utc_now()
 

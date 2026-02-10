@@ -21,10 +21,7 @@ def build_planning_prompt(objective: str, worker_types: list[dict], workspace_pa
     """
     worker_list = ""
     for wt in worker_types:
-        worker_list += f"- **{wt.get('id', 'unknown')}** ({wt.get('name', '')}): {wt.get('description', wt.get('model', ''))}\n"
-        tools = wt.get("tools_allow", [])
-        if tools:
-            worker_list += f"  Tools: {', '.join(tools)}\n"
+        worker_list += f"- **{wt.get('id', 'unknown')}**: {wt.get('description', '')}\n"
 
     return f"""You are the Lead of a Team Agent. Your role is to plan, review, and direct — you do not execute tasks yourself.
 
@@ -73,6 +70,7 @@ def build_worker_prompt(
     phase_tasks: list[TaskStep],
     previous_results_summary: str = "",
     project_dir: str = "",
+    logs_dir: str = "",
 ) -> str:
     """Build the execution prompt for a Worker.
 
@@ -106,11 +104,20 @@ def build_worker_prompt(
         project_section = f"""
 ## Working Directory
 Your working directory is the user's workspace.
-Place all new files under the project directory {project_dir}/.
+The project directory {project_dir}/ already exists. Place all new files there directly — do not create or mkdir the project directory.
 You may read other files in the workspace, but do not modify files outside the project directory."""
 
+    logs_section = ""
+    if logs_dir:
+        logs_section = f"""
+## Team Activity Log
+Team work history: {logs_dir}
+- `workflow.md`: Main workflow (Lead decisions, mail actions, plan)
+- `phase*_*_submit*_final.md`: Approved submissions
+Read these files if you need more context on previous work."""
+
     return f"""You are a Worker in a Team Agent. Focus on completing your task.
-{other_section}{prev_section}{context_section}{project_section}
+{other_section}{prev_section}{context_section}{project_section}{logs_section}
 
 ## Your Task
 {task.description}
@@ -176,7 +183,7 @@ After reviewing, perform one of the following:
 Please provide concise, actionable feedback."""
 
 
-def build_phase_review_prompt(phase: Phase, remaining_phases: list[Phase], project_dir: str = "") -> str:
+def build_phase_review_prompt(phase: Phase, remaining_phases: list[Phase], project_dir: str = "", logs_dir: str = "") -> str:
     """Build the Phase-level review prompt for Lead.
 
     Lead uses modify_phases MCP tool if plan adjustment is needed.
@@ -209,6 +216,15 @@ def build_phase_review_prompt(phase: Phase, remaining_phases: list[Phase], proje
 {project_dir}
 """
 
+    logs_section = ""
+    if logs_dir:
+        logs_section = f"""
+## Team Activity Log
+Team work history: {logs_dir}
+- `workflow.md`: Main workflow (Lead decisions, mail actions, plan)
+- `phase*_*_submit*_final.md`: Approved submissions
+"""
+
     return f"""Phase {phase.phase_index} ("{phase.description}") is complete.
 
 ## Phase Results Summary
@@ -216,7 +232,7 @@ def build_phase_review_prompt(phase: Phase, remaining_phases: list[Phase], proje
 
 ## Remaining Plan
 {remaining_plan}
-{project_section}
+{project_section}{logs_section}
 ## Review Actions
 Evaluate whether to continue as planned:
 
@@ -232,7 +248,7 @@ Evaluate whether to continue as planned:
 Only modify the plan when this Phase's results reveal issues that necessitate changes."""
 
 
-def build_final_summary_prompt(plan: Plan, project_dir: str = "") -> str:
+def build_final_summary_prompt(plan: Plan, project_dir: str = "", logs_dir: str = "") -> str:
     """Build the final summary prompt for Lead."""
     all_results = ""
     for phase in plan.phases:
@@ -258,6 +274,16 @@ def build_final_summary_prompt(plan: Plan, project_dir: str = "") -> str:
 {project_dir}
 """
 
+    logs_section = ""
+    if logs_dir:
+        logs_section = f"""
+## Team Activity Log
+Team work history: {logs_dir}
+- `workflow.md`: Main workflow (Lead decisions, mail actions, plan)
+- `phase*_*_submit*_final.md`: Approved submissions
+Read these files if you need more detail beyond the summaries above.
+"""
+
     return f"""All Phases are complete. Please generate the final report.
 
 ## Objective
@@ -265,7 +291,7 @@ def build_final_summary_prompt(plan: Plan, project_dir: str = "") -> str:
 
 ## Results by Phase
 {all_results}
-{project_section}
+{project_section}{logs_section}
 ## Requirements
 Please write a comprehensive final report including:
 1. What was accomplished
