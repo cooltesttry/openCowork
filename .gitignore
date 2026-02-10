@@ -5,7 +5,8 @@ __pycache__/
 *.pyc
 
 # Environment and config files with sensitive data
-storage/
+storage/*
+!storage/agents.json
 .env
 .env.local
 .env.production
