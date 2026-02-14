@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import uuid as uuid_mod
 from pathlib import Path
 from typing import Optional
@@ -12,6 +13,11 @@ from .models import WorkerConfig, LLMResult, utc_now
 from typing import Callable, Any
 
 logger = logging.getLogger(__name__)
+
+_LOCAL_COMMAND_OUTPUT_RE = re.compile(
+    r"<local-command-(?:stdout|stderr)>(.*?)</local-command-(?:stdout|stderr)>",
+    re.DOTALL,
+)
 
 # Type alias for event callback
 EventCallback = Callable[[Any, dict], None]
@@ -347,23 +353,34 @@ class ClaudeSdkWorker(Worker):
                         })
 
         elif isinstance(msg, UserMessage):
-            for block in msg.content:
-                if isinstance(block, ToolResultBlock):
-                    tool_results.append({
-                        "tool_use_id": block.tool_use_id,
-                        "content": block.content,
-                        "is_error": getattr(block, "is_error", False),
-                    })
-                    if event_callback:
-                        from .events import EventType
-                        content_preview = block.content
-                        if isinstance(content_preview, str) and len(content_preview) > 1000:
-                            content_preview = content_preview[:1000] + "..."
-                        await event_callback(EventType.WORKER_TOOL_RESULT, {
-                            "tool_id": block.tool_use_id,
-                            "content": content_preview,
+            content = getattr(msg, "content", None)
+            if isinstance(content, str):
+                # Slash commands like /context can arrive as local-command stdout on UserMessage.
+                normalized = _extract_local_command_output(content)
+                if normalized:
+                    text_parts.append(normalized)
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, ToolResultBlock):
+                        tool_results.append({
+                            "tool_use_id": block.tool_use_id,
+                            "content": block.content,
                             "is_error": getattr(block, "is_error", False),
                         })
+                        if event_callback:
+                            from .events import EventType
+                            content_preview = block.content
+                            if isinstance(content_preview, str) and len(content_preview) > 1000:
+                                content_preview = content_preview[:1000] + "..."
+                            await event_callback(EventType.WORKER_TOOL_RESULT, {
+                                "tool_id": block.tool_use_id,
+                                "content": content_preview,
+                                "is_error": getattr(block, "is_error", False),
+                            })
+                    elif isinstance(block, str):
+                        normalized = _extract_local_command_output(block)
+                        if normalized:
+                            text_parts.append(normalized)
 
         elif isinstance(msg, ResultMessage):
             usage = getattr(msg, "usage", None)
@@ -544,6 +561,17 @@ def _normalize_mcp_servers(value: object) -> dict:
         server.pop("name", None)
         servers[name] = server
     return servers
+
+
+def _extract_local_command_output(content: str) -> str:
+    """Extract payload from local-command wrappers used by slash commands."""
+    text = (content or "").strip()
+    if not text:
+        return ""
+    parts = [part.strip() for part in _LOCAL_COMMAND_OUTPUT_RE.findall(text) if part and part.strip()]
+    if parts:
+        return "\n".join(parts).strip()
+    return text
 
 
 def _build_env(config: WorkerConfig) -> dict:

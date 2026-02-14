@@ -163,7 +163,26 @@ function getEventLabel(event: SessionEvent): string {
         case "team_phase_start": return `Phase ${(data.phase_index as number) + 1}: ${(data.description as string)?.slice(0, 40) || ""}`;
         case "team_phase_complete": return "Phase completed";
         case "team_phase_review_start": return "Reviewing phase";
-        case "team_phase_review_complete": return `Review: ${data.decision}`;
+        case "team_phase_review_complete": {
+            const decision = String(data.decision ?? "");
+            const base = `Review: ${decision}`;
+            const raw = data.context_usage;
+            if (!raw || typeof raw !== "object") return base;
+            const ctx = raw as Record<string, unknown>;
+            if (ctx.status === "ok") {
+                const used = typeof ctx.used_tokens === "number" ? ctx.used_tokens : NaN;
+                const window = typeof ctx.window_tokens === "number" ? ctx.window_tokens : NaN;
+                const percent = typeof ctx.percent === "number" ? ctx.percent : NaN;
+                if (Number.isFinite(used) && Number.isFinite(window) && Number.isFinite(percent)) {
+                    return `${base} · Ctx ${used}/${window} (${percent}%)`;
+                }
+            }
+            if (ctx.status === "failed") {
+                const code = typeof ctx.error_code === "string" ? ctx.error_code : "UNKNOWN";
+                return `${base} · Ctx failed (${code})`;
+            }
+            return base;
+        }
         case "team_task_start": return `Task: ${(data.description as string)?.slice(0, 40) || data.task_id}`;
         case "team_task_submitted": return "Result submitted";
         case "team_task_complete": return "Task approved";

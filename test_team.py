@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "backend"))
 
 from super_agent.models import WorkerConfig, LLMResult, utc_now
-from super_agent.worker import Worker
+from super_agent.worker import Worker, ClaudeSdkWorker, _extract_local_command_output
 from super_agent.team.models import (
     Message, TaskResult, TaskStep, Phase, Plan, TeamSession,
 )
@@ -52,6 +52,9 @@ from super_agent.team.team_orchestrator import (
     _build_previous_results_summary,
     _sanitize_task_id,
     _ensure_unique_task_ids,
+    _parse_compact_number,
+    _extract_context_usage_tokens,
+    _collect_phase_review_context_usage,
     _read_plan_from_file,
     _plan_data_to_plan,
     _slugify,
@@ -697,15 +700,24 @@ class TestPrompts(unittest.TestCase):
         self.assertIn("update_task", prompt)  # Instructs to use MCP
         self.assertIn("send_mail", prompt)
 
-    def test_build_task_review_prompt_with_history(self):
+    def test_build_task_review_prompt_without_history_section(self):
         task = make_task("t1", desc="Task X")
         task.submit_count = 2
         old_msg = Message(from_id="worker-t1", to_id="lead", task_id="t1", content="first attempt")
         feedback = Message(from_id="lead", to_id="worker-t1", task_id="t1", content="fix Y")
         task.messages = [old_msg, feedback]
         prompt = build_task_review_prompt(task, "second attempt")
-        self.assertIn("first attempt", prompt)
-        self.assertIn("fix Y", prompt)
+        self.assertNotIn("Previous Communication History", prompt)
+        self.assertNotIn("first attempt", prompt)
+        self.assertNotIn("fix Y", prompt)
+
+    def test_build_task_review_prompt_no_truncation(self):
+        task = make_task("t1", desc="Long task")
+        task.submit_count = 1
+        mail_content = "A" * 3500 + "TAIL_MARKER"
+        prompt = build_task_review_prompt(task, mail_content)
+        self.assertIn(mail_content, prompt)
+        self.assertIn("TAIL_MARKER", prompt)
 
     def test_build_phase_review_prompt(self):
         t1 = make_task("t1")
@@ -719,8 +731,27 @@ class TestPrompts(unittest.TestCase):
         prompt = build_phase_review_prompt(phase, remaining)
         self.assertIn("Phase 0", prompt)
         self.assertIn("Done task 1", prompt)
-        self.assertIn("Some result text", prompt)
-        self.assertIn("modify_phases", prompt)  # Instructs to use MCP tool
+        self.assertNotIn("Some result text", prompt)
+        self.assertIn("See final submission file for full details.", prompt)
+        self.assertIn("phase0_t1_worker-t1_submit*_final.md", prompt)
+        self.assertIn("phase0_t2_worker-t2_submit*_final.md", prompt)
+        self.assertIn("Phase Change Assessment (MANDATORY)", prompt)
+        self.assertIn("KEEP the remaining plan as-is, or MODIFY it", prompt)
+        self.assertIn('Reply exactly: "Phase review approved, continue execution."', prompt)
+        self.assertIn("modify_phases(from_index=0", prompt)
+        self.assertNotIn("TUNE", prompt)
+        self.assertNotIn("REPLACE", prompt)
+        self.assertNotIn("DROP", prompt)
+
+    def test_build_phase_review_prompt_uses_existing_final_file_reference(self):
+        phase = make_phase("p0", 0, [make_task("t1")])
+        with tempfile.TemporaryDirectory() as td:
+            logs_dir = Path(td)
+            final_file = logs_dir / "phase0_t1_worker-t1_submit1_abc123_final.md"
+            final_file.write_text("final content", encoding="utf-8")
+            prompt = build_phase_review_prompt(phase, [], logs_dir=str(logs_dir))
+
+        self.assertIn(str(final_file), prompt)
 
     def test_build_phase_review_prompt_final_phase(self):
         phase = make_phase("p0", 0, [make_task("t1")])
@@ -900,6 +931,33 @@ class _MockWorker(Worker):
         return LLMResult(
             text=text,
             sdk_session_id=f"sdk-{self._call_count}",
+        )
+
+
+class _ContextProbeWorker(Worker):
+    """Minimal worker for testing /context collection logic."""
+
+    def __init__(self, text: str = "", error: Optional[str] = None, should_raise: bool = False):
+        self.text = text
+        self.error = error
+        self.should_raise = should_raise
+        self.prompts: list[str] = []
+
+    async def connect(self, config, workspace=None):
+        return None
+
+    async def disconnect(self):
+        return None
+
+    async def run_async(self, config, prompt, workspace=None,
+                        event_callback=None, resume_sdk_session_id=None) -> LLMResult:
+        self.prompts.append(prompt)
+        if self.should_raise:
+            raise RuntimeError("context query failed")
+        return LLMResult(
+            text=self.text,
+            error=self.error,
+            sdk_session_id="context-probe-session",
         )
 
 
@@ -1249,9 +1307,114 @@ class TestOrchestratorUtils(unittest.TestCase):
         summary = _build_previous_results_summary(plan, 0)
         self.assertEqual(summary, "")
 
+    def test_parse_compact_number(self):
+        self.assertEqual(_parse_compact_number("95.3k"), 95300)
+        self.assertEqual(_parse_compact_number("1.2m"), 1200000)
+        self.assertEqual(_parse_compact_number("12,345"), 12345)
+        self.assertIsNone(_parse_compact_number("abc"))
+
+    def test_extract_context_usage_tokens_success(self):
+        content = """## Context Usage
+### Estimated usage by category
+| Category | Tokens | Percentage |
+| Prompt | 10.0k | 10% |
+
+Tokens: 95.3k / 200k
+"""
+        parsed = _extract_context_usage_tokens(content)
+        self.assertEqual(parsed, (95300, 200000))
+
+    def test_extract_context_usage_tokens_failure(self):
+        parsed = _extract_context_usage_tokens("not a context report")
+        self.assertIsNone(parsed)
+
+    def test_collect_phase_review_context_usage_success(self):
+        worker = _ContextProbeWorker(
+            text="""## Context Usage
+### Estimated usage by category
+| Category | Tokens | Percentage |
+Tokens: 95.3k / 200k
+"""
+        )
+        result = asyncio.get_event_loop().run_until_complete(
+            _collect_phase_review_context_usage(worker, make_worker_config("lead"))
+        )
+        self.assertEqual(worker.prompts, ["/context"])
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["used_tokens"], 95300)
+        self.assertEqual(result["window_tokens"], 200000)
+        self.assertEqual(result["percent"], 48)
+
+    def test_collect_phase_review_context_usage_parse_failed(self):
+        worker = _ContextProbeWorker(text="unknown output format")
+        result = asyncio.get_event_loop().run_until_complete(
+            _collect_phase_review_context_usage(worker, make_worker_config("lead"))
+        )
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "PARSE_FAILED")
+
+    def test_collect_phase_review_context_usage_sdk_error(self):
+        worker = _ContextProbeWorker(text="", error="sdk broke")
+        result = asyncio.get_event_loop().run_until_complete(
+            _collect_phase_review_context_usage(worker, make_worker_config("lead"))
+        )
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "SDK_ERROR")
+
+    def test_collect_phase_review_context_usage_query_exception(self):
+        worker = _ContextProbeWorker(should_raise=True)
+        result = asyncio.get_event_loop().run_until_complete(
+            _collect_phase_review_context_usage(worker, make_worker_config("lead"))
+        )
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "QUERY_EXCEPTION")
+
 
 # ═══════════════════════════════════════════════════════════════
-# 9b. Unit Tests: _slugify and _unique_dir
+# 9b. Unit Tests: worker /context extraction helpers
+# ═══════════════════════════════════════════════════════════════
+
+class TestWorkerContextExtraction(unittest.TestCase):
+    """Test Worker extraction for local-command wrapped outputs."""
+
+    def test_extract_local_command_output_strips_wrappers(self):
+        raw = (
+            "<local-command-stdout>\n"
+            "## Context Usage\n"
+            "Tokens: 1.0k / 200k\n"
+            "</local-command-stdout>"
+        )
+        extracted = _extract_local_command_output(raw)
+        self.assertTrue(extracted.startswith("## Context Usage"))
+        self.assertIn("Tokens: 1.0k / 200k", extracted)
+        self.assertNotIn("<local-command-stdout>", extracted)
+
+    def test_process_message_user_string_appends_text(self):
+        from claude_agent_sdk import UserMessage
+
+        worker = ClaudeSdkWorker()
+        msg = UserMessage(content="<local-command-stdout>hello</local-command-stdout>")
+        text_parts: list[str] = []
+        tool_calls: list[dict] = []
+        tool_results: list[dict] = []
+
+        asyncio.get_event_loop().run_until_complete(
+            worker._process_message(
+                msg,
+                text_parts,
+                tool_calls,
+                tool_results,
+                sdk_session_id=None,
+                event_callback=None,
+            )
+        )
+        self.assertEqual("hello", "".join(text_parts))
+        self.assertEqual([], tool_calls)
+        self.assertEqual([], tool_results)
+
+
+# ═══════════════════════════════════════════════════════════════
+# 9c. Unit Tests: _slugify and _unique_dir
 # ═══════════════════════════════════════════════════════════════
 
 class TestSlugifyAndUniqueDir(unittest.TestCase):
@@ -1592,6 +1755,36 @@ class _IntegrationWorker(Worker):
         return LLMResult(text=f"Fallback (call {self._call_count})", sdk_session_id="fallback")
 
 
+class _IntegrationWorkerWithContext(_IntegrationWorker):
+    """Integration worker that also handles /context requests."""
+
+    context_mode = "ok"  # ok | parse_fail | sdk_error
+    context_calls = 0
+
+    async def run_async(self, config, prompt, workspace=None,
+                        event_callback=None, resume_sdk_session_id=None) -> LLMResult:
+        if prompt.strip() == "/context":
+            type(self).context_calls += 1
+            if type(self).context_mode == "sdk_error":
+                return LLMResult(text="", error="sdk error", sdk_session_id="lead-session-1")
+            if type(self).context_mode == "parse_fail":
+                return LLMResult(text="context command output unavailable", sdk_session_id="lead-session-1")
+            return LLMResult(
+                text="""## Context Usage
+### Estimated usage by category
+| Category | Tokens | Percentage |
+| Prompt | 95.3k | 47.7% |
+
+Tokens: 95.3k / 200k""",
+                sdk_session_id="lead-session-1",
+            )
+        return await super().run_async(
+            config, prompt, workspace=workspace,
+            event_callback=event_callback,
+            resume_sdk_session_id=resume_sdk_session_id,
+        )
+
+
 class TestIntegration(unittest.TestCase):
     """Integration test: full orchestrator flow with MCP-simulating worker."""
 
@@ -1674,6 +1867,92 @@ class TestIntegration(unittest.TestCase):
             self.assertIsNotNone(final.lead_sdk_session_id)
 
         self._run(go())
+
+
+# ═══════════════════════════════════════════════════════════════
+# 13b. Integration Test: Phase review context usage payload
+# ═══════════════════════════════════════════════════════════════
+
+class TestPhaseReviewContextUsageIntegration(unittest.TestCase):
+    """Phase review emits context usage payload for Leader timeline."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp())
+        self.workspace_dir = self.tmpdir / "workspace"
+        self.workspace_dir.mkdir(parents=True, exist_ok=True)
+        self.team_base_dir = self.workspace_dir / ".opencowork" / "team"
+        self.team_base_dir.mkdir(parents=True, exist_ok=True)
+        self.emitted_events: list[tuple[str, dict]] = []
+
+        self.orchestrator = TeamOrchestrator(
+            base_dir=self.team_base_dir,
+            worker_factory=lambda: _IntegrationWorkerWithContext(),
+        )
+        # Capture events deterministically in tests (without async manager timing).
+        self.orchestrator._emit = lambda event_type, data=None: self.emitted_events.append(  # type: ignore[method-assign]
+            (event_type.value if hasattr(event_type, "value") else str(event_type), data or {})
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _run(self, coro):
+        return asyncio.get_event_loop().run_until_complete(coro)
+
+    def _run_session(self):
+        async def go():
+            lead_config = make_worker_config("lead")
+            session = self.orchestrator.create_session(
+                objective="Verify phase review context usage",
+                lead_config=lead_config,
+                workspace_dir=str(self.workspace_dir),
+            )
+            await self.orchestrator.run_async(
+                session_id=session.session_id,
+                available_worker_configs={"default": make_worker_config()},
+                worker_types_info=[{"id": "default", "description": "Default Worker"}],
+            )
+            final = self.orchestrator.store.load_session(session.session_id)
+            self.assertIsNotNone(final)
+            self.assertEqual(final.status, "completed")
+
+        self._run(go())
+
+    def test_phase_review_complete_includes_context_usage_success(self):
+        _IntegrationWorkerWithContext.context_mode = "ok"
+        _IntegrationWorkerWithContext.context_calls = 0
+
+        self._run_session()
+
+        review_events = [
+            data for etype, data in self.emitted_events
+            if etype == "team_phase_review_complete"
+        ]
+        self.assertGreaterEqual(len(review_events), 1)
+        self.assertEqual(_IntegrationWorkerWithContext.context_calls, len(review_events))
+        for event_data in review_events:
+            ctx = event_data.get("context_usage", {})
+            self.assertEqual(ctx.get("status"), "ok")
+            self.assertIn("used_tokens", ctx)
+            self.assertIn("window_tokens", ctx)
+            self.assertIn("percent", ctx)
+
+    def test_phase_review_complete_includes_context_usage_failure_code(self):
+        _IntegrationWorkerWithContext.context_mode = "parse_fail"
+        _IntegrationWorkerWithContext.context_calls = 0
+
+        self._run_session()
+
+        review_events = [
+            data for etype, data in self.emitted_events
+            if etype == "team_phase_review_complete"
+        ]
+        self.assertGreaterEqual(len(review_events), 1)
+        self.assertEqual(_IntegrationWorkerWithContext.context_calls, len(review_events))
+        for event_data in review_events:
+            ctx = event_data.get("context_usage", {})
+            self.assertEqual(ctx.get("status"), "failed")
+            self.assertEqual(ctx.get("error_code"), "PARSE_FAILED")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2034,12 +2313,17 @@ class TestFix4AbortPlan(unittest.TestCase):
         }
         self.assertTrue(plan_data.get("abort"))
 
-    def test_phase_review_prompt_references_abort_plan(self):
-        """Phase review prompt references abort_plan tool, not '终止执行' text."""
+    def test_phase_review_prompt_binary_keep_or_modify(self):
+        """Phase review prompt enforces KEEP/MODIFY binary decision."""
         phase = make_phase("p0", 0, [make_task("t1")])
         prompt = build_phase_review_prompt(phase, [])
-        self.assertIn("abort_plan", prompt)
-        self.assertNotIn("包含\"终止执行\"", prompt)
+        self.assertIn("KEEP the remaining plan as-is, or MODIFY it", prompt)
+        self.assertIn('Reply exactly: "Phase review approved, continue execution."', prompt)
+        self.assertIn("modify_phases(from_index=0", prompt)
+        self.assertNotIn("abort_plan", prompt)
+        self.assertNotIn("TUNE", prompt)
+        self.assertNotIn("REPLACE", prompt)
+        self.assertNotIn("DROP", prompt)
 
 
 class TestFix5PreservePhaseData(unittest.TestCase):

@@ -9,6 +9,7 @@ Updated for dual MCP architecture:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Optional
 
 from .models import Phase, Plan, TaskStep
@@ -143,17 +144,6 @@ def build_task_review_prompt(task: TaskStep, mail_content: str, project_dir: str
     In the new architecture, this prompt is built from inbox mail content,
     not from a structured Message object.
     """
-    history = ""
-    for msg in task.messages:
-        role = "Worker" if msg.from_id.startswith("worker-") else "Lead"
-        history += f"[{role}]: {msg.content[:500]}\n"
-
-    history_section = ""
-    if history:
-        history_section = f"""
-## Previous Communication History
-{history}"""
-
     project_section = ""
     if project_dir:
         project_section = f"""
@@ -167,7 +157,7 @@ def build_task_review_prompt(task: TaskStep, mail_content: str, project_dir: str
 {task.description}
 
 ## Worker's Submission (attempt #{task.submit_count})
-{mail_content[:3000]}{history_section}{project_section}
+{mail_content}{project_section}
 
 ## Review Actions
 After reviewing, perform one of the following:
@@ -188,17 +178,31 @@ def build_phase_review_prompt(phase: Phase, remaining_phases: list[Phase], proje
 
     Lead uses modify_phases MCP tool if plan adjustment is needed.
     """
+    def _final_submission_ref(task: TaskStep) -> str:
+        pattern = f"phase{phase.phase_index}_{task.task_id}_worker-{task.task_id}_submit*_final.md"
+        if not logs_dir:
+            return pattern
+
+        logs_path = Path(logs_dir)
+        matches = sorted(logs_path.glob(pattern))
+        if matches:
+            return str(matches[-1])
+        return str(logs_path / pattern)
+
     task_summaries = ""
     for task in phase.tasks:
         status = task.status
         summary = ""
         if task.result and task.result.summary:
             summary = task.result.summary
-        elif task.result_text:
-            summary = task.result_text[:200]
         elif task.result_error:
             summary = f"Failed: {task.result_error}"
-        task_summaries += f"- [{task.task_id}] ({status}): {summary}\n"
+        else:
+            summary = "See final submission file for full details."
+        task_summaries += (
+            f"- [{task.task_id}] ({status}): {summary}\n"
+            f"  Final submission: `{_final_submission_ref(task)}`\n"
+        )
 
     remaining_plan = ""
     if remaining_phases:
@@ -234,18 +238,34 @@ Team work history: {logs_dir}
 {remaining_plan}
 {project_section}{logs_section}
 ## Review Actions
-Evaluate whether to continue as planned:
+## Phase Change Assessment (MANDATORY)
 
-**Continue as planned:** No additional action needed, simply reply "Phase review approved, continue execution."
+You must make a concrete decision for this phase: either KEEP the remaining plan as-is, or MODIFY it.
 
-**Adjust subsequent Phases:** Use the modify_phases tool to modify the remaining plan:
-- Call modify_phases(from_index={phase.phase_index}, new_phases="[new phases JSON array]")
-- Explain the reason for the modification.
+### 1) Identify What Changed In This Phase
+Extract concise bullets for:
+- New facts discovered
+- Broken or invalid assumptions
+- Newly surfaced risks or opportunities
+- Critical unknowns still unresolved
 
-**Terminate execution:** If a critical issue requires stopping, use the `abort_plan` tool:
-- Call abort_plan(reason="reason for termination")
+### 2) Decide KEEP vs MODIFY
+Use KEEP only if findings do not materially affect remaining execution.
+You MUST choose MODIFY if any of the following is true:
+- A key assumption for later work is invalidated
+- A high-impact risk/opportunity is not covered by the current plan
+- This phase reveals critical gaps that block the objective
+- Remaining work is now redundant or mis-prioritized
 
-Only modify the plan when this Phase's results reveal issues that necessitate changes."""
+### 3) Execute Exactly One Action
+A) If KEEP:
+Reply exactly: "Phase review approved, continue execution."
+
+B) If MODIFY:
+Call `modify_phases(from_index={phase.phase_index}, new_phases="[...json array...]")`
+Ensure revised phases are concrete and executable, then briefly justify why changes are required.
+
+Do not provide generic commentary. Tie the decision directly to findings from this phase."""
 
 
 def build_final_summary_prompt(plan: Plan, project_dir: str = "", logs_dir: str = "") -> str:

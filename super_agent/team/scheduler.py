@@ -355,10 +355,10 @@ class PhaseScheduler:
             # Drain mail log to capture Worker→Lead mails
             if self.activity_log:
                 self.activity_log.drain_mail_log(self._phase_index)
-            prompt = self._wrap_mail_as_prompt(mails)
 
             # Add review instructions
             review_tasks = set()
+            prompt_blocks: list[str] = []
             for m in mails:
                 from_id = m.get("from", "")
                 if from_id.startswith("worker-"):
@@ -366,7 +366,14 @@ class PhaseScheduler:
                     task = next((t for t in phase.tasks if t.task_id == tid), None)
                     if task:
                         review_tasks.add(tid)
-                        prompt += f"\n\n{build_task_review_prompt(task, m.get('content', ''), project_dir=self.project_dir)}"
+                        prompt_blocks.append(
+                            build_task_review_prompt(
+                                task,
+                                m.get("content", ""),
+                                project_dir=self.project_dir,
+                            )
+                        )
+            prompt = "\n\n---\n\n".join(prompt_blocks)
 
             self._emit(EventType.TEAM_REVIEW_START, {
                 "task_ids": list(review_tasks),

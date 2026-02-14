@@ -40,6 +40,9 @@ logger = logging.getLogger(__name__)
 
 # Valid task_id pattern: alphanumeric, hyphens, underscores only
 _TASK_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+_CONTEXT_HEADER = "## Context Usage"
+_CONTEXT_SECTION = "### Estimated usage by category"
+_CONTEXT_TABLE_HEADER = "| Category | Tokens | Percentage |"
 
 
 def _sanitize_task_id(raw_id: str, fallback_prefix: str = "task") -> str:
@@ -151,6 +154,88 @@ def _slugify(text: str, max_len: int = 40) -> str:
     if len(slug) > max_len:
         slug = slug[:max_len].rstrip("-")
     return slug or "project"
+
+
+def _parse_compact_number(value: str) -> Optional[int]:
+    """Parse numbers like 95.3k / 1.2m to integer tokens."""
+    if not value:
+        return None
+    raw = value.strip().lower().replace(",", "")
+    raw = raw.replace(" ", "")
+    match = re.match(r"^([0-9]+(?:\.[0-9]+)?)([km]?)$", raw)
+    if not match:
+        return None
+    number = float(match.group(1))
+    suffix = match.group(2)
+    if suffix == "k":
+        number *= 1000
+    elif suffix == "m":
+        number *= 1_000_000
+    return int(round(number))
+
+
+def _extract_context_usage_tokens(content: str) -> Optional[tuple[int, int]]:
+    """Extract used/window token counts from /context output text."""
+    if not content or not content.startswith(_CONTEXT_HEADER):
+        return None
+    if _CONTEXT_SECTION not in content or _CONTEXT_TABLE_HEADER not in content:
+        return None
+    tokens_line = None
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if "tokens:" in stripped.lower():
+            tokens_line = stripped
+            break
+    if not tokens_line:
+        return None
+    tokens_line = tokens_line.replace("**", "")
+    match = re.search(r"Tokens:\s*([^/]+)\s*/\s*([^\s(]+)", tokens_line, re.IGNORECASE)
+    if not match:
+        return None
+    used_tokens = _parse_compact_number(match.group(1).strip())
+    window_tokens = _parse_compact_number(match.group(2).strip())
+    if used_tokens is None or window_tokens is None:
+        return None
+    return used_tokens, window_tokens
+
+
+async def _collect_phase_review_context_usage(
+    lead_worker: Worker,
+    lead_config: WorkerConfig,
+) -> dict[str, Any]:
+    """Call /context after phase review and return compact usage payload."""
+    try:
+        context_result = await lead_worker.run_async(
+            config=lead_config,
+            prompt="/context",
+            event_callback=None,  # Do not stream /context output to UI
+        )
+    except Exception:
+        return {"status": "failed", "error_code": "QUERY_EXCEPTION"}
+
+    if context_result.error:
+        return {"status": "failed", "error_code": "SDK_ERROR"}
+
+    parsed = _extract_context_usage_tokens(context_result.text or "")
+    if not parsed:
+        text = (context_result.text or "").lower()
+        if "unknown command" in text or "unrecognized command" in text:
+            return {"status": "failed", "error_code": "UNKNOWN_COMMAND"}
+        return {"status": "failed", "error_code": "PARSE_FAILED"}
+
+    used_tokens, window_tokens = parsed
+    if window_tokens <= 0:
+        return {"status": "failed", "error_code": "PARSE_FAILED"}
+    percent = int(round((used_tokens / window_tokens) * 100))
+    percent = max(0, min(100, percent))
+    return {
+        "status": "ok",
+        "used_tokens": used_tokens,
+        "window_tokens": window_tokens,
+        "percent": percent,
+    }
 
 
 def _unique_dir(parent: Path, slug: str) -> Path:
@@ -399,6 +484,9 @@ class TeamOrchestrator:
                     )
                     session.lead_sdk_session_id = review_result.sdk_session_id
                     activity_log.log_lead_response("phase_review", review_result.text or "")
+                    context_usage = await _collect_phase_review_context_usage(
+                        lead_worker, lead_config
+                    )
 
                     # Check if Leader modified the plan via modify_phases MCP
                     updated_plan_data = _read_plan_from_file(team_data_dir)
@@ -433,12 +521,14 @@ class TeamOrchestrator:
                         self._emit(EventType.TEAM_PHASE_REVIEW_COMPLETE, {
                             "phase_id": phase.phase_id,
                             "decision": "abort",
+                            "context_usage": context_usage,
                         })
                         break
 
                     self._emit(EventType.TEAM_PHASE_REVIEW_COMPLETE, {
                         "phase_id": phase.phase_id,
                         "decision": phase.phase_review_decision,
+                        "context_usage": context_usage,
                     })
                     self.store.save_session(session)
                     phase_idx += 1
