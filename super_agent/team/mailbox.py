@@ -137,7 +137,13 @@ class FileMailbox:
                 return False
         return True
 
-    def send_auto_mail(self, from_id: str, to_id: str, content: str):
+    def send_auto_mail(
+        self,
+        from_id: str,
+        to_id: str,
+        content: str,
+        meta: Optional[dict] = None,
+    ) -> str:
         """Append a mail to an agent's inbox (used by Scheduler for auto-submit).
 
         Uses file locking for concurrent safety, same as MCP server's _append_mail.
@@ -154,6 +160,8 @@ class FileMailbox:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "delivered": False,
         }
+        if isinstance(meta, dict) and meta:
+            mail["meta"] = dict(meta)
 
         try:
             with open(inbox_file, "r+") as f:
@@ -175,6 +183,8 @@ class FileMailbox:
         except Exception:
             logger.warning(f"[Mailbox] Failed to write mail_log for {to_id}")
 
+        return mail["id"]
+
     def _append_to_mail_log(self, mail: dict, to_id: str):
         """Append to mail_log.jsonl."""
         log_file = self.team_data_dir / "mail_log.jsonl"
@@ -194,6 +204,8 @@ class FileMailbox:
             "task_id": task_id,
             "timestamp": mail.get("timestamp", ""),
         }
+        if isinstance(mail.get("meta"), dict):
+            record["meta"] = dict(mail["meta"])
 
         with open(log_file, "a") as f:
             fcntl.flock(f, fcntl.LOCK_EX)

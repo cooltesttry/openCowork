@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 from super_agent.models import WorkerConfig, utc_now
 
@@ -96,6 +96,7 @@ class TaskStep:
     result_text: str = ""
     result_error: Optional[str] = None
     submit_count: int = 0
+    submission_state: dict[str, Any] = field(default_factory=dict)
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
 
@@ -112,12 +113,16 @@ class TaskStep:
             "result_text": self.result_text,
             "result_error": self.result_error,
             "submit_count": self.submit_count,
+            "submission_state": dict(self.submission_state),
             "started_at": self.started_at,
             "completed_at": self.completed_at,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "TaskStep":
+        submission_state = data.get("submission_state", {})
+        if not isinstance(submission_state, dict):
+            submission_state = {}
         return cls(
             task_id=data["task_id"],
             description=data.get("description", ""),
@@ -130,6 +135,7 @@ class TaskStep:
             result_text=data.get("result_text", ""),
             result_error=data.get("result_error"),
             submit_count=int(data.get("submit_count", 0)),
+            submission_state=dict(submission_state),
             started_at=data.get("started_at"),
             completed_at=data.get("completed_at"),
         )
@@ -186,6 +192,7 @@ class Plan:
     phases: list[Phase] = field(default_factory=list)
     version: int = 0
     change_log: list[str] = field(default_factory=list)
+    planning_basis: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -194,16 +201,21 @@ class Plan:
             "phases": [p.to_dict() for p in self.phases],
             "version": self.version,
             "change_log": list(self.change_log),
+            "planning_basis": dict(self.planning_basis),
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Plan":
+        planning_basis = data.get("planning_basis", {})
+        if not isinstance(planning_basis, dict):
+            planning_basis = {}
         return cls(
             plan_id=data["plan_id"],
             objective=data.get("objective", ""),
             phases=[Phase.from_dict(p) for p in data.get("phases", [])],
             version=int(data.get("version", 0)),
             change_log=list(data.get("change_log", [])),
+            planning_basis=dict(planning_basis),
         )
 
 

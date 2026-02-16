@@ -22,7 +22,11 @@ from super_agent.events import EventType
 
 from .models import Message, Phase, TaskResult, TaskStep
 from .mailbox import FileMailbox
-from .prompts import build_worker_prompt, build_task_review_prompt
+from .prompts import (
+    build_worker_prompt,
+    build_worker_submit_reminder_prompt,
+    build_task_review_prompt,
+)
 from .activity_log import TeamActivityLog
 
 logger = logging.getLogger(__name__)
@@ -48,6 +52,7 @@ class PhaseScheduler:
         previous_results_summary: str = "",
         mcp_mailbox_server_path: str = "",
         project_dir: str = "",
+        planning_basis: Optional[dict[str, Any]] = None,
         activity_log: Optional[TeamActivityLog] = None,
         # Legacy compat
         worker: Optional[Worker] = None,
@@ -70,6 +75,7 @@ class PhaseScheduler:
             Path(__file__).parent / "mcp_mailbox_server.py"
         )
         self.project_dir = project_dir
+        self.planning_basis = planning_basis if isinstance(planning_basis, dict) else {}
         self.max_task_submits = max_task_submits
         self.activity_log = activity_log
         self._phase_index = 0
@@ -178,6 +184,7 @@ class PhaseScheduler:
             task, phase.tasks, self.previous_results_summary,
             project_dir=self.project_dir,
             logs_dir=str(self.activity_log.logs_dir) if self.activity_log else "",
+            planning_basis=self.planning_basis,
         )
 
         task_worker = self.worker_factory()
@@ -185,24 +192,88 @@ class PhaseScheduler:
             worker_config.include_partial_messages = True
             await task_worker.connect(worker_config, workspace=self.workspace_dir)
 
+            tool_calls_by_id: dict[str, dict[str, Any]] = {}
+            current_run_seq = 0
+
             async def task_event_callback(event_type, data=None):
                 event_data = {"task_id": task.task_id, **(data or {})}
                 self._emit(event_type, event_data)
+                nonlocal tool_calls_by_id, current_run_seq
+
+                if event_type == EventType.WORKER_TOOL_CALL:
+                    tool_id = str(event_data.get("tool_id", "")).strip()
+                    if tool_id:
+                        tool_calls_by_id[tool_id] = {
+                            "tool_name": event_data.get("tool_name"),
+                            "input": event_data.get("input"),
+                        }
+                elif event_type == EventType.WORKER_TOOL_RESULT:
+                    self._maybe_track_submission_from_tool_result(
+                        task=task,
+                        run_seq=current_run_seq,
+                        tool_calls_by_id=tool_calls_by_id,
+                        tool_result_event=event_data,
+                    )
+
+            async def run_worker_turn(turn_prompt: str, *, update_result_text: bool = True) -> tuple[LLMResult, int]:
+                nonlocal tool_calls_by_id, current_run_seq
+                current_run_seq = self._start_task_run(task)
+                tool_calls_by_id = {}
+                result = await task_worker.run_async(
+                    config=worker_config,
+                    prompt=turn_prompt,
+                    workspace=self.workspace_dir,
+                    event_callback=task_event_callback,
+                )
+                if result.error:
+                    raise RuntimeError(result.error)
+                task.worker_sdk_session_id = result.sdk_session_id
+                if update_result_text:
+                    task.result_text = result.text
+                return result, current_run_seq
+
+            async def ensure_submission_or_fallback(trigger_run_seq: int):
+                if self._has_submission_for_run(task, trigger_run_seq):
+                    return
+
+                logger.warning(
+                    "[Scheduler] Worker %s did not submit in run %s; issuing reminder",
+                    task.task_id,
+                    trigger_run_seq,
+                )
+                self._emit(EventType.TEAM_TASK_SUBMIT_REMINDER, {
+                    "task_id": task.task_id,
+                    "run_seq": trigger_run_seq,
+                })
+
+                reminder_prompt = build_worker_submit_reminder_prompt(task, trigger_run_seq)
+                reminder_run_seq = trigger_run_seq
+                try:
+                    _, reminder_run_seq = await run_worker_turn(
+                        reminder_prompt, update_result_text=False
+                    )
+                    reminder_state = self._ensure_submission_state(task)
+                    reminder_state["reminder_attempted_run_seq"] = reminder_run_seq
+                    self._persist()
+                except Exception as e:
+                    logger.warning(
+                        "[Scheduler] Reminder run failed for %s: %s; falling back to auto-submit",
+                        task.task_id,
+                        e,
+                    )
+                    reminder_state = self._ensure_submission_state(task)
+                    reminder_run_seq = int(reminder_state.get("run_seq", trigger_run_seq))
+                    reminder_state["reminder_attempted_run_seq"] = reminder_run_seq
+                    self._persist()
+
+                if self._has_submission_for_run(task, reminder_run_seq):
+                    return
+
+                self._auto_submit_for_run(task, reminder_run_seq)
 
             # First execution
-            result = await task_worker.run_async(
-                config=worker_config,
-                prompt=prompt,
-                workspace=self.workspace_dir,
-                event_callback=task_event_callback,
-            )
-            if result.error:
-                raise RuntimeError(result.error)
-            task.worker_sdk_session_id = result.sdk_session_id
-            task.result_text = result.text
-
-            # Check if worker sent mail to lead; if not, auto-submit
-            self._auto_submit_if_needed(task)
+            _, first_run_seq = await run_worker_turn(prompt)
+            await ensure_submission_or_fallback(first_run_seq)
 
             # Scheduling loop: idle → check inbox/plan → deliver → new turn
             while True:
@@ -278,18 +349,8 @@ class PhaseScheduler:
                 })
                 self._persist()
 
-                result = await task_worker.run_async(
-                    config=worker_config,
-                    prompt=feedback_prompt,
-                    workspace=self.workspace_dir,
-                    event_callback=task_event_callback,
-                )
-                if result.error:
-                    raise RuntimeError(result.error)
-                task.result_text = result.text
-
-                # Check if worker sent mail to lead after feedback; if not, auto-submit
-                self._auto_submit_if_needed(task)
+                _, feedback_run_seq = await run_worker_turn(feedback_prompt)
+                await ensure_submission_or_fallback(feedback_run_seq)
 
                 # Ack delivery after successful execution
                 self.mailbox.ack_delivered(
@@ -340,6 +401,7 @@ class PhaseScheduler:
                     related_task_id = from_id[len("worker-"):]
                     task = next((t for t in phase.tasks if t.task_id == related_task_id), None)
                     if task:
+                        submit_source = self._submission_source_from_mail(m)
                         task.messages.append(Message(
                             from_id=from_id,
                             to_id="lead",
@@ -348,7 +410,11 @@ class PhaseScheduler:
                         ))
                         self._emit(
                             EventType.TEAM_TASK_RESUBMIT if task.submit_count > 1 else EventType.TEAM_TASK_SUBMITTED,
-                            {"task_id": related_task_id, "submit_count": task.submit_count},
+                            {
+                                "task_id": related_task_id,
+                                "submit_count": task.submit_count,
+                                "submit_source": submit_source,
+                            },
                         )
 
             # Build review prompt with all pending mails
@@ -476,15 +542,164 @@ class PhaseScheduler:
             )
         return "\n\n".join(parts)
 
-    def _auto_submit_if_needed(self, task: TaskStep):
-        """Check if worker sent mail to lead; if not, auto-submit with result text."""
+    def _ensure_submission_state(self, task: TaskStep) -> dict[str, Any]:
+        """Return normalized submission-tracking state for a task."""
+        raw = task.submission_state if isinstance(task.submission_state, dict) else {}
+
+        def _to_int(value: object, default: int) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        state: dict[str, Any] = {
+            "run_seq": max(0, _to_int(raw.get("run_seq"), 0)),
+            "last_submit_run_seq": _to_int(raw.get("last_submit_run_seq"), -1),
+            "last_submit_source": str(raw.get("last_submit_source", "") or ""),
+            "last_submit_message_id": str(raw.get("last_submit_message_id", "") or ""),
+            "last_submit_at": str(raw.get("last_submit_at", "") or ""),
+            "submission_seq": max(0, _to_int(raw.get("submission_seq"), 0)),
+            "auto_submission_seq": max(0, _to_int(raw.get("auto_submission_seq"), 0)),
+            "reminder_attempted_run_seq": _to_int(raw.get("reminder_attempted_run_seq"), -1),
+        }
+
+        for key, value in raw.items():
+            if key not in state:
+                state[key] = value
+
+        task.submission_state = state
+        return state
+
+    def _start_task_run(self, task: TaskStep) -> int:
+        """Increment per-task run sequence and persist immediately."""
+        state = self._ensure_submission_state(task)
+        state["run_seq"] = int(state.get("run_seq", 0)) + 1
+        self._persist()
+        return int(state["run_seq"])
+
+    def _has_submission_for_run(self, task: TaskStep, run_seq: int) -> bool:
+        state = self._ensure_submission_state(task)
+        return int(state.get("last_submit_run_seq", -1)) == int(run_seq)
+
+    def _is_send_mail_tool(self, tool_name: object) -> bool:
+        name = str(tool_name or "").strip().lower()
+        return bool(name) and (
+            name == "send_mail"
+            or name.endswith("__send_mail")
+            or name.endswith(".send_mail")
+        )
+
+    def _maybe_track_submission_from_tool_result(
+        self,
+        *,
+        task: TaskStep,
+        run_seq: int,
+        tool_calls_by_id: dict[str, dict[str, Any]],
+        tool_result_event: dict[str, Any],
+    ):
+        """Track successful send_mail(to=lead) from worker tool events."""
+        if run_seq <= 0:
+            return
+
+        tool_id = str(tool_result_event.get("tool_id", "")).strip()
+        if not tool_id:
+            return
+
+        call = tool_calls_by_id.get(tool_id, {})
+        tool_name = call.get("tool_name")
+        if not self._is_send_mail_tool(tool_name):
+            return
+
+        tool_input = call.get("input")
+        recipient = ""
+        if isinstance(tool_input, dict):
+            recipient = str(tool_input.get("to", "")).strip().lower()
+        if recipient != "lead":
+            return
+
+        if bool(tool_result_event.get("is_error", False)):
+            return
+
+        self._record_submission(
+            task=task,
+            run_seq=run_seq,
+            source="worker_mail",
+            message_id="",
+        )
+
+    def _record_submission(
+        self,
+        *,
+        task: TaskStep,
+        run_seq: int,
+        source: str,
+        message_id: str = "",
+    ):
+        """Persist successful submission state and emit tracking event."""
+        state = self._ensure_submission_state(task)
+        last_run_seq = int(state.get("last_submit_run_seq", -1))
+        last_source = str(state.get("last_submit_source", "") or "")
+
+        if last_run_seq != int(run_seq):
+            state["submission_seq"] = int(state.get("submission_seq", 0)) + 1
+        if source == "auto_submit" and not (last_run_seq == int(run_seq) and last_source == "auto_submit"):
+            state["auto_submission_seq"] = int(state.get("auto_submission_seq", 0)) + 1
+
+        state["last_submit_run_seq"] = int(run_seq)
+        state["last_submit_source"] = source
+        state["last_submit_message_id"] = message_id or ""
+        state["last_submit_at"] = utc_now()
+
+        self._emit(EventType.TEAM_TASK_SUBMISSION_TRACKED, {
+            "task_id": task.task_id,
+            "run_seq": int(run_seq),
+            "source": source,
+            "submission_seq": int(state.get("submission_seq", 0)),
+            "auto_submission_seq": int(state.get("auto_submission_seq", 0)),
+            "message_id": state.get("last_submit_message_id", ""),
+        })
+        self._persist()
+
+    def _auto_submit_for_run(self, task: TaskStep, run_seq: int):
+        """Auto-submit task result and persist source metadata."""
         worker_id = f"worker-{task.task_id}"
-        lead_inbox = self.mailbox._peek_undelivered("lead")
-        worker_sent = any(m.get("from") == worker_id for m in lead_inbox)
-        if not worker_sent:
-            logger.warning(f"[Scheduler] Worker {task.task_id} didn't send_mail, auto-submitting")
-            content = f"[Auto-submitted] Worker execution complete.\n\n{task.result_text[:2000] if task.result_text else '(no output)'}"
-            self.mailbox.send_auto_mail(worker_id, "lead", content)
+        logger.warning(
+            "[Scheduler] Worker %s did not send mail in run %s; auto-submitting",
+            task.task_id,
+            run_seq,
+        )
+        content = (
+            "[Auto-submitted] Worker execution complete.\n\n"
+            f"{task.result_text[:2000] if task.result_text else '(no output)'}"
+        )
+        message_id = self.mailbox.send_auto_mail(
+            worker_id,
+            "lead",
+            content,
+            meta={"source": "auto_submit", "run_seq": int(run_seq)},
+        )
+        self._emit(EventType.TEAM_TASK_AUTOSUBMIT, {
+            "task_id": task.task_id,
+            "run_seq": int(run_seq),
+            "message_id": message_id,
+        })
+        self._record_submission(
+            task=task,
+            run_seq=run_seq,
+            source="auto_submit",
+            message_id=message_id,
+        )
+
+    def _submission_source_from_mail(self, mail: dict[str, Any]) -> str:
+        meta = mail.get("meta")
+        if isinstance(meta, dict):
+            source = str(meta.get("source", "")).strip()
+            if source:
+                return source
+        message_id = str(mail.get("id", "")).strip()
+        if message_id.startswith("msg-auto-"):
+            return "auto_submit"
+        return "worker_mail"
 
     def _write_team_config(self, phase: Phase):
         """Write .team/config.json with member info for list_members tool."""

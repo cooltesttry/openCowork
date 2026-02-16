@@ -883,6 +883,7 @@ export interface TaskStep {
     result_text: string;
     result_error: string | null;
     submit_count: number;
+    submission_state?: Record<string, unknown>;
     started_at: string | null;
     completed_at: string | null;
 }
@@ -905,6 +906,7 @@ export interface Plan {
     phases: Phase[];
     version: number;
     change_log: string[];
+    planning_basis?: Record<string, unknown>;
 }
 
 export interface TeamSession {

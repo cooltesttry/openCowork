@@ -41,6 +41,7 @@ from super_agent.team.mailbox import FileMailbox
 from super_agent.team.prompts import (
     build_planning_prompt,
     build_worker_prompt,
+    build_worker_submit_reminder_prompt,
     build_task_review_prompt,
     build_phase_review_prompt,
     build_final_summary_prompt,
@@ -169,6 +170,7 @@ class TestModels(unittest.TestCase):
         ts.result = TaskResult(summary="ok", files=["report.md"])
         ts.status = "approved"
         ts.submit_count = 2
+        ts.submission_state = {"run_seq": 3, "last_submit_run_seq": 3}
         d = ts.to_dict()
         ts2 = TaskStep.from_dict(d)
         self.assertEqual(ts2.task_id, "t1")
@@ -177,6 +179,7 @@ class TestModels(unittest.TestCase):
         self.assertIsNotNone(ts2.result)
         self.assertEqual(ts2.result.summary, "ok")
         self.assertEqual(ts2.submit_count, 2)
+        self.assertEqual(ts2.submission_state.get("run_seq"), 3)
 
     def test_task_step_no_result(self):
         ts = make_task()
@@ -678,6 +681,7 @@ class TestPrompts(unittest.TestCase):
         self.assertIn("Search news", prompt)
         self.assertIn("Phase 0 did X", prompt)
         self.assertIn("send_mail", prompt)  # Uses MCP tool, not __result.json
+        self.assertIn("do not rely on `__output.json` or `__result.json`", prompt)
 
     def test_build_worker_prompt_no_siblings_no_prev(self):
         t1 = make_task("t1", desc="Solo task")
@@ -689,6 +693,14 @@ class TestPrompts(unittest.TestCase):
         t1.context = {"url": "https://example.com"}
         prompt = build_worker_prompt(t1, [t1])
         self.assertIn("https://example.com", prompt)
+
+    def test_build_worker_submit_reminder_prompt(self):
+        task = make_task("task_008", desc="Implement feature")
+        prompt = build_worker_submit_reminder_prompt(task, run_seq=5)
+        self.assertIn("Task ID: task_008", prompt)
+        self.assertIn("Run Sequence: 5", prompt)
+        self.assertIn("send_mail(to=\"lead\", content=\"...\")", prompt)
+        self.assertIn("Do not perform additional implementation work.", prompt)
 
     def test_build_task_review_prompt(self):
         task = make_task("t1", desc="Write a report")
@@ -800,6 +812,7 @@ class TestEvents(unittest.TestCase):
         "TEAM_PHASE_START", "TEAM_PHASE_COMPLETE",
         "TEAM_TASK_START", "TEAM_TASK_SUBMITTED", "TEAM_TASK_COMPLETE", "TEAM_TASK_FAILED",
         "TEAM_TASK_FEEDBACK", "TEAM_TASK_RESUBMIT",
+        "TEAM_TASK_SUBMIT_REMINDER", "TEAM_TASK_AUTOSUBMIT", "TEAM_TASK_SUBMISSION_TRACKED",
         "TEAM_REVIEW_START", "TEAM_REVIEW_COMPLETE",
         "TEAM_PHASE_REVIEW_START", "TEAM_PHASE_REVIEW_COMPLETE",
         "TEAM_PLAN_UPDATED",
@@ -2378,18 +2391,91 @@ class TestFix6NoMaxTaskSubmitsInAPI(unittest.TestCase):
 
 
 class TestFix7AutoSubmit(unittest.TestCase):
-    """Fix 7 [P1]: Auto-submit when Worker doesn't call send_mail."""
+    """Fix 7 [P1]: Submission tracking and auto-submit persistence."""
 
-    def test_auto_submit_if_worker_silent(self):
-        """Scheduler auto-submits if worker doesn't send mail to lead."""
+    def test_send_auto_mail_method(self):
+        """FileMailbox.send_auto_mail writes to inbox and returns message id."""
+        tmpdir = Path(tempfile.mkdtemp())
+        try:
+            team_data_dir = tmpdir / "team_data"
+            team_data_dir.mkdir(parents=True, exist_ok=True)
+            mailbox = FileMailbox(team_data_dir)
+            mailbox.register_agent("lead")
+            message_id = mailbox.send_auto_mail(
+                "worker-t1",
+                "lead",
+                "Auto result",
+                meta={"source": "auto_submit", "run_seq": 2},
+            )
+
+            mails = mailbox._peek_undelivered("lead")
+            self.assertEqual(len(mails), 1)
+            self.assertEqual(message_id, mails[0]["id"])
+            self.assertEqual(mails[0]["from"], "worker-t1")
+            self.assertEqual(mails[0]["content"], "Auto result")
+            self.assertTrue(mails[0]["id"].startswith("msg-auto-"))
+            self.assertEqual(mails[0].get("meta", {}).get("source"), "auto_submit")
+            self.assertEqual(mails[0].get("meta", {}).get("run_seq"), 2)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_record_worker_submission_from_tool_result(self):
+        """Successful send_mail(to=lead) is persisted as worker_mail submission."""
+        tmpdir = Path(tempfile.mkdtemp())
+        try:
+            team_data_dir = tmpdir / "team_data"
+            team_data_dir.mkdir(parents=True, exist_ok=True)
+            mailbox = FileMailbox(team_data_dir)
+            scheduler = PhaseScheduler(
+                worker_factory=lambda: _MockWorker(),
+                workspace_dir=tmpdir,
+                team_data_dir=team_data_dir,
+                mailbox=mailbox,
+                event_emitter=lambda *a, **k: None,
+            )
+
+            task = make_task("t1")
+            scheduler._maybe_track_submission_from_tool_result(
+                task=task,
+                run_seq=3,
+                tool_calls_by_id={
+                    "tool-1": {
+                        "tool_name": "mcp__team-mailbox__send_mail",
+                        "input": {"to": "lead", "content": "done"},
+                    }
+                },
+                tool_result_event={"tool_id": "tool-1", "is_error": False},
+            )
+            state = scheduler._ensure_submission_state(task)
+            self.assertEqual(state["last_submit_run_seq"], 3)
+            self.assertEqual(state["last_submit_source"], "worker_mail")
+            self.assertEqual(state["submission_seq"], 1)
+
+            # Duplicate tracking in same run should not increase submission_seq
+            scheduler._maybe_track_submission_from_tool_result(
+                task=task,
+                run_seq=3,
+                tool_calls_by_id={
+                    "tool-1": {
+                        "tool_name": "send_mail",
+                        "input": {"to": "lead", "content": "done"},
+                    }
+                },
+                tool_result_event={"tool_id": "tool-1", "is_error": False},
+            )
+            state = scheduler._ensure_submission_state(task)
+            self.assertEqual(state["submission_seq"], 1)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_auto_submit_records_state(self):
+        """Fallback auto-submit writes mail and persists auto_submit source."""
         tmpdir = Path(tempfile.mkdtemp())
         try:
             team_data_dir = tmpdir / "team_data"
             (team_data_dir / "inboxes").mkdir(parents=True, exist_ok=True)
             mailbox = FileMailbox(team_data_dir)
             mailbox.register_agent("lead")
-            mailbox.register_agent("worker-t1")
-
             scheduler = PhaseScheduler(
                 worker_factory=lambda: _MockWorker(),
                 workspace_dir=tmpdir,
@@ -2400,65 +2486,19 @@ class TestFix7AutoSubmit(unittest.TestCase):
 
             task = make_task("t1")
             task.result_text = "Some result"
-
-            # No mail in lead inbox from worker-t1
-            scheduler._auto_submit_if_needed(task)
-
-            # Should have auto-submitted to lead
-            lead_mails = mailbox._peek_undelivered("lead")
-            self.assertEqual(len(lead_mails), 1)
-            self.assertEqual(lead_mails[0]["from"], "worker-t1")
-            self.assertIn("Auto-submitted", lead_mails[0]["content"])
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
-
-    def test_no_auto_submit_if_worker_sent_mail(self):
-        """No auto-submit if worker already sent mail to lead."""
-        tmpdir = Path(tempfile.mkdtemp())
-        try:
-            team_data_dir = tmpdir / "team_data"
-            (team_data_dir / "inboxes").mkdir(parents=True, exist_ok=True)
-            mailbox = FileMailbox(team_data_dir)
-            mailbox.register_agent("lead")
-            mailbox.register_agent("worker-t1")
-
-            # Worker already sent mail
-            _write_inbox_mail(team_data_dir, "lead", [
-                {"id": "msg-1", "from": "worker-t1", "content": "Done", "delivered": False}
-            ])
-
-            scheduler = PhaseScheduler(
-                worker_factory=lambda: _MockWorker(),
-                workspace_dir=tmpdir,
-                team_data_dir=team_data_dir,
-                mailbox=mailbox,
-                event_emitter=lambda *a, **k: None,
-            )
-
-            task = make_task("t1")
-            scheduler._auto_submit_if_needed(task)
-
-            # Should still have only 1 mail (no auto-submit)
-            lead_mails = mailbox._peek_undelivered("lead")
-            self.assertEqual(len(lead_mails), 1)
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
-
-    def test_send_auto_mail_method(self):
-        """FileMailbox.send_auto_mail writes to inbox correctly."""
-        tmpdir = Path(tempfile.mkdtemp())
-        try:
-            team_data_dir = tmpdir / "team_data"
-            team_data_dir.mkdir(parents=True, exist_ok=True)
-            mailbox = FileMailbox(team_data_dir)
-            mailbox.register_agent("lead")
-            mailbox.send_auto_mail("worker-t1", "lead", "Auto result")
+            scheduler._auto_submit_for_run(task, run_seq=7)
 
             mails = mailbox._peek_undelivered("lead")
             self.assertEqual(len(mails), 1)
-            self.assertEqual(mails[0]["from"], "worker-t1")
-            self.assertEqual(mails[0]["content"], "Auto result")
-            self.assertTrue(mails[0]["id"].startswith("msg-auto-"))
+            self.assertEqual(mails[0].get("meta", {}).get("source"), "auto_submit")
+            self.assertEqual(mails[0].get("meta", {}).get("run_seq"), 7)
+
+            state = scheduler._ensure_submission_state(task)
+            self.assertEqual(state["last_submit_run_seq"], 7)
+            self.assertEqual(state["last_submit_source"], "auto_submit")
+            self.assertEqual(state["auto_submission_seq"], 1)
+            self.assertEqual(state["submission_seq"], 1)
+            self.assertTrue(str(state["last_submit_message_id"]).startswith("msg-auto-"))
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 

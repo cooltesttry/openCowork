@@ -133,12 +133,17 @@ def _plan_data_to_plan(plan_data: dict, plan_id: str, available_worker_ids: Opti
             _ensure_unique_task_ids(phase.tasks)
         phases.append(phase)
 
+    planning_basis = plan_data.get("planning_basis", {})
+    if not isinstance(planning_basis, dict):
+        planning_basis = {}
+
     return Plan(
         plan_id=plan_id,
         objective=plan_data.get("objective", ""),
         phases=phases,
         version=plan_data.get("version", 1),
         change_log=plan_data.get("change_log", []),
+        planning_basis=planning_basis,
     )
 
 
@@ -443,6 +448,7 @@ class TeamOrchestrator:
                         previous_results_summary=prev_summary,
                         mcp_mailbox_server_path=self._mailbox_mcp_path,
                         project_dir=session.project_dir or "",
+                        planning_basis=session.plan.planning_basis if session.plan else {},
                         activity_log=activity_log,
                     )
                     phase = await scheduler.execute_phase(
@@ -479,6 +485,7 @@ class TeamOrchestrator:
                             phase, remaining_phases,
                             project_dir=session.project_dir or "",
                             logs_dir=str(activity_log.logs_dir),
+                            planning_basis=session.plan.planning_basis if session.plan else {},
                         ),
                         event_callback=lead_event_callback,
                     )

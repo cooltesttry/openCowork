@@ -7,6 +7,7 @@ Uses the AsyncOrchestrator from super_agent module.
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -29,7 +30,7 @@ from super_agent.events import (
     get_manager_sync,
 )
 
-from routers.agents import load_agents
+from routers.agents import load_agents, normalize_mcp_selected
 from core.prompt_compiler import compile_system_prompt
 
 router = APIRouter()
@@ -93,7 +94,16 @@ def get_worker_config(worker_id: str, request=None) -> SAWorkerConfig:
         if worker.get("id") == worker_id:
             # Get MCP servers based on inheritance settings
             mcp_inherit_system = worker.get("mcp_inherit_system", True)
-            mcp_selected = worker.get("mcp_selected", [])
+            raw_mcp_selected = worker.get("mcp_selected", [])
+            mcp_selected = normalize_mcp_selected(raw_mcp_selected)
+            selected_set = set(mcp_selected)
+            legacy_web_selected = (
+                isinstance(raw_mcp_selected, list)
+                and any(
+                    isinstance(item, str) and item.strip() in {"search-tools", "webFetch"}
+                    for item in raw_mcp_selected
+                )
+            )
             
             # Load system MCP servers if we have access to app state
             mcp_servers = []
@@ -109,25 +119,28 @@ def get_worker_config(worker_id: str, request=None) -> SAWorkerConfig:
                 else:
                     # Filter by selected names
                     mcp_servers = [{"name": s.name, "command": s.command, "args": s.args, "env": s.env} 
-                                   for s in system_mcp if s.name in mcp_selected]
-                
-                # Check if search-tools is selected and configured
-                if "search-tools" in mcp_selected or mcp_inherit_system:
-                    if search_config and search_config.enabled and search_config.api_key:
-                        import sys
-                        import os
-                        server_script = os.path.join(
-                            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                            "core", "run_search_server.py"
-                        )
+                                   for s in system_mcp if s.name in selected_set]
+
+                # Inject built-in web MCP (search + fetch) when search is configured.
+                wants_web = mcp_inherit_system or ("web" in selected_set) or legacy_web_selected
+                if wants_web and search_config and search_config.enabled and search_config.api_key:
+                    simple_crawler_path = os.path.join(
+                        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "..",
+                        "simple-crawler",
+                        "dist",
+                        "mcp-server.js",
+                    )
+                    existing_names = {
+                        server.get("name")
+                        for server in mcp_servers
+                        if isinstance(server, dict) and server.get("name")
+                    }
+                    if "web" not in existing_names:
                         mcp_servers.append({
-                            "name": "search-tools",
-                            "command": sys.executable,
-                            "args": [server_script],
-                            "env": {
-                                **os.environ,
-                                "PYTHONUNBUFFERED": "1"
-                            }
+                            "name": "web",
+                            "command": "node",
+                            "args": [simple_crawler_path],
                         })
             else:
                 # Fallback to worker's own mcp_servers if no request context

@@ -15,6 +15,35 @@ from typing import Optional
 from .models import Phase, Plan, TaskStep
 
 
+def _as_text(value: object, default: str = "") -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if value is None:
+        return default
+    return str(value).strip()
+
+
+def _render_planning_basis_summary(planning_basis: Optional[dict]) -> str:
+    if not isinstance(planning_basis, dict) or not planning_basis:
+        return (
+            "- Goal alignment: Not recorded\n"
+            "- Deliverables and acceptance: Not recorded\n"
+            "- Default assumptions: Not recorded"
+        )
+
+    goal_alignment = _as_text(planning_basis.get("goal_alignment"), "Not provided")
+    deliverables = _as_text(planning_basis.get("deliverables_acceptance"), "Not provided")
+    assumptions = _as_text(planning_basis.get("default_assumptions"), "Not provided")
+
+    return "\n".join(
+        [
+            f"- Goal alignment: {goal_alignment}",
+            f"- Deliverables and acceptance: {deliverables}",
+            f"- Default assumptions: {assumptions}",
+        ]
+    )
+
+
 def build_planning_prompt(objective: str, worker_types: list[dict], workspace_path: str = "") -> str:
     """Build the planning prompt for Lead Agent.
 
@@ -24,7 +53,7 @@ def build_planning_prompt(objective: str, worker_types: list[dict], workspace_pa
     for wt in worker_types:
         worker_list += f"- **{wt.get('id', 'unknown')}**: {wt.get('description', '')}\n"
 
-    return f"""You are the Lead of a Team Agent. Your role is to plan, review, and direct — you do not execute tasks yourself.
+    return f"""You are the Lead of a Team Agent. Your role is to plan, review, and direct. You do not execute implementation work yourself.
 
 ## Available Worker Types
 {worker_list}
@@ -33,18 +62,43 @@ def build_planning_prompt(objective: str, worker_types: list[dict], workspace_pa
 Current working directory: {workspace_path or '(not specified)'}
 Workers operate within this directory. The system will create a project folder under this directory based on project_name.
 
-## Planning Rules
-1. Organize work into **Phases**. Phases execute **sequentially** (Phase 0 → Phase 1 → ...).
-2. Tasks within each Phase execute **in parallel**, handled by independent Workers.
-3. Assign a Worker type to each Task.
-4. Phases can have dependencies — do not place dependent tasks in the same Phase.
-5. Keep Phases focused — each Phase should have a clear objective.
+## Grounding-First Protocol (MANDATORY)
+Complete this sequence in order. Do not call `create_plan` until all steps are finished.
 
-## How to Operate
-Use the `create_plan` tool to create an execution plan. Parameters:
-- objective: Task objective (brief summary)
-- project_name: Project name (short kebab-case English name, e.g. market-analysis, code-review-report). The system will create a corresponding project folder under the working directory.
-- phases: JSON string in the following format:
+### Step 1: Grounding Research
+- Use `search` to discover domain background, constraints, and latest developments.
+- Use `fetch` to verify high-value sources before planning.
+- For time-sensitive items (latest/current/breaking/policy/version/pricing), use absolute dates.
+- Use a balanced budget: 2-3 search rounds, 4-8 fetched pages, about 60-120 seconds.
+
+### Step 2: Calibration Inputs (Required)
+Create these three calibration items from your grounded findings:
+1. `goal_alignment`: your calibrated understanding of the user's goal, scope, and non-goals.
+2. `deliverables_acceptance`: concrete deliverables and acceptance criteria.
+3. `default_assumptions`: assumptions used for unknowns, including risk impact.
+
+You must encode these three items in `planning_basis` with this exact shape:
+```json
+{{
+  "goal_alignment": "...",
+  "deliverables_acceptance": "...",
+  "default_assumptions": "..."
+}}
+```
+
+Rules:
+- If evidence is incomplete or conflicting, explicitly include uncertainty/risk in `default_assumptions`.
+- Do not hide uncertainty.
+
+### Step 3: Build Plan from `planning_basis`
+- Every phase and task must map to `deliverables_acceptance`.
+- Add tasks that validate or mitigate `default_assumptions` when needed.
+- Keep phase dependencies explicit: phases run sequentially, tasks inside a phase run in parallel.
+
+Call `create_plan` using:
+- objective: concise objective summary
+- project_name: short kebab-case name (for workspace project folder) — REQUIRED in your call
+- phases: JSON array in this format:
   [
     {{
       "phase_id": "phase_0",
@@ -59,11 +113,23 @@ Use the `create_plan` tool to create an execution plan. Parameters:
       ]
     }}
   ]
+- planning_basis: JSON string that follows the required three-field structure — REQUIRED in your call
+
+Use this argument contract when you call the tool:
+```json
+{{
+  "objective": "...",
+  "project_name": "...",
+  "phases": "<JSON string of phases array>",
+  "planning_basis": "<JSON string with goal_alignment/deliverables_acceptance/default_assumptions>"
+}}
+```
+
+Before the `create_plan` call, briefly present your three calibration items in plain text.
 
 ## User Request
 {objective}
-
-Please use the create_plan tool to create an execution plan. Do not execute any tasks yourself."""
+"""
 
 
 def build_worker_prompt(
@@ -72,6 +138,7 @@ def build_worker_prompt(
     previous_results_summary: str = "",
     project_dir: str = "",
     logs_dir: str = "",
+    planning_basis: Optional[dict] = None,
 ) -> str:
     """Build the execution prompt for a Worker.
 
@@ -117,8 +184,17 @@ Team work history: {logs_dir}
 - `phase*_*_submit*_final.md`: Approved submissions
 Read these files if you need more context on previous work."""
 
+    basis_section = f"""
+## Planning Basis (must guide execution)
+{_render_planning_basis_summary(planning_basis)}
+
+Execution rules:
+- Ensure your output aligns with the deliverables and acceptance criteria.
+- Validate, refine, or explicitly challenge default assumptions with evidence.
+- If assumptions are invalidated, call this out clearly in your report."""
+
     return f"""You are a Worker in a Team Agent. Focus on completing your task.
-{other_section}{prev_section}{context_section}{project_section}{logs_section}
+{other_section}{prev_section}{context_section}{project_section}{logs_section}{basis_section}
 
 ## Your Task
 {task.description}
@@ -126,6 +202,7 @@ Read these files if you need more context on previous work."""
 ## Team Communication
 After completing your task, use the `send_mail` tool to submit results to the Lead:
 - Call send_mail(to="lead", content="your report")
+- Team mode submission is mail-only: do not rely on `__output.json` or `__result.json` for handoff.
 - Your report should include:
   1. What was accomplished
   2. Which files were modified/created
@@ -136,6 +213,30 @@ After completing your task, use the `send_mail` tool to submit results to the Le
 If you receive feedback from the Lead, continue working based on the feedback and resubmit using send_mail.
 
 Begin your task now."""
+
+
+def build_worker_submit_reminder_prompt(task: TaskStep, run_seq: int) -> str:
+    """Build an English reminder prompt that forces submit-only behavior."""
+    return f"""You have not submitted your result to the Lead for this task in the current run.
+
+Task ID: {task.task_id}
+Task: {task.description}
+Run Sequence: {run_seq}
+
+Action required now (mandatory):
+1. Do not perform additional implementation work.
+2. Immediately send exactly one mail to the Lead using:
+   send_mail(to="lead", content="...")
+
+Your mail must include:
+- What was completed
+- Files changed
+- Test/build results
+- Remaining risks or blockers
+
+If you are blocked or incomplete, you must still send a status mail to the Lead explaining the blocker.
+
+After sending the mail, stop."""
 
 
 def build_task_review_prompt(task: TaskStep, mail_content: str, project_dir: str = "") -> str:
@@ -173,7 +274,13 @@ After reviewing, perform one of the following:
 Please provide concise, actionable feedback."""
 
 
-def build_phase_review_prompt(phase: Phase, remaining_phases: list[Phase], project_dir: str = "", logs_dir: str = "") -> str:
+def build_phase_review_prompt(
+    phase: Phase,
+    remaining_phases: list[Phase],
+    project_dir: str = "",
+    logs_dir: str = "",
+    planning_basis: Optional[dict] = None,
+) -> str:
     """Build the Phase-level review prompt for Lead.
 
     Lead uses modify_phases MCP tool if plan adjustment is needed.
@@ -229,6 +336,11 @@ Team work history: {logs_dir}
 - `phase*_*_submit*_final.md`: Approved submissions
 """
 
+    basis_section = f"""
+## Planning Basis Reference
+{_render_planning_basis_summary(planning_basis)}
+"""
+
     return f"""Phase {phase.phase_index} ("{phase.description}") is complete.
 
 ## Phase Results Summary
@@ -236,7 +348,7 @@ Team work history: {logs_dir}
 
 ## Remaining Plan
 {remaining_plan}
-{project_section}{logs_section}
+{project_section}{logs_section}{basis_section}
 ## Review Actions
 ## Phase Change Assessment (MANDATORY)
 
@@ -248,6 +360,8 @@ Extract concise bullets for:
 - Broken or invalid assumptions
 - Newly surfaced risks or opportunities
 - Critical unknowns still unresolved
+- Which planning-basis assumptions were validated or invalidated
+- Whether deliverables/acceptance targets still match the remaining plan
 
 ### 2) Decide KEEP vs MODIFY
 Use KEEP only if findings do not materially affect remaining execution.

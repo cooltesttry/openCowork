@@ -3,18 +3,17 @@
     {
       "id": "default",
       "description": "Default Worker",
-      "model": "claude-sonnet-4-5",
+      "model": "gpt-5.3-codex",
       "provider": "local",
       "api_key": "aa",
       "endpoint": "http://localhost:8317",
       "mcp_inherit_system": false,
       "mcp_selected": [
-        "search-tools",
-        "webFetch"
+        "web"
       ],
       "mcp_servers": [],
       "prompt": {
-        "system": "CRITICAL OUTPUT PROTOCOL:\nWhen you have completed the task, you MUST write your final structured response to a file named '__output.json' in the Current Working Directory.\nThe content MUST be valid JSON following this schema:\n{\n  \"summary\": \"A short, single-line summary of what you achieved\",\n  \"text_content\": \"Detailed text response, research findings, or explanation. (Fill this for text-based tasks)\",\n  \"files\": [\"list\", \"of\", \"file_paths\", \"created\"],\n  \"instruction_to_user\": \"Optional instructions (e.g. 'Run npm start')\"\n}\nNotes:\n- If you created files, you MUST list them in the 'files' array.\n- If the result is text-only, leave 'files' empty.\n- Do not output the final JSON in text chat; just say you have written it.",
+        "system": "",
         "user": ""
       },
       "tools_allow": [
@@ -41,13 +40,13 @@
     {
       "id": "team-lead",
       "description": "Team Lead",
-      "model": "claude-opus-4-6-thinking",
+      "model": "gpt-5.3-codex",
       "provider": "local",
       "api_key": "aa",
       "endpoint": "http://localhost:8317",
       "mcp_inherit_system": false,
       "mcp_selected": [
-        "search-tools"
+        "web"
       ],
       "mcp_servers": [],
       "prompt": {
@@ -75,13 +74,13 @@
     {
       "id": "team-worker",
       "description": "Team Worker",
-      "model": "claude-opus-4-6-thinking",
+      "model": "gpt-5.3-codex",
       "provider": "local",
       "api_key": "aa",
       "endpoint": "http://localhost:8317",
       "mcp_inherit_system": false,
       "mcp_selected": [
-        "search-tools"
+        "web"
       ],
       "mcp_servers": [],
       "prompt": {
@@ -112,14 +111,13 @@
     {
       "id": "research",
       "description": "Research Agent",
-      "model": "claude-opus-4-6-thinking",
+      "model": "gpt-5.3-codex",
       "provider": "local",
       "api_key": "aa",
       "endpoint": "http://localhost:8317",
       "mcp_inherit_system": false,
       "mcp_selected": [
-        "search-tools",
-        "webFetch"
+        "web"
       ],
       "mcp_servers": [],
       "prompt": {

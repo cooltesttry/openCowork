@@ -189,6 +189,9 @@ function getEventLabel(event: SessionEvent): string {
         case "team_task_failed": return `Failed: ${(data.error as string)?.slice(0, 40) || ""}`;
         case "team_task_feedback": return `Feedback: ${(data.feedback as string)?.slice(0, 40) || ""}`;
         case "team_task_resubmit": return `Resubmit (#${data.submit_count})`;
+        case "team_task_submit_reminder": return "Submit reminder issued";
+        case "team_task_autosubmit": return "Auto-submitted to lead";
+        case "team_task_submission_tracked": return `Submission tracked (${String(data.source || "unknown")})`;
         case "team_review_start": return "Reviewing submission";
         case "team_review_complete": return "Review done";
         case "team_plan_updated": return `Plan updated: ${(data.change_note as string)?.slice(0, 40) || ""}`;

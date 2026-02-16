@@ -13,6 +13,7 @@ router = APIRouter()
 # Storage path
 STORAGE_DIR = Path(__file__).parent.parent.parent / "storage"
 AGENTS_FILE = STORAGE_DIR / "agents.json"
+_WEB_MCP_LEGACY_NAMES = {"search-tools", "webFetch"}
 
 
 class WorkerConfig(BaseModel):
@@ -39,6 +40,27 @@ class WorkerConfig(BaseModel):
     include_partial_messages: bool = False
     output_format: Optional[dict] = None
     preserve_context: bool = False
+
+
+def normalize_mcp_selected(selected: object) -> list[str]:
+    """Normalize MCP selections, migrating legacy search aliases to `web`."""
+    if not isinstance(selected, list):
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for entry in selected:
+        if not isinstance(entry, str):
+            continue
+        name = entry.strip()
+        if not name:
+            continue
+        canonical = "web" if name in _WEB_MCP_LEGACY_NAMES else name
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+        normalized.append(canonical)
+    return normalized
 
 
 def create_default_worker() -> dict:
@@ -82,7 +104,24 @@ def load_agents() -> dict:
     
     try:
         with open(AGENTS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+
+        workers = data.get("workers", [])
+        changed = False
+        if isinstance(workers, list):
+            for worker in workers:
+                if not isinstance(worker, dict):
+                    continue
+                current_selected = worker.get("mcp_selected", [])
+                normalized_selected = normalize_mcp_selected(current_selected)
+                if current_selected != normalized_selected:
+                    worker["mcp_selected"] = normalized_selected
+                    changed = True
+
+        if changed:
+            save_agents(data)
+
+        return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load agents: {str(e)}")
 
@@ -128,7 +167,9 @@ async def create_worker(config: WorkerConfig):
         raise HTTPException(status_code=400, detail=f"Worker ID '{config.id}' already exists")
     
     # Add new worker
-    data["workers"].append(config.model_dump())
+    worker_data = config.model_dump()
+    worker_data["mcp_selected"] = normalize_mcp_selected(worker_data.get("mcp_selected", []))
+    data["workers"].append(worker_data)
     save_agents(data)
     
     return {"status": "success", "id": config.id}
@@ -148,7 +189,9 @@ async def update_worker(agent_id: str, config: WorkerConfig):
                     status_code=400, 
                     detail="Cannot change worker ID. Create a new worker instead."
                 )
-            data["workers"][i] = config.model_dump()
+            worker_data = config.model_dump()
+            worker_data["mcp_selected"] = normalize_mcp_selected(worker_data.get("mcp_selected", []))
+            data["workers"][i] = worker_data
             save_agents(data)
             return {"status": "success", "id": agent_id}
     

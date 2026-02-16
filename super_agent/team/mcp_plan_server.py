@@ -7,8 +7,8 @@ All operations target .team/plan.json with atomic writes.
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -54,11 +54,66 @@ def _read_plan() -> dict | None:
         return None
 
 
+def _as_text(value: object, default: str = "") -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if value is None:
+        return default
+    return str(value).strip()
+
+
+def _degraded_basis(reason: str) -> dict[str, Any]:
+    return {
+        "goal_alignment": (
+            "[DEGRADED] Goal alignment was auto-filled because planning_basis was missing or invalid."
+        ),
+        "deliverables_acceptance": (
+            "[DEGRADED] Deliverables and acceptance criteria were inferred by the Lead."
+        ),
+        "default_assumptions": (
+            "[DEGRADED] "
+            + reason
+            + " Assumptions were inferred and should be validated in execution."
+        ),
+    }
+
+
+def _normalize_planning_basis(raw: object) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return _degraded_basis("planning_basis must be a JSON object.")
+
+    goal_alignment = _as_text(raw.get("goal_alignment"))
+    deliverables_acceptance = _as_text(raw.get("deliverables_acceptance"))
+    default_assumptions = _as_text(raw.get("default_assumptions"))
+
+    if not goal_alignment and not deliverables_acceptance and not default_assumptions:
+        return _degraded_basis("planning_basis contained no usable fields.")
+
+    if not goal_alignment:
+        goal_alignment = (
+            "[DEGRADED] Goal alignment was missing and auto-filled from inferred objective."
+        )
+    if not deliverables_acceptance:
+        deliverables_acceptance = (
+            "[DEGRADED] Deliverables/acceptance were missing and auto-filled."
+        )
+    if not default_assumptions:
+        default_assumptions = (
+            "[DEGRADED] Default assumptions were missing and auto-filled. Validate during execution."
+        )
+
+    return {
+        "goal_alignment": goal_alignment,
+        "deliverables_acceptance": deliverables_acceptance,
+        "default_assumptions": default_assumptions,
+    }
+
+
 @mcp.tool(
     name="create_plan",
-    description="创建执行计划。将任务目标分解为多个 Phase，每个 Phase 包含可并行执行的 Tasks。你必须提供 project_name 参数（简短的 kebab-case 英文名称，如 market-analysis、code-review-report），系统会在工作目录下创建对应的项目文件夹。",
+    description="创建执行计划。将任务目标分解为多个 Phase，每个 Phase 包含可并行执行的 Tasks。你必须提供 project_name（简短的 kebab-case 英文名称，如 market-analysis、code-review-report）和 planning_basis（仅含 goal_alignment、deliverables_acceptance、default_assumptions 三字段）参数。",
 )
-def create_plan(objective: str, phases: str, project_name: str = "") -> str:
+def create_plan(objective: str, phases: str, project_name: str = "", planning_basis: str = "") -> str:
     """Create an execution plan.
 
     Args:
@@ -68,6 +123,8 @@ def create_plan(objective: str, phases: str, project_name: str = "") -> str:
                 {"task_id": "task_001", "description": "...", "worker_type_id": "default", "context": {}}
             ]}]
         project_name: Short kebab-case project name (e.g. "market-analysis"). Used to create a project directory in workspace.
+        planning_basis: JSON string with:
+            {"goal_alignment": "...", "deliverables_acceptance": "...", "default_assumptions": "..."}
     """
     if not WORKSPACE:
         return "错误：TEAM_WORKSPACE 环境变量未设置"
@@ -80,12 +137,25 @@ def create_plan(objective: str, phases: str, project_name: str = "") -> str:
     if not isinstance(phases_data, list):
         return "错误：phases 必须是数组"
 
+    if planning_basis.strip():
+        try:
+            planning_basis_data = _normalize_planning_basis(json.loads(planning_basis))
+        except json.JSONDecodeError:
+            planning_basis_data = _degraded_basis(
+                "planning_basis JSON parsing failed. Auto-filled with DEGRADED basis."
+            )
+    else:
+        planning_basis_data = _degraded_basis(
+            "planning_basis not provided. Auto-filled with DEGRADED basis."
+        )
+
     # Build plan structure
     plan = {
         "objective": objective,
         "project_name": project_name,
         "version": 1,
         "change_log": ["v1: initial plan"],
+        "planning_basis": planning_basis_data,
         "phases": [],
     }
 
@@ -256,6 +326,40 @@ def abort_plan(reason: str = "") -> str:
     _atomic_write(_plan_path(), plan)
 
     return f"计划已标记为终止。原因：{reason or '(未提供)'}"
+
+
+def _enforce_create_plan_schema_required_fields() -> None:
+    """Force MCP schema to require fields while keeping runtime defaults lenient."""
+    try:
+        tool = mcp._tool_manager.get_tool("create_plan")
+    except Exception:
+        return
+
+    if tool is None or not isinstance(getattr(tool, "parameters", None), dict):
+        return
+
+    parameters = tool.parameters
+    properties = parameters.get("properties")
+    if not isinstance(properties, dict):
+        return
+
+    # Hide function-level defaults from schema so callers treat these as required.
+    for key in ("project_name", "planning_basis"):
+        prop = properties.get(key)
+        if isinstance(prop, dict):
+            prop.pop("default", None)
+
+    required = parameters.get("required")
+    if not isinstance(required, list):
+        required = []
+
+    for key in ("project_name", "planning_basis"):
+        if key in properties and key not in required:
+            required.append(key)
+    parameters["required"] = required
+
+
+_enforce_create_plan_schema_required_fields()
 
 
 if __name__ == "__main__":

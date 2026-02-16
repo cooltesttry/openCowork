@@ -14,6 +14,24 @@ interface SearchConfig {
     enabled: boolean;
 }
 
+const LEGACY_WEB_MCP_NAMES = new Set(["search-tools", "webFetch"]);
+
+function normalizeSelectedServers(servers: string[]): string[] {
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+
+    for (const raw of servers) {
+        const name = (raw || "").trim();
+        if (!name) continue;
+        const canonical = LEGACY_WEB_MCP_NAMES.has(name) ? "web" : name;
+        if (seen.has(canonical)) continue;
+        seen.add(canonical);
+        normalized.push(canonical);
+    }
+
+    return normalized;
+}
+
 function McpServersList({
     selectedServers,
     onSelectedChange
@@ -41,11 +59,14 @@ function McpServersList({
             .finally(() => setLoading(false));
     }, []);
 
+    const normalizedSelectedServers = normalizeSelectedServers(selectedServers);
+
     const handleToggle = (name: string, checked: boolean) => {
+        const current = normalizeSelectedServers(selectedServers);
         if (checked) {
-            onSelectedChange([...selectedServers, name]);
+            onSelectedChange(normalizeSelectedServers([...current, name]));
         } else {
-            onSelectedChange(selectedServers.filter(s => s !== name));
+            onSelectedChange(normalizeSelectedServers(current.filter(s => s !== name)));
         }
     };
 
@@ -53,6 +74,7 @@ function McpServersList({
     const isSearchConfigured = searchConfig &&
         searchConfig.provider !== "none" &&
         searchConfig.api_key;
+    const showBuiltinWeb = Boolean(isSearchConfigured && searchConfig);
 
     if (loading) return <div className="text-xs text-gray-500">Loading MCP servers...</div>;
     if (!isSearchConfigured && systemServers.length === 0) {
@@ -62,32 +84,40 @@ function McpServersList({
     return (
         <div className="space-y-2 mt-2">
             {/* Search Tool - Always First when configured */}
-            {isSearchConfigured && searchConfig && (
+            {showBuiltinWeb && searchConfig && (
                 <label className="flex items-center space-x-2 text-sm cursor-pointer p-2 rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
                     <input
                         type="checkbox"
-                        checked={selectedServers.includes("search-tools")}
-                        onChange={(e) => handleToggle("search-tools", e.target.checked)}
+                        checked={normalizedSelectedServers.includes("web")}
+                        onChange={(e) => handleToggle("web", e.target.checked)}
                         className="rounded"
                     />
-                    <span className="font-medium">搜索工具</span>
+                    <span className="font-medium">Web Search + Fetch</span>
                     <span className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-800 rounded">{searchConfig.provider}</span>
                 </label>
             )}
 
             {/* Regular MCP Servers */}
-            {systemServers.map(server => (
-                <label key={server.name} className="flex items-center space-x-2 text-sm cursor-pointer p-2 rounded hover:bg-gray-50 dark:hover:bg-zinc-800">
-                    <input
-                        type="checkbox"
-                        checked={selectedServers.includes(server.name)}
-                        onChange={(e) => handleToggle(server.name, e.target.checked)}
-                        className="rounded"
-                    />
-                    <span>{server.name}</span>
-                    <span className="text-xs text-gray-400 font-mono">{server.command}</span>
-                </label>
-            ))}
+            {systemServers
+                .filter(server => {
+                    if (!showBuiltinWeb) return true;
+                    return server.name !== "web" && !LEGACY_WEB_MCP_NAMES.has(server.name);
+                })
+                .map(server => {
+                    const serverValue = LEGACY_WEB_MCP_NAMES.has(server.name) ? "web" : server.name;
+                    return (
+                        <label key={server.name} className="flex items-center space-x-2 text-sm cursor-pointer p-2 rounded hover:bg-gray-50 dark:hover:bg-zinc-800">
+                            <input
+                                type="checkbox"
+                                checked={normalizedSelectedServers.includes(serverValue)}
+                                onChange={(e) => handleToggle(serverValue, e.target.checked)}
+                                className="rounded"
+                            />
+                            <span>{server.name}</span>
+                            <span className="text-xs text-gray-400 font-mono">{server.command}</span>
+                        </label>
+                    );
+                })}
         </div>
     );
 }
