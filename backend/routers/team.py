@@ -227,8 +227,20 @@ async def websocket_team_events(websocket: WebSocket, session_id: str):
                 data = await websocket.receive_text()
                 if data == "ping":
                     await websocket.send_text('{"type": "pong"}')
-            except WebSocketDisconnect:
-                logger.info(f"[Team] WebSocket disconnected for session: {session_id}")
+            except WebSocketDisconnect as e:
+                logger.info(
+                    "[Team] WebSocket disconnected for session: %s (code=%s, reason=%s)",
+                    session_id,
+                    getattr(e, "code", None),
+                    getattr(e, "reason", None),
+                )
+                break
+            except Exception as e:
+                logger.exception(
+                    "[Team] WebSocket error for session %s: %s",
+                    session_id,
+                    e,
+                )
                 break
     finally:
         await event_manager.disconnect(websocket)

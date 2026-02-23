@@ -65,8 +65,17 @@ export function TeamPanel() {
     const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
     const [finalOutput, setFinalOutput] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [wsConnected, setWsConnected] = useState(false);
+    const [wsReconnecting, setWsReconnecting] = useState(false);
 
     const wsRef = useRef<WebSocket | null>(null);
+    const reconnectAttemptsRef = useRef(0);
+    const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const manualCloseRef = useRef(false);
+    const seenEventKeysRef = useRef<Set<string>>(new Set());
+    const reconnectToastShownRef = useRef(false);
+    const sessionIdRef = useRef<string | null>(null);
 
     // Load workers on mount
     useEffect(() => {
@@ -90,28 +99,99 @@ export function TeamPanel() {
     // Track status in a ref so the WS effect doesn't re-run on status changes
     const statusRef = useRef(status);
     statusRef.current = status;
+    sessionIdRef.current = sessionId;
 
-    // WebSocket connection — only reconnects when sessionId changes
-    useEffect(() => {
-        if (!sessionId) return;
+    const clearReconnectTimer = useCallback(() => {
+        if (reconnectTimerRef.current) {
+            clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
+        }
+    }, []);
 
-        const wsUrl = `ws://localhost:8000/api/team/ws/${sessionId}`;
+    const clearPingTimer = useCallback(() => {
+        if (pingTimerRef.current) {
+            clearInterval(pingTimerRef.current);
+            pingTimerRef.current = null;
+        }
+    }, []);
+
+    const closeSocket = useCallback((manual = true) => {
+        manualCloseRef.current = manual;
+        clearReconnectTimer();
+        clearPingTimer();
+
+        const ws = wsRef.current;
+        if (ws) {
+            ws.onopen = null;
+            ws.onmessage = null;
+            ws.onerror = null;
+            ws.onclose = null;
+            ws.close();
+            wsRef.current = null;
+        }
+
+        if (manual) {
+            reconnectAttemptsRef.current = 0;
+            reconnectToastShownRef.current = false;
+            setWsConnected(false);
+            setWsReconnecting(false);
+        }
+    }, [clearPingTimer, clearReconnectTimer]);
+
+    const buildEventKey = useCallback((event: SessionEvent): string => {
+        const data = event.data as Record<string, unknown>;
+        const taskId = typeof data.task_id === "string" ? data.task_id : "";
+        const streamType = typeof data.stream_type === "string" ? data.stream_type : "";
+        const blockId = typeof data.block_id === "string" ? data.block_id : "";
+        return `${event.type}|${event.timestamp}|${taskId}|${streamType}|${blockId}`;
+    }, []);
+
+    const connectTeamWs = useCallback((activeSessionId: string) => {
+        if (sessionIdRef.current !== activeSessionId) return;
+        if (!ACTIVE_STATUSES.has(statusRef.current)) return;
+
+        clearReconnectTimer();
+        clearPingTimer();
+
+        const existingWs = wsRef.current;
+        if (existingWs) {
+            existingWs.onopen = null;
+            existingWs.onmessage = null;
+            existingWs.onerror = null;
+            existingWs.onclose = null;
+            existingWs.close();
+            wsRef.current = null;
+        }
+
+        manualCloseRef.current = false;
+        const wsUrl = `ws://localhost:8000/api/team/ws/${activeSessionId}`;
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
+
+        ws.onopen = () => {
+            if (wsRef.current !== ws) return;
+            reconnectAttemptsRef.current = 0;
+            reconnectToastShownRef.current = false;
+            setWsConnected(true);
+            setWsReconnecting(false);
+
+            clearPingTimer();
+            pingTimerRef.current = setInterval(() => {
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    wsRef.current.send("ping");
+                }
+            }, 20000);
+        };
 
         ws.onmessage = (msg) => {
             try {
                 const event = JSON.parse(msg.data) as SessionEvent;
                 if (event.type === "pong") return;
 
-                // Deduplicate by type + timestamp
-                setEvents((prev) => {
-                    const isDuplicate = prev.some(
-                        (e) => e.type === event.type && e.timestamp === event.timestamp
-                    );
-                    if (isDuplicate) return prev;
-                    return [...prev, event];
-                });
+                const key = buildEventKey(event);
+                if (seenEventKeysRef.current.has(key)) return;
+                seenEventKeysRef.current.add(key);
+                setEvents((prev) => [...prev, event]);
 
                 // Auto-navigation
                 if (event.type === "team_planning_complete") {
@@ -145,23 +225,67 @@ export function TeamPanel() {
             }
         };
 
-        ws.onerror = (e) => console.error("[TeamPanel] WS error:", e);
+        ws.onerror = (e) => {
+            console.error("[TeamPanel] WS error:", e);
+        };
+
+        ws.onclose = () => {
+            if (wsRef.current === ws) {
+                wsRef.current = null;
+            }
+            setWsConnected(false);
+            clearPingTimer();
+
+            const shouldReconnect =
+                !manualCloseRef.current &&
+                sessionIdRef.current === activeSessionId &&
+                ACTIVE_STATUSES.has(statusRef.current);
+
+            if (!shouldReconnect) {
+                setWsReconnecting(false);
+                return;
+            }
+
+            const attempt = reconnectAttemptsRef.current + 1;
+            reconnectAttemptsRef.current = attempt;
+            const delay = Math.min(1000 * (2 ** (attempt - 1)), 8000);
+            setWsReconnecting(true);
+
+            if (!reconnectToastShownRef.current) {
+                toast.info("Team stream disconnected. Reconnecting...");
+                reconnectToastShownRef.current = true;
+            }
+
+            clearReconnectTimer();
+            reconnectTimerRef.current = setTimeout(() => {
+                connectTeamWs(activeSessionId);
+            }, delay);
+        };
+    }, [buildEventKey, clearPingTimer, clearReconnectTimer]);
+
+    // WebSocket connection lifecycle
+    useEffect(() => {
+        if (!sessionId) {
+            closeSocket(true);
+            return;
+        }
+
+        reconnectAttemptsRef.current = 0;
+        reconnectToastShownRef.current = false;
+        setWsReconnecting(false);
+        connectTeamWs(sessionId);
 
         return () => {
-            ws.close();
-            wsRef.current = null;
+            closeSocket(true);
         };
-    }, [sessionId]);
+    }, [sessionId, connectTeamWs, closeSocket]);
 
     // Close WebSocket when session reaches a terminal state
     useEffect(() => {
         if (sessionId && !ACTIVE_STATUSES.has(status) && status !== "idle") {
-            if (wsRef.current) {
-                wsRef.current.close();
-                wsRef.current = null;
-            }
+            closeSocket(true);
         }
-    }, [sessionId, status]);
+    }, [sessionId, status, closeSocket]);
 
     // Polling for status + plan sync
     useEffect(() => {
@@ -214,6 +338,10 @@ export function TeamPanel() {
         setFinalOutput(null);
         setSelectedTab("lead");
         setExpandedPhases(new Set());
+        seenEventKeysRef.current.clear();
+        closeSocket(true);
+        setWsConnected(false);
+        setWsReconnecting(false);
 
         try {
             const result = await startTeamRun({
@@ -229,7 +357,7 @@ export function TeamPanel() {
             setStatus("failed");
             toast.error(message);
         }
-    }, [taskObjective, selectedLeadId, maxTaskSubmits]);
+    }, [taskObjective, selectedLeadId, maxTaskSubmits, closeSocket]);
 
     const handleStop = useCallback(async () => {
         if (!sessionId) return;
@@ -244,6 +372,7 @@ export function TeamPanel() {
     }, [sessionId]);
 
     const handleReset = useCallback(() => {
+        closeSocket(true);
         setSessionId(null);
         setStatus("idle");
         setError(null);
@@ -254,7 +383,8 @@ export function TeamPanel() {
         setFinalOutput(null);
         setSelectedTab("lead");
         setExpandedPhases(new Set());
-    }, []);
+        seenEventKeysRef.current.clear();
+    }, [closeSocket]);
 
     const handleTogglePhase = useCallback((phaseId: string) => {
         setExpandedPhases((prev) => {
@@ -297,6 +427,20 @@ export function TeamPanel() {
                     <Users className="h-4 w-4 text-zinc-500" />
                     <h2 className="text-sm font-semibold">Team</h2>
                     <StatusBadge status={status} />
+                    {status !== "idle" && (
+                        <Badge
+                            variant="outline"
+                            className={`text-[10px] px-1.5 py-0 ${
+                                wsReconnecting
+                                    ? "text-orange-600 border-orange-300"
+                                    : wsConnected
+                                        ? "text-emerald-600 border-emerald-300"
+                                        : "text-zinc-500 border-zinc-300"
+                            }`}
+                        >
+                            {wsReconnecting ? "Reconnecting" : wsConnected ? "Live" : "Offline"}
+                        </Badge>
+                    )}
                 </div>
                 <div className="flex items-center gap-1.5">
                     {isActive && (

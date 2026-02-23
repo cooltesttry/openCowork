@@ -265,7 +265,7 @@ After reviewing, perform one of the following:
 
 **If approved:**
 1. Call update_task(task_id="{task.task_id}", status="approved")
-2. Call send_mail(to="worker-{task.task_id}", content="approved")
+2. Do not call send_mail to the Worker.
 
 **If revisions needed:**
 1. Call send_mail(to="worker-{task.task_id}", content="specific revision instructions")
@@ -340,6 +340,21 @@ Team work history: {logs_dir}
 ## Planning Basis Reference
 {_render_planning_basis_summary(planning_basis)}
 """
+    failed_tasks = [t for t in phase.tasks if t.status == "failed"]
+    failed_task_ids = ", ".join(t.task_id for t in failed_tasks) if failed_tasks else "None"
+
+    failed_task_policy = f"""
+## Failed Task Policy (MANDATORY)
+Failed tasks in this phase: {failed_task_ids}
+
+- If any task in this phase is `failed`, treat it as plan-impacting by default.
+- You must choose `MODIFY` unless you can explicitly prove the failure has no material impact on:
+  - objective completion
+  - acceptance/deliverables
+  - downstream dependencies
+  - timeline/risk
+- `KEEP` is allowed only when every failed task has explicit no-impact justification.
+"""
 
     return f"""Phase {phase.phase_index} ("{phase.description}") is complete.
 
@@ -349,10 +364,11 @@ Team work history: {logs_dir}
 ## Remaining Plan
 {remaining_plan}
 {project_section}{logs_section}{basis_section}
+{failed_task_policy}
 ## Review Actions
 ## Phase Change Assessment (MANDATORY)
 
-You must make a concrete decision for this phase: either KEEP the remaining plan as-is, or MODIFY it.
+You must make a concrete decision for this phase: KEEP, MODIFY, or ABORT.
 
 ### 1) Identify What Changed In This Phase
 Extract concise bullets for:
@@ -363,21 +379,39 @@ Extract concise bullets for:
 - Which planning-basis assumptions were validated or invalidated
 - Whether deliverables/acceptance targets still match the remaining plan
 
-### 2) Decide KEEP vs MODIFY
+### 2) Failed Task Impact Assessment (MANDATORY when any failed tasks exist)
+For each failed task, provide:
+- failed_task_id
+- failure_cause
+- downstream_impact
+- required_mitigation
+- decision: covered by current plan | requires plan change
+
+If any failed-task decision is `requires plan change`, you must choose `MODIFY`.
+
+### 3) Decide KEEP vs MODIFY vs ABORT
 Use KEEP only if findings do not materially affect remaining execution.
 You MUST choose MODIFY if any of the following is true:
 - A key assumption for later work is invalidated
 - A high-impact risk/opportunity is not covered by the current plan
 - This phase reveals critical gaps that block the objective
 - Remaining work is now redundant or mis-prioritized
+- Any failed task requires mitigation not already covered by the remaining plan
 
-### 3) Execute Exactly One Action
+Choose ABORT if the objective is no longer realistically achievable, or risk is unacceptable.
+
+### 4) Execute Exactly One Action
 A) If KEEP:
-Reply exactly: "Phase review approved, continue execution."
+Provide explicit no-impact justification for each failed task (if any), then reply exactly:
+"Phase review approved, continue execution."
 
 B) If MODIFY:
 Call `modify_phases(from_index={phase.phase_index}, new_phases="[...json array...]")`
-Ensure revised phases are concrete and executable, then briefly justify why changes are required.
+Ensure revised phases are concrete and executable, and include remediation/replacement/de-scoping for failed-task impact.
+Then briefly justify why changes are required.
+
+C) If ABORT:
+Call `abort_plan(reason="...")` with a concrete reason tied to objective feasibility and risk.
 
 Do not provide generic commentary. Tie the decision directly to findings from this phase."""
 

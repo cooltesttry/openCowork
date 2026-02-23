@@ -54,6 +54,7 @@ export function FilePickerDialog({
 
   const [commonDirs, setCommonDirs] = React.useState<CommonDirectory[]>([]);
   const [creatingFolder, setCreatingFolder] = React.useState(false);
+  const [creatingFolderBusy, setCreatingFolderBusy] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState("");
   const [selectedFormat, setSelectedFormat] = React.useState(defaultFormat || (formatOptions?.[0]?.value ?? ""));
   const filenameInputRef = React.useRef<HTMLInputElement>(null);
@@ -187,6 +188,7 @@ export function FilePickerDialog({
         showHidden: false,
       });
       setCreatingFolder(false);
+      setCreatingFolderBusy(false);
       setNewFolderName("");
     }
   }, [open, defaultPath, seedFilename]);
@@ -245,28 +247,39 @@ export function FilePickerDialog({
   }, [onCancel, onOpenChange]);
 
   const handleCreateFolder = React.useCallback(async () => {
-    if (!newFolderName.trim()) return;
+    const folderName = newFolderName.trim();
+    if (!folderName || creatingFolderBusy) return;
+
+    const fullPath =
+      state.currentPath === "/"
+        ? `/${folderName}`
+        : `${state.currentPath}/${folderName}`;
+
+    setCreatingFolderBusy(true);
+    setState((prev) => ({ ...prev, error: null }));
 
     try {
-      setState((prev) => {
-        const fullPath = prev.currentPath + "/" + newFolderName.trim();
-        createDirectoryAbsolute(fullPath)
-          .then(() => listFilesAbsolute(prev.currentPath, prev.showHidden))
-          .then((data) => {
-            setState((p) => ({
-              ...p,
-              files: data.files,
-            }));
-          })
-          .catch((err) => console.error("Failed to create folder:", err));
-        return prev;
-      });
+      await createDirectoryAbsolute(fullPath);
+      const data = await listFilesAbsolute(state.currentPath, state.showHidden);
+      setState((prev) => ({
+        ...prev,
+        files: data.files,
+        currentPath: data.current_path,
+        parentPath: data.parent_path,
+        error: null,
+      }));
       setCreatingFolder(false);
       setNewFolderName("");
     } catch (err) {
-      console.error("Failed to create folder:", err);
+      const message = err instanceof Error ? err.message : "Failed to create folder";
+      setState((prev) => ({
+        ...prev,
+        error: message,
+      }));
+    } finally {
+      setCreatingFolderBusy(false);
     }
-  }, [newFolderName]);
+  }, [newFolderName, creatingFolderBusy, state.currentPath, state.showHidden]);
 
   const goToParent = React.useCallback(() => {
     setState((prev) => {
@@ -413,8 +426,12 @@ export function FilePickerDialog({
                     }
                   }}
                 />
-                <Button size="sm" onClick={handleCreateFolder}>
-                  Create
+                <Button
+                  size="sm"
+                  onClick={handleCreateFolder}
+                  disabled={creatingFolderBusy || !newFolderName.trim()}
+                >
+                  {creatingFolderBusy ? "Creating..." : "Create"}
                 </Button>
                 <Button
                   size="sm"

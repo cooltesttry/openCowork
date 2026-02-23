@@ -461,13 +461,6 @@ class TeamOrchestrator:
                     self.store.save_session(session)
 
                     # ═══ Phase Review ═══
-                    if phase.status == "failed":
-                        phase.phase_review_decision = "abort"
-                        phase.phase_review_notes = "Phase failed - one or more tasks failed"
-                        session.status = "failed"
-                        session.error = f"Phase {phase_idx} failed"
-                        break
-
                     session.status = "phase_review"
                     self.store.save_session(session)
                     self._emit(EventType.TEAM_PHASE_REVIEW_START, {
