@@ -1,6 +1,7 @@
 """Plan MCP server for Agent Team plan management.
 
-Leader only. Provides create_plan, get_plan, update_task, modify_phases tools.
+Leader only. Provides create_plan/get_plan/update_task/modify_phases/
+update_planning_basis/abort_plan tools.
 All operations target .team/plan.json with atomic writes.
 """
 
@@ -301,6 +302,74 @@ def modify_phases(from_index: int, new_phases: str) -> str:
         f"计划已修改（v{plan['version']}）：保留 {len(kept)} 个 Phase，"
         f"新增 {len(new_built)} 个 Phase（{task_count} 个 Task）"
     )
+
+
+@mcp.tool(
+    name="update_planning_basis",
+    description=(
+        "更新 planning_basis（完整三字段对象），用于在 Phase Review 后同步关键假设/"
+        "alignment/验收口径变化。"
+    ),
+)
+def update_planning_basis(planning_basis: str, reason: str = "") -> str:
+    """Update planning basis using a full replacement object.
+
+    Args:
+        planning_basis: JSON string with full shape:
+            {"goal_alignment":"...", "deliverables_acceptance":"...", "default_assumptions":"..."}
+        reason: Optional short reason for change log.
+    """
+    if not WORKSPACE:
+        return "错误：TEAM_WORKSPACE 环境变量未设置"
+
+    plan = _read_plan()
+    if not plan:
+        return "错误：计划不存在"
+
+    try:
+        raw_basis = json.loads(planning_basis)
+    except json.JSONDecodeError as e:
+        return f"错误：planning_basis JSON 格式无效 — {e}"
+
+    if not isinstance(raw_basis, dict):
+        return (
+            "错误：planning_basis 必须是对象，且包含 "
+            "goal_alignment / deliverables_acceptance / default_assumptions"
+        )
+
+    required = (
+        "goal_alignment",
+        "deliverables_acceptance",
+        "default_assumptions",
+    )
+    missing = [key for key in required if key not in raw_basis]
+    if missing:
+        return (
+            "错误：planning_basis 缺少必填字段："
+            + ", ".join(missing)
+            + "（必须提供完整三字段对象）"
+        )
+
+    normalized_new = _normalize_planning_basis(raw_basis)
+    normalized_old = _normalize_planning_basis(plan.get("planning_basis", {}))
+    if normalized_new == normalized_old:
+        current_version = int(plan.get("version", 1))
+        return f"planning_basis 无变更（保持 v{current_version}）"
+
+    plan["planning_basis"] = normalized_new
+    plan["version"] = int(plan.get("version", 0)) + 1
+    change_log = plan.get("change_log")
+    if not isinstance(change_log, list):
+        change_log = []
+    note = f"v{plan['version']}: planning_basis updated"
+    reason_text = _as_text(reason)
+    if reason_text:
+        note += f" ({reason_text})"
+    change_log.append(note)
+    plan["change_log"] = change_log
+
+    _atomic_write(_plan_path(), plan)
+    return f"planning_basis 已更新（v{plan['version']}）"
 
 
 @mcp.tool(

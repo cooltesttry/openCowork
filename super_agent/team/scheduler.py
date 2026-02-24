@@ -54,6 +54,14 @@ class PhaseScheduler:
         project_dir: str = "",
         planning_basis: Optional[dict[str, Any]] = None,
         activity_log: Optional[TeamActivityLog] = None,
+        lead_context_header: str = "",
+        inject_lead_context_once: bool = True,
+        phase_resume_enabled: bool = True,
+        max_lead_reconnect_attempts: int = 2,
+        max_lead_review_turns: int = 8,
+        max_lead_prompt_chars: int = 60_000,
+        on_lead_session_update: Optional[Callable[[str], None]] = None,
+        on_lead_context_seeded: Optional[Callable[[bool], None]] = None,
         # Legacy compat
         worker: Optional[Worker] = None,
         max_task_submits: int = 3,
@@ -79,6 +87,20 @@ class PhaseScheduler:
         self.max_task_submits = max_task_submits
         self.activity_log = activity_log
         self._phase_index = 0
+        self.lead_context_header = lead_context_header
+        self.inject_lead_context_once = bool(inject_lead_context_once)
+        self.phase_resume_enabled = bool(phase_resume_enabled)
+        self.max_lead_reconnect_attempts = max(1, int(max_lead_reconnect_attempts))
+        self.max_lead_review_turns = max(1, int(max_lead_review_turns))
+        self.max_lead_prompt_chars = max(1024, int(max_lead_prompt_chars))
+        self.on_lead_session_update = on_lead_session_update
+        self.on_lead_context_seeded = on_lead_context_seeded
+        self._lead_context_seeded = False
+        self._lead_review_turns = 0
+        self._lead_prompt_chars = 0
+        self._active_lead_session_id: Optional[str] = None
+        self.latest_lead_worker: Optional[Worker] = None
+        self.latest_lead_config: Optional[WorkerConfig] = None
 
     async def execute_phase(
         self,
@@ -91,6 +113,8 @@ class PhaseScheduler:
         phase.status = "running"
         phase.started_at = utc_now()
         self._phase_index = phase.phase_index
+        self.latest_lead_worker = lead_worker
+        self.latest_lead_config = lead_config
         if self.activity_log:
             self.activity_log.log_section(f"Phase {phase.phase_index}: {phase.description}")
         self._emit(EventType.TEAM_PHASE_START, {
@@ -149,6 +173,59 @@ class PhaseScheduler:
         self._sync_plan_to_tasks(phase)
 
         return phase
+
+    async def _connect_worker(
+        self,
+        worker: Worker,
+        config: WorkerConfig,
+        *,
+        resume_sdk_session_id: Optional[str] = None,
+    ) -> None:
+        """Connect worker with optional resume, preserving backward compatibility."""
+        try:
+            await worker.connect(
+                config,
+                workspace=self.workspace_dir,
+                resume_sdk_session_id=resume_sdk_session_id,
+            )
+        except TypeError:
+            await worker.connect(config, workspace=self.workspace_dir)
+
+    async def _reconnect_lead_worker(
+        self,
+        lead_worker: Worker,
+        lead_config: WorkerConfig,
+        *,
+        prefer_resume: bool,
+    ) -> tuple[Worker, bool]:
+        """Reconnect Lead worker, optionally attempting resume first."""
+        try:
+            await lead_worker.disconnect()
+        except Exception:
+            pass
+
+        resume_id = self._active_lead_session_id if prefer_resume else None
+        if resume_id:
+            resumed_worker = self.worker_factory()
+            try:
+                await self._connect_worker(
+                    resumed_worker, lead_config, resume_sdk_session_id=resume_id
+                )
+                return resumed_worker, True
+            except Exception as e:
+                logger.warning(
+                    "[Scheduler] Lead resume reconnect failed for phase %s: %s",
+                    self._phase_index,
+                    e,
+                )
+                try:
+                    await resumed_worker.disconnect()
+                except Exception:
+                    pass
+
+        fresh_worker = self.worker_factory()
+        await self._connect_worker(fresh_worker, lead_config, resume_sdk_session_id=None)
+        return fresh_worker, False
 
     async def _worker_loop(
         self,
@@ -440,6 +517,50 @@ class PhaseScheduler:
                             )
                         )
             prompt = "\n\n---\n\n".join(prompt_blocks)
+            if not prompt.strip():
+                continue
+
+            if (
+                self._lead_review_turns >= self.max_lead_review_turns
+                or self._lead_prompt_chars + len(prompt) > self.max_lead_prompt_chars
+            ):
+                try:
+                    lead_worker, _ = await self._reconnect_lead_worker(
+                        lead_worker,
+                        lead_config,
+                        prefer_resume=False,
+                    )
+                    self.latest_lead_worker = lead_worker
+                    self._lead_context_seeded = False
+                    if self.on_lead_context_seeded:
+                        self.on_lead_context_seeded(False)
+                    self._lead_review_turns = 0
+                    self._lead_prompt_chars = 0
+                except Exception as e:
+                    logger.warning(
+                        "[Scheduler] Lead proactive refresh failed in phase %s: %s",
+                        self._phase_index,
+                        e,
+                    )
+
+            if (
+                self.inject_lead_context_once
+                and not self._lead_context_seeded
+                and self.lead_context_header.strip()
+            ):
+                prompt = f"{self.lead_context_header.rstrip()}\n\n{prompt}"
+            elif self.inject_lead_context_once and self._lead_context_seeded:
+                prompt = (
+                    "## Context Anchor\n"
+                    f"- Phase: {self._phase_index}\n"
+                    "- Reuse the seeded phase context.\n"
+                    "- Quick pass boundary: if request is simple and history-independent, no deep retrieval needed.\n"
+                    "- If request is ambiguous/high-risk/history-constrained, run quick pass:\n"
+                    "  1) check previous phase summary + north star\n"
+                    "  2) check top knowledge hits by keywords/entities\n"
+                    "  3) if conflict or low confidence, read refs (workflow/logs/phase summaries)\n\n"
+                    f"{prompt}"
+                )
 
             self._emit(EventType.TEAM_REVIEW_START, {
                 "task_ids": list(review_tasks),
@@ -455,6 +576,16 @@ class PhaseScheduler:
                     prompt=prompt,
                     event_callback=lead_event_callback,
                 )
+                self._lead_review_turns += 1
+                self._lead_prompt_chars += len(prompt)
+                if lead_result.sdk_session_id:
+                    self._active_lead_session_id = lead_result.sdk_session_id
+                    if self.on_lead_session_update:
+                        self.on_lead_session_update(lead_result.sdk_session_id)
+                if self.inject_lead_context_once and not self._lead_context_seeded:
+                    self._lead_context_seeded = True
+                    if self.on_lead_context_seeded:
+                        self.on_lead_context_seeded(True)
                 if self.activity_log:
                     self.activity_log.log_lead_response(
                         f"task_review({','.join(review_tasks)})",
@@ -466,6 +597,31 @@ class PhaseScheduler:
             except Exception as e:
                 logger.error(f"[Scheduler] Lead review failed: {e}")
                 # Do NOT ack — mails will be redelivered next round
+                recovered = False
+                for attempt in range(self.max_lead_reconnect_attempts):
+                    try:
+                        lead_worker, resumed = await self._reconnect_lead_worker(
+                            lead_worker,
+                            lead_config,
+                            prefer_resume=self.phase_resume_enabled,
+                        )
+                        self.latest_lead_worker = lead_worker
+                        self._lead_context_seeded = False
+                        if self.on_lead_context_seeded:
+                            self.on_lead_context_seeded(False)
+                        if not resumed:
+                            self._active_lead_session_id = None
+                        recovered = True
+                        break
+                    except Exception as reconnect_error:
+                        logger.warning(
+                            "[Scheduler] Lead reconnect attempt %s/%s failed: %s",
+                            attempt + 1,
+                            self.max_lead_reconnect_attempts,
+                            reconnect_error,
+                        )
+                if not recovered:
+                    logger.error("[Scheduler] Lead reconnect failed; waiting for mailbox redelivery")
 
             # Refresh task statuses from plan.json
             self._sync_plan_to_tasks(phase)

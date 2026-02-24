@@ -62,7 +62,12 @@ async def _graceful_close_client(client, timeout_seconds: float = 5.0) -> None:
 
 
 class Worker:
-    async def connect(self, config: WorkerConfig, workspace: Optional[Path] = None):
+    async def connect(
+        self,
+        config: WorkerConfig,
+        workspace: Optional[Path] = None,
+        resume_sdk_session_id: Optional[str] = None,
+    ):
         """Optional: create a persistent client for reuse across multiple run_async calls."""
         pass  # Default no-op, subclasses can override
 
@@ -119,11 +124,21 @@ class ClaudeSdkWorker(Worker):
         self._client = None  # Optional persistent ClaudeSDKClient
         self._block_state = {}  # Track content block state across stream events
 
-    async def connect(self, config: WorkerConfig, workspace: Optional[Path] = None):
+    async def connect(
+        self,
+        config: WorkerConfig,
+        workspace: Optional[Path] = None,
+        resume_sdk_session_id: Optional[str] = None,
+    ):
         """Create a persistent SDK client for reuse across multiple run_async calls."""
         from claude_agent_sdk import ClaudeSDKClient
 
         options = self._build_options(config, workspace)
+        if resume_sdk_session_id:
+            options.resume = resume_sdk_session_id
+            # Resume path should continue the existing session instruction stack.
+            options.system_prompt = None
+            logger.info(f"[Worker] Persistent client resuming SDK session: {resume_sdk_session_id}")
         self._client = ClaudeSDKClient(options=options)
         await self._client.__aenter__()
         logger.info("[Worker] Persistent client connected")

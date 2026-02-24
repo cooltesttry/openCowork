@@ -237,6 +237,7 @@ class TeamSession:
     completed_at: Optional[str] = None
     final_output: Optional[str] = None
     error: Optional[str] = None
+    phase_runtime: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -254,6 +255,7 @@ class TeamSession:
             "completed_at": self.completed_at,
             "final_output": self.final_output,
             "error": self.error,
+            "phase_runtime": dict(self.phase_runtime),
         }
 
     @classmethod
@@ -273,4 +275,9 @@ class TeamSession:
             completed_at=data.get("completed_at"),
             final_output=data.get("final_output"),
             error=data.get("error"),
+            phase_runtime=(
+                dict(data.get("phase_runtime", {}))
+                if isinstance(data.get("phase_runtime"), dict)
+                else {}
+            ),
         )

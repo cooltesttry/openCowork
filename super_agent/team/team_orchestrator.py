@@ -30,11 +30,13 @@ from .mailbox import FileMailbox
 from .persistence import TeamSessionStore
 from .prompts import (
     build_final_summary_prompt,
+    build_memory_writer_prompt,
     build_phase_review_prompt,
     build_planning_prompt,
 )
 from .scheduler import PhaseScheduler
 from .activity_log import TeamActivityLog
+from .memory_store import MemoryStore
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +256,109 @@ def _unique_dir(parent: Path, slug: str) -> Path:
             continue
 
 
+def _extract_json_object(text: str) -> Optional[dict[str, Any]]:
+    """Extract the first valid JSON object from text."""
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+        raw = re.sub(r"\s*```$", "", raw)
+        raw = raw.strip()
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else None
+    except json.JSONDecodeError:
+        pass
+
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start < 0 or end < 0 or end <= start:
+        return None
+    candidate = raw[start : end + 1]
+    try:
+        data = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _truncate_chars(text: str, max_chars: int) -> str:
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 3:
+        return text[:max_chars]
+    return text[: max_chars - 3].rstrip() + "..."
+
+
+def _normalize_basis_fields(plan_data: Optional[dict[str, Any]]) -> dict[str, str]:
+    basis_raw = plan_data.get("planning_basis", {}) if isinstance(plan_data, dict) else {}
+    basis = basis_raw if isinstance(basis_raw, dict) else {}
+    return {
+        "goal_alignment": str(basis.get("goal_alignment", "") or "").strip(),
+        "deliverables_acceptance": str(
+            basis.get("deliverables_acceptance", "") or ""
+        ).strip(),
+        "default_assumptions": str(basis.get("default_assumptions", "") or "").strip(),
+    }
+
+
+def _phase_tail(plan_data: Optional[dict[str, Any]], phase_index: int) -> list[dict[str, Any]]:
+    phases_raw = plan_data.get("phases", []) if isinstance(plan_data, dict) else []
+    phases = phases_raw if isinstance(phases_raw, list) else []
+    if phase_index < -1:
+        phase_index = -1
+    tail = phases[phase_index + 1 :]
+    return [p for p in tail if isinstance(p, dict)]
+
+
+def _compute_plan_basis_delta(
+    pre_plan_data: Optional[dict[str, Any]],
+    post_plan_data: Optional[dict[str, Any]],
+    *,
+    phase_index: int,
+) -> dict[str, Any]:
+    pre = pre_plan_data if isinstance(pre_plan_data, dict) else {}
+    post = post_plan_data if isinstance(post_plan_data, dict) else {}
+    pre_version = int(pre.get("version", 0))
+    post_version = int(post.get("version", pre_version))
+    pre_basis = _normalize_basis_fields(pre)
+    post_basis = _normalize_basis_fields(post)
+    basis_changed_fields = [
+        key for key in pre_basis.keys() if pre_basis.get(key, "") != post_basis.get(key, "")
+    ]
+    pre_tail = _phase_tail(pre, phase_index)
+    post_tail = _phase_tail(post, phase_index)
+    phases_changed = (
+        json.dumps(pre_tail, ensure_ascii=False, sort_keys=True)
+        != json.dumps(post_tail, ensure_ascii=False, sort_keys=True)
+    )
+    planning_basis_changed = bool(basis_changed_fields)
+    plan_changed = (post_version != pre_version) or planning_basis_changed or phases_changed
+
+    change_parts: list[str] = []
+    if planning_basis_changed:
+        change_parts.append(
+            "planning_basis fields updated: " + ", ".join(basis_changed_fields)
+        )
+    if phases_changed:
+        change_parts.append(f"remaining phases changed after phase {phase_index}")
+    if plan_changed and not change_parts:
+        change_parts.append(f"plan version changed: v{pre_version} -> v{post_version}")
+
+    return {
+        "plan_changed": bool(plan_changed),
+        "phases_changed": bool(phases_changed),
+        "planning_basis_changed": bool(planning_basis_changed),
+        "basis_changed_fields": basis_changed_fields,
+        "change_brief": "; ".join(change_parts),
+        "pre_version": pre_version,
+        "post_version": post_version,
+    }
+
+
 class TeamOrchestrator:
     """Main orchestrator for Agent Team runs."""
 
@@ -346,6 +451,24 @@ class TeamOrchestrator:
 
         return config
 
+    async def _connect_worker(
+        self,
+        worker: Worker,
+        config: WorkerConfig,
+        workspace_dir: Path,
+        *,
+        resume_sdk_session_id: Optional[str] = None,
+    ) -> None:
+        """Connect worker with optional resume while preserving compatibility."""
+        try:
+            await worker.connect(
+                config,
+                workspace=workspace_dir,
+                resume_sdk_session_id=resume_sdk_session_id,
+            )
+        except TypeError:
+            await worker.connect(config, workspace=workspace_dir)
+
     async def run_async(
         self,
         session_id: str,
@@ -360,6 +483,7 @@ class TeamOrchestrator:
         workspace_dir = Path(session.workspace_dir)
         team_data_dir = Path(session.team_data_dir) if session.team_data_dir else workspace_dir
         activity_log = TeamActivityLog(team_data_dir)
+        memory_store = MemoryStore(team_data_dir)
         self._emit(EventType.TEAM_SESSION_START, {"session_id": session_id})
 
         try:
@@ -368,23 +492,29 @@ class TeamOrchestrator:
             self.store.save_session(session)
             self._emit(EventType.TEAM_PLANNING_START, {"session_id": session_id})
 
-            # Create Lead worker with both MCPs
-            lead_config = self._build_lead_config_with_mcps(session)
-            lead_config.include_partial_messages = True
-            lead_worker = self.worker_factory()
+            # Planning uses a dedicated Lead session.
+            planning_config = self._build_lead_config_with_mcps(session)
+            planning_config.include_partial_messages = True
+            planning_worker = self.worker_factory()
 
+            async def lead_event_callback(event_type, data=None):
+                event_data = {"agent": "lead", **(data or {})}
+                self._emit(event_type, event_data)
+
+            plan_data: dict[str, Any] | None = None
+            available_ids = set(available_worker_configs.keys()) if available_worker_configs else None
             try:
-                await lead_worker.connect(lead_config, workspace=workspace_dir)
+                await self._connect_worker(
+                    planning_worker,
+                    planning_config,
+                    workspace_dir,
+                    resume_sdk_session_id=None,
+                )
 
-                async def lead_event_callback(event_type, data=None):
-                    event_data = {"agent": "lead", **(data or {})}
-                    self._emit(event_type, event_data)
-
-                # Leader creates plan via create_plan MCP tool
                 activity_log.log_section("Planning")
                 activity_log.log_prompt_summary("planning", f"Objective: {session.plan.objective}")
-                lead_result = await lead_worker.run_async(
-                    config=lead_config,
+                planning_result = await planning_worker.run_async(
+                    config=planning_config,
                     prompt=build_planning_prompt(
                         session.plan.objective,
                         worker_types_info or [],
@@ -392,22 +522,15 @@ class TeamOrchestrator:
                     ),
                     event_callback=lead_event_callback,
                 )
-                session.lead_sdk_session_id = lead_result.sdk_session_id
-                activity_log.log_lead_response("planning", lead_result.text or "")
+                session.lead_sdk_session_id = planning_result.sdk_session_id
+                activity_log.log_lead_response("planning", planning_result.text or "")
 
-                # Read plan from plan.json (created by Leader via Plan MCP)
                 plan_data = _read_plan_from_file(team_data_dir)
                 if not plan_data:
                     raise RuntimeError("Leader did not create a plan via create_plan tool")
-
                 activity_log.log_plan(plan_data)
+                session.plan = _plan_data_to_plan(plan_data, session.plan.plan_id, available_ids)
 
-                available_ids = set(available_worker_configs.keys()) if available_worker_configs else None
-                session.plan = _plan_data_to_plan(
-                    plan_data, session.plan.plan_id, available_ids
-                )
-
-                # Create project directory from plan's project_name
                 project_name = plan_data.get("project_name", "")
                 if not project_name:
                     project_name = _slugify(session.plan.objective)
@@ -415,29 +538,109 @@ class TeamOrchestrator:
                     project_name = _slugify(project_name)
                 project_path = _unique_dir(workspace_dir, project_name)
                 session.project_dir = str(project_path)
-
                 self.store.save_session(session)
-                self._emit(EventType.TEAM_PLANNING_COMPLETE, {
-                    "session_id": session_id,
-                    "plan": session.plan.to_dict(),
-                })
+                self._emit(
+                    EventType.TEAM_PLANNING_COMPLETE,
+                    {
+                        "session_id": session_id,
+                        "plan": session.plan.to_dict(),
+                    },
+                )
+            finally:
+                try:
+                    await planning_worker.disconnect()
+                except Exception:
+                    pass
 
-                # ═══ Phase Execution Loop ═══
-                phase_idx = 0
-                while phase_idx < len(session.plan.phases):
-                    phase = session.plan.phases[phase_idx]
-                    session.current_phase_index = phase_idx
-                    session.status = "executing"
+            if not plan_data:
+                raise RuntimeError("Planning phase failed to persist plan")
+
+            memory_store.init_memory(
+                plan=session.plan,
+                workspace_dir=session.workspace_dir,
+                project_dir=session.project_dir or "",
+                logs_dir=str(activity_log.logs_dir),
+            )
+
+            # ═══ Phase Execution Loop ═══
+            phase_idx = 0
+            while phase_idx < len(session.plan.phases):
+                phase = session.plan.phases[phase_idx]
+                session.current_phase_index = phase_idx
+                session.status = "executing"
+                session.phase_runtime = {
+                    "phase_index": phase_idx,
+                    "lead_sdk_session_id": None,
+                    "lead_context_seeded": False,
+                    "lead_reconnect_count": 0,
+                }
+                self.store.save_session(session)
+
+                lead_config = self._build_lead_config_with_mcps(session)
+                lead_config.include_partial_messages = True
+                lead_worker = self.worker_factory()
+
+                lead_context_header, lead_used_ids = memory_store.build_lead_phase_pack(
+                    plan=session.plan,
+                    phase=phase,
+                    phase_index=phase_idx,
+                    logs_dir=str(activity_log.logs_dir),
+                )
+                memory_store.mark_used(lead_used_ids, phase_idx)
+
+                worker_pack, worker_used_ids = memory_store.build_worker_phase_pack(
+                    plan=session.plan,
+                    phase=phase,
+                    phase_index=phase_idx,
+                    logs_dir=str(activity_log.logs_dir),
+                )
+                memory_store.mark_used(worker_used_ids, phase_idx)
+
+                def on_lead_session_update(sdk_session_id: str) -> None:
+                    runtime = session.phase_runtime if isinstance(session.phase_runtime, dict) else {}
+                    previous = str(runtime.get("lead_sdk_session_id", "")).strip()
+                    if previous and previous != sdk_session_id:
+                        runtime["lead_reconnect_count"] = int(runtime.get("lead_reconnect_count", 0)) + 1
+                    runtime["lead_sdk_session_id"] = sdk_session_id
+                    session.phase_runtime = runtime
+                    session.lead_sdk_session_id = sdk_session_id
                     self.store.save_session(session)
 
-                    # Create Phase mailbox
+                def on_lead_context_seeded(seed: bool) -> None:
+                    runtime = session.phase_runtime if isinstance(session.phase_runtime, dict) else {}
+                    runtime["lead_context_seeded"] = bool(seed)
+                    session.phase_runtime = runtime
+                    self.store.save_session(session)
+
+                context_usage: dict[str, Any] = {
+                    "status": "failed",
+                    "error_code": "NOT_COLLECTED",
+                }
+                pre_review_plan_data: dict[str, Any] | None = None
+                updated_plan_data: dict[str, Any] | None = None
+                phase_review_text = ""
+                phase_review_decision = "approve"
+                phase_plan_basis_delta: dict[str, Any] = {
+                    "plan_changed": False,
+                    "phases_changed": False,
+                    "planning_basis_changed": False,
+                    "basis_changed_fields": [],
+                    "change_brief": "",
+                    "pre_version": int(session.plan.version) if session.plan else 0,
+                    "post_version": int(session.plan.version) if session.plan else 0,
+                }
+
+                try:
+                    await self._connect_worker(
+                        lead_worker,
+                        lead_config,
+                        workspace_dir,
+                        resume_sdk_session_id=None,
+                    )
+
                     mailbox = FileMailbox(team_data_dir)
                     self._active_mailbox = mailbox
 
-                    # Build previous results summary
-                    prev_summary = _build_previous_results_summary(session.plan, phase_idx)
-
-                    # Execute Phase
                     scheduler = PhaseScheduler(
                         worker_factory=self.worker_factory,
                         workspace_dir=workspace_dir,
@@ -445,103 +648,267 @@ class TeamOrchestrator:
                         mailbox=mailbox,
                         event_emitter=self._emit,
                         persist_fn=lambda: self.store.save_session(session),
-                        previous_results_summary=prev_summary,
+                        previous_results_summary=worker_pack,
                         mcp_mailbox_server_path=self._mailbox_mcp_path,
                         project_dir=session.project_dir or "",
                         planning_basis=session.plan.planning_basis if session.plan else {},
                         activity_log=activity_log,
+                        lead_context_header=lead_context_header,
+                        inject_lead_context_once=True,
+                        phase_resume_enabled=True,
+                        on_lead_session_update=on_lead_session_update,
+                        on_lead_context_seeded=on_lead_context_seeded,
                     )
+
                     phase = await scheduler.execute_phase(
-                        phase, available_worker_configs,
+                        phase,
+                        available_worker_configs,
                         lead_worker=lead_worker,
                         lead_config=lead_config,
                     )
-                    self._active_mailbox = None
+                    if scheduler.latest_lead_worker:
+                        lead_worker = scheduler.latest_lead_worker
                     session.plan.phases[phase_idx] = phase
                     self.store.save_session(session)
 
                     # ═══ Phase Review ═══
                     session.status = "phase_review"
                     self.store.save_session(session)
-                    self._emit(EventType.TEAM_PHASE_REVIEW_START, {
-                        "phase_id": phase.phase_id,
-                        "phase_index": phase_idx,
-                    })
+                    self._emit(
+                        EventType.TEAM_PHASE_REVIEW_START,
+                        {
+                            "phase_id": phase.phase_id,
+                            "phase_index": phase_idx,
+                        },
+                    )
 
-                    # Leader reviews phase via Plan MCP (may call modify_phases)
-                    remaining_phases = session.plan.phases[phase_idx + 1:]
+                    remaining_phases = session.plan.phases[phase_idx + 1 :]
                     activity_log.log_section(f"Phase {phase_idx} Review")
-                    activity_log.log_prompt_summary("phase_review", f"Phase {phase_idx}: {phase.description}")
+                    activity_log.log_prompt_summary(
+                        "phase_review", f"Phase {phase_idx}: {phase.description}"
+                    )
+                    pre_review_plan_data = session.plan.to_dict() if session.plan else {}
+                    phase_review_prompt = build_phase_review_prompt(
+                        phase,
+                        remaining_phases,
+                        project_dir=session.project_dir or "",
+                        logs_dir=str(activity_log.logs_dir),
+                        planning_basis=session.plan.planning_basis if session.plan else {},
+                    )
+                    phase_review_prompt = (
+                        "## Context Anchor\n"
+                        f"- Phase: {phase_idx}\n"
+                        "- Use memory pointers and approved submissions as source of truth.\n\n"
+                        + phase_review_prompt
+                    )
                     review_result = await lead_worker.run_async(
                         config=lead_config,
-                        prompt=build_phase_review_prompt(
-                            phase, remaining_phases,
-                            project_dir=session.project_dir or "",
-                            logs_dir=str(activity_log.logs_dir),
-                            planning_basis=session.plan.planning_basis if session.plan else {},
-                        ),
+                        prompt=phase_review_prompt,
                         event_callback=lead_event_callback,
                     )
-                    session.lead_sdk_session_id = review_result.sdk_session_id
-                    activity_log.log_lead_response("phase_review", review_result.text or "")
+                    if review_result.sdk_session_id:
+                        on_lead_session_update(review_result.sdk_session_id)
+                    phase_review_text = review_result.text or ""
+                    activity_log.log_lead_response("phase_review", phase_review_text)
                     context_usage = await _collect_phase_review_context_usage(
                         lead_worker, lead_config
                     )
 
-                    # Check if Leader modified the plan via modify_phases MCP
                     updated_plan_data = _read_plan_from_file(team_data_dir)
+                    post_review_plan_data = (
+                        updated_plan_data
+                        if isinstance(updated_plan_data, dict)
+                        else (session.plan.to_dict() if session.plan else {})
+                    )
+                    phase_plan_basis_delta = _compute_plan_basis_delta(
+                        pre_review_plan_data,
+                        post_review_plan_data,
+                        phase_index=phase_idx,
+                    )
                     if updated_plan_data:
                         old_version = session.plan.version
                         new_plan = _plan_data_to_plan(
                             updated_plan_data, session.plan.plan_id, available_ids
                         )
                         if new_plan.version > old_version:
-                            # Plan was modified — Leader used modify_phases
+                            phase_review_decision = "modify"
                             phase.phase_review_decision = "modify"
                             activity_log.log_event("Plan modified by Lead")
-                            # Preserve completed phases' runtime data
                             old_phases = session.plan.phases
                             session.plan = new_plan
-                            for i in range(min(phase_idx + 1, len(old_phases), len(session.plan.phases))):
+                            for i in range(
+                                min(
+                                    phase_idx + 1,
+                                    len(old_phases),
+                                    len(session.plan.phases),
+                                )
+                            ):
                                 session.plan.phases[i] = old_phases[i]
-                            self._emit(EventType.TEAM_PLAN_UPDATED, {
-                                "plan": session.plan.to_dict(),
-                            })
+                            self._emit(
+                                EventType.TEAM_PLAN_UPDATED,
+                                {"plan": session.plan.to_dict()},
+                            )
                         else:
+                            phase_review_decision = "approve"
                             phase.phase_review_decision = "approve"
                     else:
+                        phase_review_decision = "approve"
                         phase.phase_review_decision = "approve"
+                    if phase_plan_basis_delta.get("change_brief"):
+                        activity_log.log_event(
+                            f"Plan/Basis delta: {phase_plan_basis_delta.get('change_brief')}"
+                        )
 
-                    # Check for abort signal — Leader sets "abort": true via abort_plan MCP tool
+                    # Context usage threshold fallback: rebuild session for memory writer.
+                    memory_writer_header = ""
+                    if (
+                        context_usage.get("status") == "ok"
+                        and int(context_usage.get("percent", 0)) >= 70
+                    ):
+                        try:
+                            await lead_worker.disconnect()
+                        except Exception:
+                            pass
+                        lead_worker = self.worker_factory()
+                        await self._connect_worker(
+                            lead_worker,
+                            lead_config,
+                            workspace_dir,
+                            resume_sdk_session_id=None,
+                        )
+                        runtime = session.phase_runtime if isinstance(session.phase_runtime, dict) else {}
+                        runtime["lead_reconnect_count"] = int(runtime.get("lead_reconnect_count", 0)) + 1
+                        runtime["lead_context_seeded"] = False
+                        session.phase_runtime = runtime
+                        self.store.save_session(session)
+                        memory_writer_header = lead_context_header + "\n\n"
+
+                    # Memory writer (single round) + commit.
+                    final_submissions: list[dict[str, str]] = []
+                    logs_path = Path(activity_log.logs_dir)
+                    for task in phase.tasks:
+                        pattern = f"phase{phase_idx}_{task.task_id}_worker-{task.task_id}_submit*_final.md"
+                        matches = sorted(logs_path.glob(pattern))
+                        if matches:
+                            target = matches[-1]
+                            try:
+                                content = target.read_text(encoding="utf-8")
+                            except OSError:
+                                content = ""
+                            final_submissions.append(
+                                {
+                                    "task_id": task.task_id,
+                                    "ref": str(target),
+                                    "content": _truncate_chars(content, 6000),
+                                }
+                            )
+
+                    memory_prompt = build_memory_writer_prompt(
+                        phase=phase,
+                        planning_basis=session.plan.planning_basis if session.plan else {},
+                        phase_review_text=phase_review_text,
+                        final_submissions=final_submissions,
+                        snapshot=memory_store.read_snapshot(),
+                        plan_basis_delta=phase_plan_basis_delta,
+                    )
+                    memory_result = await lead_worker.run_async(
+                        config=lead_config,
+                        prompt=memory_writer_header + memory_prompt,
+                        event_callback=lead_event_callback,
+                    )
+                    if memory_result.sdk_session_id:
+                        on_lead_session_update(memory_result.sdk_session_id)
+                    memory_payload = _extract_json_object(memory_result.text or "")
+                    commit_info = memory_store.commit_phase(
+                        phase_index=phase_idx,
+                        phase=phase,
+                        plan=session.plan,
+                        plan_data=updated_plan_data or (session.plan.to_dict() if session.plan else {}),
+                        lead_phase_review_text=phase_review_text,
+                        logs_dir=str(activity_log.logs_dir),
+                        memory_writer_payload=memory_payload,
+                        plan_basis_delta=phase_plan_basis_delta,
+                    )
+                    activity_log.log_event(
+                        "Memory committed for phase "
+                        f"{phase_idx}: {commit_info.get('summary_file', commit_info.get('delta_file', ''))} "
+                        f"(outcome={commit_info.get('phase_outcome', 'partial')})"
+                    )
+
+                    # Abort signal.
                     if updated_plan_data and updated_plan_data.get("abort"):
+                        phase_review_decision = "abort"
                         phase.phase_review_decision = "abort"
-                        phase.phase_review_notes = updated_plan_data.get("abort_reason", "Leader aborted")
+                        phase.phase_review_notes = updated_plan_data.get(
+                            "abort_reason", "Leader aborted"
+                        )
                         session.status = "failed"
                         session.error = f"Lead aborted after Phase {phase_idx}"
-                        self._emit(EventType.TEAM_PHASE_REVIEW_COMPLETE, {
-                            "phase_id": phase.phase_id,
-                            "decision": "abort",
-                            "context_usage": context_usage,
-                        })
+                        self._emit(
+                            EventType.TEAM_PHASE_REVIEW_COMPLETE,
+                            {
+                                "phase_id": phase.phase_id,
+                                "decision": "abort",
+                                "context_usage": context_usage,
+                            },
+                        )
+                        session.plan.phases[phase_idx] = phase
+                        self.store.save_session(session)
                         break
 
-                    self._emit(EventType.TEAM_PHASE_REVIEW_COMPLETE, {
-                        "phase_id": phase.phase_id,
-                        "decision": phase.phase_review_decision,
-                        "context_usage": context_usage,
-                    })
+                    self._emit(
+                        EventType.TEAM_PHASE_REVIEW_COMPLETE,
+                        {
+                            "phase_id": phase.phase_id,
+                            "decision": phase_review_decision,
+                            "context_usage": context_usage,
+                        },
+                    )
+                    session.plan.phases[phase_idx] = phase
                     self.store.save_session(session)
                     phase_idx += 1
-
-                # ═══ Final Summary ═══
-                if session.status != "failed":
-                    session.status = "completing"
+                finally:
+                    self._active_mailbox = None
+                    try:
+                        await lead_worker.disconnect()
+                    except Exception:
+                        pass
+                    session.phase_runtime = {}
                     self.store.save_session(session)
 
+            # ═══ Final Summary ═══
+            if session.status != "failed":
+                session.status = "completing"
+                self.store.save_session(session)
+
+                final_config = self._build_lead_config_with_mcps(session)
+                final_config.include_partial_messages = True
+                final_worker = self.worker_factory()
+                try:
+                    await self._connect_worker(
+                        final_worker,
+                        final_config,
+                        workspace_dir,
+                        resume_sdk_session_id=None,
+                    )
                     activity_log.log_section("Final Summary")
-                    final_result = await lead_worker.run_async(
-                        config=lead_config,
-                        prompt=build_final_summary_prompt(session.plan, project_dir=session.project_dir or "", logs_dir=str(activity_log.logs_dir)),
+                    final_header = (
+                        "## Final Context\n"
+                        f"{memory_store.read_north_star().strip()}\n\n"
+                        f"{memory_store.read_short_context().strip()}\n\n"
+                        f"- Logs: {str(activity_log.logs_dir)}\n"
+                        f"- Phase summaries: {str(memory_store.phase_summaries_dir)}\n"
+                        f"- Knowledge: {str(memory_store.knowledge_file)}\n"
+                    )
+                    final_result = await final_worker.run_async(
+                        config=final_config,
+                        prompt=final_header
+                        + "\n\n"
+                        + build_final_summary_prompt(
+                            session.plan,
+                            project_dir=session.project_dir or "",
+                            logs_dir=str(activity_log.logs_dir),
+                        ),
                         event_callback=lead_event_callback,
                     )
                     session.lead_sdk_session_id = final_result.sdk_session_id
@@ -550,22 +917,29 @@ class TeamOrchestrator:
                     session.status = "completed"
                     session.completed_at = utc_now()
 
-                    # Write __final_output.json
                     try:
                         final_output_path = team_data_dir / "__final_output.json"
                         final_output_path.write_text(
-                            json.dumps({
-                                "objective": session.plan.objective if session.plan else "",
-                                "final_output": session.final_output,
-                                "session_id": session.session_id,
-                            }, ensure_ascii=False, indent=2),
+                            json.dumps(
+                                {
+                                    "objective": session.plan.objective if session.plan else "",
+                                    "final_output": session.final_output,
+                                    "session_id": session.session_id,
+                                },
+                                ensure_ascii=False,
+                                indent=2,
+                            ),
                             encoding="utf-8",
                         )
                     except Exception as e:
-                        logger.warning(f"[TeamOrchestrator] Failed to write __final_output.json: {e}")
-
-            finally:
-                await lead_worker.disconnect()
+                        logger.warning(
+                            f"[TeamOrchestrator] Failed to write __final_output.json: {e}"
+                        )
+                finally:
+                    try:
+                        await final_worker.disconnect()
+                    except Exception:
+                        pass
 
         except asyncio.CancelledError:
             session.status = "cancelled"
